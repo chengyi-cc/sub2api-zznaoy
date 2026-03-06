@@ -107,6 +107,8 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool) codexTran
 	}
 
 	// Strip parameters unsupported by codex models via the Responses API.
+	// This includes Responses-API-incompatible fields that Chat Completions
+	// clients (e.g. Cursor) may attach when sending hybrid payloads.
 	for _, key := range []string{
 		"max_output_tokens",
 		"max_completion_tokens",
@@ -114,6 +116,17 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool) codexTran
 		"top_p",
 		"frequency_penalty",
 		"presence_penalty",
+		"metadata",
+		"stream_options",
+		"logprobs",
+		"top_logprobs",
+		"n",
+		"seed",
+		"stop",
+		"logit_bias",
+		"service_tier",
+		"user",
+		"response_format",
 	} {
 		if _, ok := reqBody[key]; ok {
 			delete(reqBody, key)
