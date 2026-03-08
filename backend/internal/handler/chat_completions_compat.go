@@ -62,18 +62,18 @@ func convertCCToAnthropicBody(body []byte) []byte {
 	}
 
 	maxTokens := 8192
-	if mt := gjson.GetBytes(body, "max_tokens"); mt.Exists() {
+	if mt := gjson.GetBytes(body, "max_tokens"); mt.Exists() && mt.Type == gjson.Number {
 		maxTokens = int(mt.Int())
 	}
-	if mt := gjson.GetBytes(body, "max_completion_tokens"); mt.Exists() {
+	if mt := gjson.GetBytes(body, "max_completion_tokens"); mt.Exists() && mt.Type == gjson.Number {
 		maxTokens = int(mt.Int())
 	}
 	out, _ = sjson.Set(out, "max_tokens", maxTokens)
 
-	if t := gjson.GetBytes(body, "temperature"); t.Exists() {
+	if t := gjson.GetBytes(body, "temperature"); t.Exists() && t.Type == gjson.Number {
 		out, _ = sjson.Set(out, "temperature", t.Value())
 	}
-	if tp := gjson.GetBytes(body, "top_p"); tp.Exists() {
+	if tp := gjson.GetBytes(body, "top_p"); tp.Exists() && tp.Type == gjson.Number {
 		out, _ = sjson.Set(out, "top_p", tp.Value())
 	}
 
@@ -82,7 +82,7 @@ func convertCCToAnthropicBody(body []byte) []byte {
 	gjson.GetBytes(body, "messages").ForEach(func(_, msg gjson.Result) bool {
 		role := msg.Get("role").String()
 		if role == "system" || role == "developer" {
-			if s := msg.Get("content").String(); s != "" {
+			if s := messageTextContent(msg.Get("content")); s != "" {
 				systemParts = append(systemParts, s)
 			}
 		} else {
@@ -115,7 +115,7 @@ func convertCCToAnthropicBody(body []byte) []byte {
 		})
 		out, _ = sjson.Set(out, "tools", converted)
 	}
-	if tc := gjson.GetBytes(body, "tool_choice"); tc.Exists() {
+	if tc := gjson.GetBytes(body, "tool_choice"); tc.Exists() && !isUndefinedPlaceholder(tc) {
 		out, _ = sjson.Set(out, "tool_choice", tc.Value())
 	}
 
@@ -233,16 +233,16 @@ func convertChatCompletionsToResponsesBody(body []byte) ([]byte, error) {
 	if s := gjson.GetBytes(body, "stream"); s.Exists() {
 		out, _ = sjson.Set(out, "stream", s.Value())
 	}
-	if t := gjson.GetBytes(body, "temperature"); t.Exists() {
+	if t := gjson.GetBytes(body, "temperature"); t.Exists() && t.Type == gjson.Number {
 		out, _ = sjson.Set(out, "temperature", t.Value())
 	}
-	if tp := gjson.GetBytes(body, "top_p"); tp.Exists() {
+	if tp := gjson.GetBytes(body, "top_p"); tp.Exists() && tp.Type == gjson.Number {
 		out, _ = sjson.Set(out, "top_p", tp.Value())
 	}
-	if mt := gjson.GetBytes(body, "max_tokens"); mt.Exists() {
+	if mt := gjson.GetBytes(body, "max_tokens"); mt.Exists() && mt.Type == gjson.Number {
 		out, _ = sjson.Set(out, "max_output_tokens", mt.Value())
 	}
-	if mt := gjson.GetBytes(body, "max_completion_tokens"); mt.Exists() {
+	if mt := gjson.GetBytes(body, "max_completion_tokens"); mt.Exists() && mt.Type == gjson.Number {
 		out, _ = sjson.Set(out, "max_output_tokens", mt.Value())
 	}
 
@@ -252,14 +252,13 @@ func convertChatCompletionsToResponsesBody(body []byte) ([]byte, error) {
 		role := msg.Get("role").String()
 		switch role {
 		case "system", "developer":
-			// First system/developer message becomes instructions.
 			if !gjson.Valid(gjson.Get(out, "instructions").Raw) || gjson.Get(out, "instructions").String() == "" {
-				out, _ = sjson.Set(out, "instructions", msg.Get("content").String())
+				out, _ = sjson.Set(out, "instructions", messageTextContent(msg.Get("content")))
 			}
 		case "user":
 			input = append(input, map[string]any{
 				"role":    "user",
-				"content": messageContent(msg),
+				"content": messageContentForRole(role, msg),
 			})
 		case "assistant":
 			if toolCalls := msg.Get("tool_calls"); toolCalls.Exists() && toolCalls.IsArray() {
@@ -276,7 +275,7 @@ func convertChatCompletionsToResponsesBody(body []byte) ([]byte, error) {
 			} else {
 				input = append(input, map[string]any{
 					"role":    "assistant",
-					"content": messageContent(msg),
+					"content": messageContentForRole(role, msg),
 				})
 			}
 		case "tool":
@@ -288,7 +287,7 @@ func convertChatCompletionsToResponsesBody(body []byte) ([]byte, error) {
 		default:
 			input = append(input, map[string]any{
 				"role":    role,
-				"content": messageContent(msg),
+				"content": messageContentForRole(role, msg),
 			})
 		}
 		return true
@@ -324,19 +323,79 @@ func convertChatCompletionsToResponsesBody(body []byte) ([]byte, error) {
 		out, _ = sjson.Set(out, "tools", converted)
 	}
 
-	if tc := gjson.GetBytes(body, "tool_choice"); tc.Exists() {
+	if tc := gjson.GetBytes(body, "tool_choice"); tc.Exists() && !isUndefinedPlaceholder(tc) {
 		out, _ = sjson.Set(out, "tool_choice", tc.Value())
 	}
 
 	return []byte(out), nil
 }
 
-// messageContent extracts content from a message, handling both plain string
-// content and array-of-parts content.
-func messageContent(msg gjson.Result) any {
-	c := msg.Get("content")
-	if c.IsArray() {
-		return c.Value()
+// isUndefinedPlaceholder returns true for the serialized "[undefined]" string
+// that some clients (e.g. Cherry Studio) emit for unset optional fields.
+func isUndefinedPlaceholder(r gjson.Result) bool {
+	return r.Type == gjson.String && r.String() == "[undefined]"
+}
+
+// messageTextContent extracts plain text from a content field, handling both
+// string and array-of-parts forms. Only text-type parts are included.
+func messageTextContent(content gjson.Result) string {
+	if content.IsArray() {
+		parts := make([]string, 0, 2)
+		content.ForEach(func(_, item gjson.Result) bool {
+			switch item.Get("type").String() {
+			case "text", "input_text", "output_text":
+				if text := strings.TrimSpace(item.Get("text").String()); text != "" {
+					parts = append(parts, text)
+				}
+			}
+			return true
+		})
+		return strings.Join(parts, "\n\n")
 	}
-	return c.String()
+	return content.String()
+}
+
+// messageContentForRole extracts content from a message and normalizes
+// Chat Completions multimodal blocks into Responses-compatible content blocks.
+func messageContentForRole(role string, msg gjson.Result) any {
+	c := msg.Get("content")
+	if !c.IsArray() {
+		return c.String()
+	}
+
+	normalized := make([]any, 0)
+	c.ForEach(func(_, item gjson.Result) bool {
+		normalized = append(normalized, normalizeContentItemForRole(role, item))
+		return true
+	})
+	return normalized
+}
+
+func normalizeContentItemForRole(role string, item gjson.Result) any {
+	switch item.Get("type").String() {
+	case "text", "input_text", "output_text":
+		normalizedType := "input_text"
+		if role == "assistant" {
+			normalizedType = "output_text"
+		}
+		return map[string]any{
+			"type": normalizedType,
+			"text": item.Get("text").String(),
+		}
+	case "image_url", "input_image":
+		imageURL := item.Get("image_url.url").String()
+		if imageURL == "" {
+			imageURL = item.Get("image_url").String()
+		}
+		result := map[string]any{
+			"type":      "input_image",
+			"image_url": imageURL,
+		}
+		if detail := item.Get("image_url.detail").String(); detail != "" {
+			result["detail"] = detail
+		}
+		return result
+	default:
+		return item.Value()
+	}
 }
