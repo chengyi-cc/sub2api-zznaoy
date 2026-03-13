@@ -691,13 +691,11 @@ func (s *SubscriptionService) CheckAndActivateWindow(ctx context.Context, sub *U
 		return nil
 	}
 
-	// 使用当天零点作为窗口起始时间
-	windowStart := startOfDay(time.Now())
+	windowStart := time.Now()
 	return s.userSubRepo.ActivateWindows(ctx, sub.ID, windowStart)
 }
 
 // AdminResetQuota manually resets the daily, weekly, and/or monthly usage windows.
-// Uses startOfDay(now) as the new window start, matching automatic resets.
 func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionID int64, resetDaily, resetWeekly, resetMonthly bool) (*UserSubscription, error) {
 	if !resetDaily && !resetWeekly && !resetMonthly {
 		return nil, ErrInvalidInput
@@ -706,7 +704,7 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	if err != nil {
 		return nil, err
 	}
-	windowStart := startOfDay(time.Now())
+	windowStart := time.Now()
 	if resetDaily {
 		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
 			return nil, err
@@ -738,8 +736,7 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 
 // CheckAndResetWindows 检查并重置过期的窗口
 func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *UserSubscription) error {
-	// 使用当天零点作为新窗口起始时间
-	windowStart := startOfDay(time.Now())
+	windowStart := time.Now()
 	needsInvalidateCache := false
 
 	// 日窗口重置（24小时）
