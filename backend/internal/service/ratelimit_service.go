@@ -150,7 +150,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
 		lowerBody := strings.ToLower(string(responseBody))
-		// 账号已停用：无论 OAuth 还是 APIKey，直接标记 error 状态，不再尝试刷新
+		// 账号已停用：无论 OAuth 还是 APIKey，直接标记 error 状态，不尝试刷新
 		if strings.Contains(lowerBody, "account_deactivated") {
 			msg := "Account deactivated (401): " + upstreamMsg
 			if account.Type == AccountTypeOAuth && s.tokenCacheInvalidator != nil {
@@ -161,11 +161,21 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			s.handleAuthError(ctx, account, msg)
 			shouldDisable = true
 		} else if account.Type == AccountTypeOAuth {
-			// 非停用的 OAuth 401：失效缓存 + 临时冷却，等待自然刷新
+			// 非停用的 OAuth 401（如 token 过期/失效）：失效缓存 + 强制刷新 + 临时冷却
 			if s.tokenCacheInvalidator != nil {
 				if err := s.tokenCacheInvalidator.InvalidateToken(ctx, account); err != nil {
 					slog.Warn("oauth_401_invalidate_cache_failed", "account_id", account.ID, "error", err)
 				}
+			}
+			// 设置 expires_at 为当前时间，强制下次请求刷新 token
+			if account.Credentials == nil {
+				account.Credentials = make(map[string]any)
+			}
+			account.Credentials["expires_at"] = time.Now().Format(time.RFC3339)
+			if err := s.accountRepo.Update(ctx, account); err != nil {
+				slog.Warn("oauth_401_force_refresh_update_failed", "account_id", account.ID, "error", err)
+			} else {
+				slog.Info("oauth_401_force_refresh_set", "account_id", account.ID, "platform", account.Platform)
 			}
 			msg := "Authentication failed (401): invalid or expired credentials"
 			if upstreamMsg != "" {
