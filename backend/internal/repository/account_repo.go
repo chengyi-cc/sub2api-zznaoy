@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -48,6 +49,18 @@ type accountRepository struct {
 	// Used to proactively sync account snapshot to cache when status changes,
 	// ensuring sticky sessions can promptly detect unavailable accounts.
 	schedulerCache service.SchedulerCache
+}
+
+var schedulerNeutralExtraKeyPrefixes = []string{
+	"codex_primary_",
+	"codex_secondary_",
+	"codex_5h_",
+	"codex_7d_",
+}
+
+var schedulerNeutralExtraKeys = map[string]struct{}{
+	"codex_usage_updated_at":     {},
+	"session_window_utilization": {},
 }
 
 // NewAccountRepository 创建账户仓储实例。
@@ -659,13 +672,10 @@ func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	// 清除临时不可调度状态，重置 401 升级链
-	_, _ = r.sql.ExecContext(ctx, `
-		UPDATE accounts
-		SET temp_unschedulable_until = NULL,
-		    temp_unschedulable_reason = NULL
-		WHERE id = $1 AND deleted_at IS NULL
-	`, id)
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear error failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
@@ -925,6 +935,7 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue rate limit failed: account=%d err=%v", id, err)
 	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
@@ -1040,6 +1051,7 @@ func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error 
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear rate limit failed: account=%d err=%v", id, err)
 	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 
@@ -1186,10 +1198,46 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	if affected == 0 {
 		return service.ErrAccountNotFound
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
+	if shouldEnqueueSchedulerOutboxForExtraUpdates(updates) {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
+		}
+	} else {
+		// 观测型 extra 字段不需要触发 bucket 重建，但仍同步单账号快照，
+		// 让 sticky session / GetAccount 命中缓存时也能读到最新数据，
+		// 同时避免缓存局部 patch 覆盖掉并发写入的其它账号字段。
+		r.syncSchedulerAccountSnapshot(ctx, id)
 	}
 	return nil
+}
+
+func shouldEnqueueSchedulerOutboxForExtraUpdates(updates map[string]any) bool {
+	if len(updates) == 0 {
+		return false
+	}
+	for key := range updates {
+		if isSchedulerNeutralExtraKey(key) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func isSchedulerNeutralExtraKey(key string) bool {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false
+	}
+	if _, ok := schedulerNeutralExtraKeys[key]; ok {
+		return true
+	}
+	for _, prefix := range schedulerNeutralExtraKeyPrefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
@@ -1676,13 +1724,47 @@ func (r *accountRepository) FindByExtraField(ctx context.Context, key string, va
 	return r.accountsToService(ctx, accounts)
 }
 
-// IncrementQuotaUsed 原子递增账号的 extra.quota_used 字段
+// nowUTC is a SQL expression to generate a UTC RFC3339 timestamp string.
+const nowUTC = `to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
+
+// IncrementQuotaUsed 原子递增账号的配额用量（总/日/周三个维度）
+// 日/周额度在周期过期时自动重置为 0 再递增。
 func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
 	rows, err := r.sql.QueryContext(ctx,
-		`UPDATE accounts SET extra = jsonb_set(
-			COALESCE(extra, '{}'::jsonb),
-			'{quota_used}',
-			to_jsonb(COALESCE((extra->>'quota_used')::numeric, 0) + $1)
+		`UPDATE accounts SET extra = (
+			COALESCE(extra, '{}'::jsonb)
+			-- 总额度：始终递增
+			|| jsonb_build_object('quota_used', COALESCE((extra->>'quota_used')::numeric, 0) + $1)
+			-- 日额度：仅在 quota_daily_limit > 0 时处理
+			|| CASE WHEN COALESCE((extra->>'quota_daily_limit')::numeric, 0) > 0 THEN
+				jsonb_build_object(
+					'quota_daily_used',
+					CASE WHEN COALESCE((extra->>'quota_daily_start')::timestamptz, '1970-01-01'::timestamptz)
+						+ '24 hours'::interval <= NOW()
+					THEN $1
+					ELSE COALESCE((extra->>'quota_daily_used')::numeric, 0) + $1 END,
+					'quota_daily_start',
+					CASE WHEN COALESCE((extra->>'quota_daily_start')::timestamptz, '1970-01-01'::timestamptz)
+						+ '24 hours'::interval <= NOW()
+					THEN `+nowUTC+`
+					ELSE COALESCE(extra->>'quota_daily_start', `+nowUTC+`) END
+				)
+			ELSE '{}'::jsonb END
+			-- 周额度：仅在 quota_weekly_limit > 0 时处理
+			|| CASE WHEN COALESCE((extra->>'quota_weekly_limit')::numeric, 0) > 0 THEN
+				jsonb_build_object(
+					'quota_weekly_used',
+					CASE WHEN COALESCE((extra->>'quota_weekly_start')::timestamptz, '1970-01-01'::timestamptz)
+						+ '168 hours'::interval <= NOW()
+					THEN $1
+					ELSE COALESCE((extra->>'quota_weekly_used')::numeric, 0) + $1 END,
+					'quota_weekly_start',
+					CASE WHEN COALESCE((extra->>'quota_weekly_start')::timestamptz, '1970-01-01'::timestamptz)
+						+ '168 hours'::interval <= NOW()
+					THEN `+nowUTC+`
+					ELSE COALESCE(extra->>'quota_weekly_start', `+nowUTC+`) END
+				)
+			ELSE '{}'::jsonb END
 		), updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
 		RETURNING
@@ -1704,7 +1786,7 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 		return err
 	}
 
-	// 配额刚超限时触发调度快照刷新，使账号及时从调度候选中移除
+	// 任一维度配额刚超限时触发调度快照刷新
 	if limit > 0 && newUsed >= limit && (newUsed-amount) < limit {
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota exceeded failed: account=%d err=%v", id, err)
@@ -1713,14 +1795,13 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 	return nil
 }
 
-// ResetQuotaUsed 重置账号的 extra.quota_used 为 0
+// ResetQuotaUsed 重置账号所有维度的配额用量为 0
 func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error {
 	_, err := r.sql.ExecContext(ctx,
-		`UPDATE accounts SET extra = jsonb_set(
-			COALESCE(extra, '{}'::jsonb),
-			'{quota_used}',
-			'0'::jsonb
-		), updated_at = NOW()
+		`UPDATE accounts SET extra = (
+			COALESCE(extra, '{}'::jsonb)
+			|| '{"quota_used": 0, "quota_daily_used": 0, "quota_weekly_used": 0}'::jsonb
+		) - 'quota_daily_start' - 'quota_weekly_start', updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id)
 	if err != nil {

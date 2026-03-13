@@ -42,6 +42,9 @@ type AdminService interface {
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
 	DeleteGroup(ctx context.Context, id int64) error
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
+	GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
+	ClearGroupRateMultipliers(ctx context.Context, groupID int64) error
+	BatchSetGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error
 	UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
 
 	// API Key management (admin)
@@ -57,6 +60,8 @@ type AdminService interface {
 	RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error)
 	ClearAccountError(ctx context.Context, id int64) (*Account, error)
 	SetAccountError(ctx context.Context, id int64, errorMsg string) error
+	// EnsureOpenAIPrivacy 检查 OpenAI OAuth 账号 privacy_mode，未设置则尝试关闭训练数据共享并持久化。
+	EnsureOpenAIPrivacy(ctx context.Context, account *Account) string
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
 	CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error
@@ -432,6 +437,8 @@ type adminServiceImpl struct {
 	entClient            *dbent.Client // 用于开启数据库事务
 	settingService       *SettingService
 	defaultSubAssigner   DefaultSubscriptionAssigner
+	userSubRepo          UserSubscriptionRepository
+	privacyClientFactory PrivacyClientFactory
 }
 
 type userGroupRateBatchReader interface {
@@ -459,6 +466,8 @@ func NewAdminService(
 	entClient *dbent.Client,
 	settingService *SettingService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
+	userSubRepo UserSubscriptionRepository,
+	privacyClientFactory PrivacyClientFactory,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -476,6 +485,8 @@ func NewAdminService(
 		entClient:            entClient,
 		settingService:       settingService,
 		defaultSubAssigner:   defaultSubAssigner,
+		userSubRepo:          userSubRepo,
+		privacyClientFactory: privacyClientFactory,
 	}
 }
 
@@ -1241,6 +1252,27 @@ func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 	return keys, result.Total, nil
 }
 
+func (s *adminServiceImpl) GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error) {
+	if s.userGroupRateRepo == nil {
+		return nil, nil
+	}
+	return s.userGroupRateRepo.GetByGroupID(ctx, groupID)
+}
+
+func (s *adminServiceImpl) ClearGroupRateMultipliers(ctx context.Context, groupID int64) error {
+	if s.userGroupRateRepo == nil {
+		return nil
+	}
+	return s.userGroupRateRepo.DeleteByGroupID(ctx, groupID)
+}
+
+func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error {
+	if s.userGroupRateRepo == nil {
+		return nil
+	}
+	return s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries)
+}
+
 func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {
 	return s.groupRepo.UpdateSortOrders(ctx, updates)
 }
@@ -1277,9 +1309,17 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		if group.Status != StatusActive {
 			return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
 		}
-		// 订阅类型分组：不允许通过此 API 直接绑定，需通过订阅管理流程
+		// 订阅类型分组：用户须持有该分组的有效订阅才可绑定
 		if group.IsSubscriptionType() {
-			return nil, infraerrors.BadRequest("SUBSCRIPTION_GROUP_NOT_ALLOWED", "subscription groups must be managed through the subscription workflow")
+			if s.userSubRepo == nil {
+				return nil, infraerrors.InternalServer("SUBSCRIPTION_REPOSITORY_UNAVAILABLE", "subscription repository is not configured")
+			}
+			if _, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, apiKey.UserID, *groupID); err != nil {
+				if errors.Is(err, ErrSubscriptionNotFound) {
+					return nil, infraerrors.BadRequest("SUBSCRIPTION_REQUIRED", "user does not have an active subscription for this group")
+				}
+				return nil, err
+			}
 		}
 
 		gid := *groupID
@@ -1287,7 +1327,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		apiKey.Group = group
 
 		// 专属标准分组：使用事务保证「添加分组权限」与「更新 API Key」的原子性
-		if group.IsExclusive {
+		if group.IsExclusive && !group.IsSubscriptionType() {
 			opCtx := ctx
 			var tx *dbent.Tx
 			if s.entClient == nil {
@@ -1348,6 +1388,10 @@ func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int,
 	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID)
 	if err != nil {
 		return nil, 0, err
+	}
+	now := time.Now()
+	for i := range accounts {
+		syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, &accounts[i], now)
 	}
 	return accounts, result.Total, nil
 }
@@ -1484,9 +1528,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.Credentials = input.Credentials
 	}
 	if len(input.Extra) > 0 {
-		// 保留 quota_used，防止编辑账号时意外重置配额用量
-		if oldQuotaUsed, ok := account.Extra["quota_used"]; ok {
-			input.Extra["quota_used"] = oldQuotaUsed
+		// 保留配额用量字段，防止编辑账号时意外重置
+		for _, key := range []string{"quota_used", "quota_daily_used", "quota_daily_start", "quota_weekly_used", "quota_weekly_start"} {
+			if v, ok := account.Extra[key]; ok {
+				input.Extra[key] = v
+			}
 		}
 		account.Extra = input.Extra
 	}
@@ -1717,16 +1763,10 @@ func (s *adminServiceImpl) RefreshAccountCredentials(ctx context.Context, id int
 }
 
 func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Account, error) {
-	account, err := s.accountRepo.GetByID(ctx, id)
-	if err != nil {
+	if err := s.accountRepo.ClearError(ctx, id); err != nil {
 		return nil, err
 	}
-	account.Status = StatusActive
-	account.ErrorMessage = ""
-	if err := s.accountRepo.Update(ctx, account); err != nil {
-		return nil, err
-	}
-	return account, nil
+	return s.accountRepo.GetByID(ctx, id)
 }
 
 func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorMsg string) error {
@@ -2490,4 +2530,40 @@ func (e *MixedChannelError) Error() string {
 
 func (s *adminServiceImpl) ResetAccountQuota(ctx context.Context, id int64) error {
 	return s.accountRepo.ResetQuotaUsed(ctx, id)
+}
+
+// EnsureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，
+// 未设置则调用 disableOpenAITraining 并持久化到 Extra，返回设置的 mode 值。
+func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Account) string {
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return ""
+	}
+	if s.privacyClientFactory == nil {
+		return ""
+	}
+	if account.Extra != nil {
+		if _, ok := account.Extra["privacy_mode"]; ok {
+			return ""
+		}
+	}
+
+	token, _ := account.Credentials["access_token"].(string)
+	if token == "" {
+		return ""
+	}
+
+	var proxyURL string
+	if account.ProxyID != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+		}
+	}
+
+	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
+	if mode == "" {
+		return ""
+	}
+
+	_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode})
+	return mode
 }

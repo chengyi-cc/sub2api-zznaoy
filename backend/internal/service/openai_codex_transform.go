@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -159,6 +160,22 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 		input = filterCodexInput(input, needsToolContinuation)
 		reqBody["input"] = input
 		result.Modified = true
+	} else if inputStr, ok := reqBody["input"].(string); ok {
+		// ChatGPT codex endpoint requires input to be a list, not a string.
+		// Convert string input to the expected message array format.
+		trimmed := strings.TrimSpace(inputStr)
+		if trimmed != "" {
+			reqBody["input"] = []any{
+				map[string]any{
+					"type":    "message",
+					"role":    "user",
+					"content": inputStr,
+				},
+			}
+		} else {
+			reqBody["input"] = []any{}
+		}
+		result.Modified = true
 	}
 
 	return result
@@ -221,6 +238,29 @@ func normalizeCodexModel(model string) string {
 	}
 
 	return "gpt-5.1"
+}
+
+func SupportsVerbosity(model string) bool {
+	if !strings.HasPrefix(model, "gpt-") {
+		return true
+	}
+
+	var major, minor int
+	n, _ := fmt.Sscanf(model, "gpt-%d.%d", &major, &minor)
+
+	if major > 5 {
+		return true
+	}
+	if major < 5 {
+		return false
+	}
+
+	// gpt-5
+	if n == 1 {
+		return true
+	}
+
+	return minor >= 3
 }
 
 func getNormalizedCodexModel(modelID string) string {

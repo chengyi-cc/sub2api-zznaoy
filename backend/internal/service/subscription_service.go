@@ -31,6 +31,7 @@ var (
 	ErrSubscriptionAlreadyExists  = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
 	ErrSubscriptionAssignConflict = infraerrors.Conflict("SUBSCRIPTION_ASSIGN_CONFLICT", "subscription exists but request conflicts with existing assignment semantics")
 	ErrGroupNotSubscriptionType   = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
+	ErrInvalidInput               = infraerrors.BadRequest("INVALID_INPUT", "at least one of resetDaily, resetWeekly, or resetMonthly must be true")
 	ErrDailyLimitExceeded         = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
 	ErrWeeklyLimitExceeded        = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
 	ErrMonthlyLimitExceeded       = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
@@ -693,6 +694,46 @@ func (s *SubscriptionService) CheckAndActivateWindow(ctx context.Context, sub *U
 	// 使用当天零点作为窗口起始时间
 	windowStart := startOfDay(time.Now())
 	return s.userSubRepo.ActivateWindows(ctx, sub.ID, windowStart)
+}
+
+// AdminResetQuota manually resets the daily, weekly, and/or monthly usage windows.
+// Uses startOfDay(now) as the new window start, matching automatic resets.
+func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionID int64, resetDaily, resetWeekly, resetMonthly bool) (*UserSubscription, error) {
+	if !resetDaily && !resetWeekly && !resetMonthly {
+		return nil, ErrInvalidInput
+	}
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	windowStart := startOfDay(time.Now())
+	if resetDaily {
+		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
+			return nil, err
+		}
+	}
+	if resetWeekly {
+		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
+			return nil, err
+		}
+	}
+	if resetMonthly {
+		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, windowStart); err != nil {
+			return nil, err
+		}
+	}
+	// Invalidate L1 ristretto cache. Ristretto's Del() is asynchronous by design,
+	// so call Wait() immediately after to flush pending operations and guarantee
+	// the deleted key is not returned on the very next Get() call.
+	s.InvalidateSubCache(sub.UserID, sub.GroupID)
+	if s.subCacheL1 != nil {
+		s.subCacheL1.Wait()
+	}
+	if s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
+	}
+	// Return the refreshed subscription from DB
+	return s.userSubRepo.GetByID(ctx, subscriptionID)
 }
 
 // CheckAndResetWindows 检查并重置过期的窗口
