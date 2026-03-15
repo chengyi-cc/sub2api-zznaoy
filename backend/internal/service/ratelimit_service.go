@@ -160,8 +160,9 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			}
 			s.handleAuthError(ctx, account, msg)
 			shouldDisable = true
-		} else if account.Type == AccountTypeOAuth {
+		} else if account.Type == AccountTypeOAuth && account.Platform != PlatformAntigravity {
 			// 非停用的 OAuth 401（如 token 过期/失效）：失效缓存 + 强制刷新 + 临时冷却
+			// Antigravity 除外：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制。
 			if s.tokenCacheInvalidator != nil {
 				if err := s.tokenCacheInvalidator.InvalidateToken(ctx, account); err != nil {
 					slog.Warn("oauth_401_invalidate_cache_failed", "account_id", account.ID, "error", err)
@@ -191,7 +192,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			}
 			shouldDisable = true
 		} else {
-			// 非 OAuth 账号（APIKey）：保持原有 SetError 行为
+			// 非 OAuth / Antigravity OAuth：保持 SetError 行为
 			msg := "Authentication failed (401): invalid or expired credentials"
 			if upstreamMsg != "" {
 				msg = "Authentication failed (401): " + upstreamMsg
@@ -208,11 +209,6 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		s.handleAuthError(ctx, account, msg)
 		shouldDisable = true
 	case 403:
-		// 禁止访问：停止调度，记录错误
-		msg := "Access forbidden (403): account may be suspended or lack permissions"
-		if upstreamMsg != "" {
-			msg = "Access forbidden (403): " + upstreamMsg
-		}
 		logger.LegacyPrintf(
 			"service.ratelimit",
 			"[HandleUpstreamErrorRaw] account_id=%d platform=%s type=%s status=403 request_id=%s cf_ray=%s upstream_msg=%s raw_body=%s",
@@ -224,8 +220,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			upstreamMsg,
 			truncateForLog(responseBody, 1024),
 		)
-		s.handleAuthError(ctx, account, msg)
-		shouldDisable = true
+		shouldDisable = s.handle403(ctx, account, upstreamMsg, responseBody)
 	case 429:
 		s.handle429(ctx, account, headers, responseBody)
 		shouldDisable = false
@@ -628,6 +623,62 @@ func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account
 		return
 	}
 	slog.Warn("account_disabled_auth_error", "account_id", account.ID, "error", errorMsg)
+}
+
+// handle403 处理 403 Forbidden 错误
+// Antigravity 平台区分 validation/violation/generic 三种类型，均 SetError 永久禁用；
+// 其他平台保持原有 SetError 行为。
+func (s *RateLimitService) handle403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
+	if account.Platform == PlatformAntigravity {
+		return s.handleAntigravity403(ctx, account, upstreamMsg, responseBody)
+	}
+	// 非 Antigravity 平台：保持原有行为
+	msg := "Access forbidden (403): account may be suspended or lack permissions"
+	if upstreamMsg != "" {
+		msg = "Access forbidden (403): " + upstreamMsg
+	}
+	s.handleAuthError(ctx, account, msg)
+	return true
+}
+
+// handleAntigravity403 处理 Antigravity 平台的 403 错误
+// validation（需要验证）→ 永久 SetError（需人工去 Google 验证后恢复）
+// violation（违规封号）→ 永久 SetError（需人工处理）
+// generic（通用禁止）→ 永久 SetError
+func (s *RateLimitService) handleAntigravity403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
+	fbType := classifyForbiddenType(string(responseBody))
+
+	switch fbType {
+	case forbiddenTypeValidation:
+		// VALIDATION_REQUIRED: 永久禁用，需人工去 Google 验证后手动恢复
+		msg := "Validation required (403): account needs Google verification"
+		if upstreamMsg != "" {
+			msg = "Validation required (403): " + upstreamMsg
+		}
+		if validationURL := extractValidationURL(string(responseBody)); validationURL != "" {
+			msg += " | validation_url: " + validationURL
+		}
+		s.handleAuthError(ctx, account, msg)
+		return true
+
+	case forbiddenTypeViolation:
+		// 违规封号: 永久禁用，需人工处理
+		msg := "Account violation (403): terms of service violation"
+		if upstreamMsg != "" {
+			msg = "Account violation (403): " + upstreamMsg
+		}
+		s.handleAuthError(ctx, account, msg)
+		return true
+
+	default:
+		// 通用 403: 保持原有行为
+		msg := "Access forbidden (403): account may be suspended or lack permissions"
+		if upstreamMsg != "" {
+			msg = "Access forbidden (403): " + upstreamMsg
+		}
+		s.handleAuthError(ctx, account, msg)
+		return true
+	}
 }
 
 // handleCustomErrorCode 处理自定义错误码，停止账号调度
@@ -1222,7 +1273,8 @@ func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Ac
 	}
 	// 401 首次命中可临时不可调度（给 token 刷新窗口）；
 	// 若历史上已因 401 进入过临时不可调度，则本次应升级为 error（返回 false 交由默认错误逻辑处理）。
-	if statusCode == http.StatusUnauthorized {
+	// Antigravity 跳过：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制，无需升级逻辑。
+	if statusCode == http.StatusUnauthorized && account.Platform != PlatformAntigravity {
 		reason := account.TempUnschedulableReason
 		// 缓存可能没有 reason，从 DB 回退读取
 		if reason == "" {

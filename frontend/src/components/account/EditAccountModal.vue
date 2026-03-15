@@ -563,6 +563,200 @@
         </div>
       </div>
 
+      <!-- Bedrock fields (for bedrock type, both SigV4 and API Key modes) -->
+      <div v-if="account.type === 'bedrock'" class="space-y-4">
+        <!-- SigV4 fields -->
+        <template v-if="!isBedrockAPIKeyMode">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.bedrockAccessKeyId') }}</label>
+            <input
+              v-model="editBedrockAccessKeyId"
+              type="text"
+              class="input font-mono"
+              placeholder="AKIA..."
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.bedrockSecretAccessKey') }}</label>
+            <input
+              v-model="editBedrockSecretAccessKey"
+              type="password"
+              class="input font-mono"
+              :placeholder="t('admin.accounts.bedrockSecretKeyLeaveEmpty')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.bedrockSecretKeyLeaveEmpty') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.bedrockSessionToken') }}</label>
+            <input
+              v-model="editBedrockSessionToken"
+              type="password"
+              class="input font-mono"
+              :placeholder="t('admin.accounts.bedrockSecretKeyLeaveEmpty')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.bedrockSessionTokenHint') }}</p>
+          </div>
+        </template>
+
+        <!-- API Key field -->
+        <div v-if="isBedrockAPIKeyMode">
+          <label class="input-label">{{ t('admin.accounts.bedrockApiKeyInput') }}</label>
+          <input
+            v-model="editBedrockApiKeyValue"
+            type="password"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.bedrockApiKeyLeaveEmpty')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.bedrockApiKeyLeaveEmpty') }}</p>
+        </div>
+
+        <!-- Shared: Region -->
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockRegion') }}</label>
+          <input
+            v-model="editBedrockRegion"
+            type="text"
+            class="input"
+            placeholder="us-east-1"
+          />
+          <p class="input-hint">{{ t('admin.accounts.bedrockRegionHint') }}</p>
+        </div>
+
+        <!-- Shared: Force Global -->
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              v-model="editBedrockForceGlobal"
+              type="checkbox"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+            />
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.bedrockForceGlobal') }}</span>
+          </label>
+          <p class="input-hint mt-1">{{ t('admin.accounts.bedrockForceGlobalHint') }}</p>
+        </div>
+
+        <!-- Model Restriction for Bedrock -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') }}
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') }}
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-else class="space-y-3">
+            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="flex items-center gap-2">
+              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+              <span class="text-gray-400">→</span>
+              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+            <button type="button" @click="modelMappings.push({ from: '', to: '' })" class="btn btn-secondary text-sm">
+              + {{ t('admin.accounts.addMapping') }}
+            </button>
+            <!-- Bedrock Preset Mappings -->
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in bedrockPresets"
+                :key="preset.from"
+                type="button"
+                @click="modelMappings.push({ from: preset.from, to: preset.to })"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pool Mode Section for Bedrock -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.poolMode') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.poolModeHint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="poolModeEnabled = !poolModeEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                poolModeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  poolModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="poolModeEnabled" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+            <p class="text-xs text-blue-700 dark:text-blue-400">
+              <Icon name="exclamationCircle" size="sm" class="mr-1 inline" :stroke-width="2" />
+              {{ t('admin.accounts.poolModeInfo') }}
+            </p>
+          </div>
+          <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryCount') }}</label>
+            <input
+              v-model.number="poolModeRetryCount"
+              type="number"
+              min="0"
+              :max="MAX_POOL_MODE_RETRY_COUNT"
+              step="1"
+              class="input"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{
+                t('admin.accounts.poolModeRetryCountHint', {
+                  default: DEFAULT_POOL_MODE_RETRY_COUNT,
+                  max: MAX_POOL_MODE_RETRY_COUNT
+                })
+              }}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <!-- Antigravity model restriction (applies to all antigravity types) -->
       <!-- Antigravity 只支持模型映射模式，不支持白名单模式 -->
       <div v-if="account.platform === 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -955,8 +1149,8 @@
         </div>
       </div>
 
-      <!-- API Key 账号配额限制 -->
-      <div v-if="account?.type === 'apikey'" class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
+      <!-- API Key / Bedrock 账号配额限制 -->
+      <div v-if="account?.type === 'apikey' || account?.type === 'bedrock'" class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3">
           <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaLimit') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -967,9 +1161,21 @@
           :totalLimit="editQuotaLimit"
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
+          :dailyResetMode="editDailyResetMode"
+          :dailyResetHour="editDailyResetHour"
+          :weeklyResetMode="editWeeklyResetMode"
+          :weeklyResetDay="editWeeklyResetDay"
+          :weeklyResetHour="editWeeklyResetHour"
+          :resetTimezone="editResetTimezone"
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:dailyResetMode="editDailyResetMode = $event"
+          @update:dailyResetHour="editDailyResetHour = $event"
+          @update:weeklyResetMode="editWeeklyResetMode = $event"
+          @update:weeklyResetDay="editWeeklyResetDay = $event"
+          @update:weeklyResetHour="editWeeklyResetHour = $event"
+          @update:resetTimezone="editResetTimezone = $event"
         />
       </div>
 
@@ -1529,6 +1735,7 @@ const baseUrlHint = computed(() => {
 })
 
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
+const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
 // Model mapping type
 interface ModelMapping {
@@ -1547,6 +1754,17 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+// Bedrock credentials
+const editBedrockAccessKeyId = ref('')
+const editBedrockSecretAccessKey = ref('')
+const editBedrockSessionToken = ref('')
+const editBedrockRegion = ref('')
+const editBedrockForceGlobal = ref(false)
+const editBedrockApiKeyValue = ref('')
+const isBedrockAPIKeyMode = computed(() =>
+  props.account?.type === 'bedrock' &&
+  (props.account?.credentials as Record<string, unknown>)?.auth_mode === 'apikey'
+)
 const modelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
@@ -1608,6 +1826,12 @@ const anthropicPassthroughEnabled = ref(false)
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
+const editDailyResetMode = ref<'rolling' | 'fixed' | null>(null)
+const editDailyResetHour = ref<number | null>(null)
+const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
+const editWeeklyResetDay = ref<number | null>(null)
+const editWeeklyResetHour = ref<number | null>(null)
+const editResetTimezone = ref<string | null>(null)
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   // TODO: ctx_pool 选项暂时隐藏，待测试完成后恢复
@@ -1787,18 +2011,31 @@ watch(
         anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
       }
 
-      // Load quota limit for apikey accounts
-      if (newAccount.type === 'apikey') {
+      // Load quota limit for apikey/bedrock accounts (bedrock quota is also loaded in its own branch above)
+      if (newAccount.type === 'apikey' || newAccount.type === 'bedrock') {
         const quotaVal = extra?.quota_limit as number | undefined
         editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
         const dailyVal = extra?.quota_daily_limit as number | undefined
         editQuotaDailyLimit.value = (dailyVal && dailyVal > 0) ? dailyVal : null
         const weeklyVal = extra?.quota_weekly_limit as number | undefined
         editQuotaWeeklyLimit.value = (weeklyVal && weeklyVal > 0) ? weeklyVal : null
+        // Load quota reset mode config
+        editDailyResetMode.value = (extra?.quota_daily_reset_mode as 'rolling' | 'fixed') || null
+        editDailyResetHour.value = (extra?.quota_daily_reset_hour as number) ?? null
+        editWeeklyResetMode.value = (extra?.quota_weekly_reset_mode as 'rolling' | 'fixed') || null
+        editWeeklyResetDay.value = (extra?.quota_weekly_reset_day as number) ?? null
+        editWeeklyResetHour.value = (extra?.quota_weekly_reset_hour as number) ?? null
+        editResetTimezone.value = (extra?.quota_reset_timezone as string) || null
       } else {
         editQuotaLimit.value = null
         editQuotaDailyLimit.value = null
         editQuotaWeeklyLimit.value = null
+        editDailyResetMode.value = null
+        editDailyResetHour.value = null
+        editWeeklyResetMode.value = null
+        editWeeklyResetDay.value = null
+        editWeeklyResetHour.value = null
+        editResetTimezone.value = null
       }
 
       // Load antigravity model mapping (Antigravity 只支持映射模式)
@@ -1888,6 +2125,50 @@ watch(
           selectedErrorCodes.value = [...existingErrorCodes]
         } else {
           selectedErrorCodes.value = []
+        }
+      } else if (newAccount.type === 'bedrock' && newAccount.credentials) {
+        const bedrockCreds = newAccount.credentials as Record<string, unknown>
+        const authMode = (bedrockCreds.auth_mode as string) || 'sigv4'
+        editBedrockRegion.value = (bedrockCreds.aws_region as string) || ''
+        editBedrockForceGlobal.value = (bedrockCreds.aws_force_global as string) === 'true'
+
+        if (authMode === 'apikey') {
+          editBedrockApiKeyValue.value = ''
+        } else {
+          editBedrockAccessKeyId.value = (bedrockCreds.aws_access_key_id as string) || ''
+          editBedrockSecretAccessKey.value = ''
+          editBedrockSessionToken.value = ''
+        }
+
+        // Load pool mode for bedrock
+        poolModeEnabled.value = bedrockCreds.pool_mode === true
+        const retryCount = bedrockCreds.pool_mode_retry_count
+        poolModeRetryCount.value = (typeof retryCount === 'number' && retryCount >= 0) ? retryCount : DEFAULT_POOL_MODE_RETRY_COUNT
+
+        // Load quota limits for bedrock
+        const bedrockExtra = (newAccount.extra as Record<string, unknown>) || {}
+        editQuotaLimit.value = typeof bedrockExtra.quota_limit === 'number' ? bedrockExtra.quota_limit : null
+        editQuotaDailyLimit.value = typeof bedrockExtra.quota_daily_limit === 'number' ? bedrockExtra.quota_daily_limit : null
+        editQuotaWeeklyLimit.value = typeof bedrockExtra.quota_weekly_limit === 'number' ? bedrockExtra.quota_weekly_limit : null
+
+        // Load model mappings for bedrock
+        const existingMappings = bedrockCreds.model_mapping as Record<string, string> | undefined
+        if (existingMappings && typeof existingMappings === 'object') {
+          const entries = Object.entries(existingMappings)
+          const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
+          if (isWhitelistMode) {
+            modelRestrictionMode.value = 'whitelist'
+            allowedModels.value = entries.map(([from]) => from)
+            modelMappings.value = []
+          } else {
+            modelRestrictionMode.value = 'mapping'
+            modelMappings.value = entries.map(([from, to]) => ({ from, to }))
+            allowedModels.value = []
+          }
+        } else {
+          modelRestrictionMode.value = 'whitelist'
+          modelMappings.value = []
+          allowedModels.value = []
         }
       } else if (newAccount.type === 'upstream' && newAccount.credentials) {
         const credentials = newAccount.credentials as Record<string, unknown>
@@ -2432,6 +2713,56 @@ const handleSubmit = async () => {
       }
 
       updatePayload.credentials = newCredentials
+    } else if (props.account.type === 'bedrock') {
+      const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
+      const newCredentials: Record<string, unknown> = { ...currentCredentials }
+
+      newCredentials.aws_region = editBedrockRegion.value.trim()
+      if (editBedrockForceGlobal.value) {
+        newCredentials.aws_force_global = 'true'
+      } else {
+        delete newCredentials.aws_force_global
+      }
+
+      if (isBedrockAPIKeyMode.value) {
+        // API Key mode: only update api_key if user provided new value
+        if (editBedrockApiKeyValue.value.trim()) {
+          newCredentials.api_key = editBedrockApiKeyValue.value.trim()
+        }
+      } else {
+        // SigV4 mode
+        newCredentials.aws_access_key_id = editBedrockAccessKeyId.value.trim()
+        if (editBedrockSecretAccessKey.value.trim()) {
+          newCredentials.aws_secret_access_key = editBedrockSecretAccessKey.value.trim()
+        }
+        if (editBedrockSessionToken.value.trim()) {
+          newCredentials.aws_session_token = editBedrockSessionToken.value.trim()
+        }
+      }
+
+      // Pool mode
+      if (poolModeEnabled.value) {
+        newCredentials.pool_mode = true
+        newCredentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
+      } else {
+        delete newCredentials.pool_mode
+        delete newCredentials.pool_mode_retry_count
+      }
+
+      // Model mapping
+      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      if (modelMapping) {
+        newCredentials.model_mapping = modelMapping
+      } else {
+        delete newCredentials.model_mapping
+      }
+
+      applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
+      if (!applyTempUnschedConfig(newCredentials)) {
+        return
+      }
+
+      updatePayload.credentials = newCredentials
     } else {
       // For oauth/setup-token types, only update intercept_warmup_requests if changed
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
@@ -2625,8 +2956,8 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // For apikey accounts, handle quota_limit in extra
-    if (props.account.type === 'apikey') {
+    // For apikey/bedrock accounts, handle quota_limit in extra
+    if (props.account.type === 'apikey' || props.account.type === 'bedrock') {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
@@ -2644,6 +2975,28 @@ const handleSubmit = async () => {
         newExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
       } else {
         delete newExtra.quota_weekly_limit
+      }
+      // Quota reset mode config
+      if (editDailyResetMode.value === 'fixed') {
+        newExtra.quota_daily_reset_mode = 'fixed'
+        newExtra.quota_daily_reset_hour = editDailyResetHour.value ?? 0
+      } else {
+        delete newExtra.quota_daily_reset_mode
+        delete newExtra.quota_daily_reset_hour
+      }
+      if (editWeeklyResetMode.value === 'fixed') {
+        newExtra.quota_weekly_reset_mode = 'fixed'
+        newExtra.quota_weekly_reset_day = editWeeklyResetDay.value ?? 1
+        newExtra.quota_weekly_reset_hour = editWeeklyResetHour.value ?? 0
+      } else {
+        delete newExtra.quota_weekly_reset_mode
+        delete newExtra.quota_weekly_reset_day
+        delete newExtra.quota_weekly_reset_hour
+      }
+      if (editDailyResetMode.value === 'fixed' || editWeeklyResetMode.value === 'fixed') {
+        newExtra.quota_reset_timezone = editResetTimezone.value || 'UTC'
+      } else {
+        delete newExtra.quota_reset_timezone
       }
       updatePayload.extra = newExtra
     }
