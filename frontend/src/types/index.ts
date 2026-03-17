@@ -83,6 +83,7 @@ export interface CustomMenuItem {
   visibility: 'user' | 'admin'
   sort_order: number
   position: 'sidebar' | 'header'
+  open_mode: 'iframe' | 'new_tab'
 }
 
 export interface PublicSettings {

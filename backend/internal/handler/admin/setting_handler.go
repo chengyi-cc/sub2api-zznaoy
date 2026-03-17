@@ -384,6 +384,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				response.BadRequest(c, "Custom menu item position must be 'sidebar' or 'header'")
 				return
 			}
+			if item.OpenMode == "" {
+				items[i].OpenMode = "iframe"
+			} else if item.OpenMode != "iframe" && item.OpenMode != "new_tab" {
+				response.BadRequest(c, "Custom menu item open_mode must be 'iframe' or 'new_tab'")
+				return
+			}
 			if len(item.IconSVG) > maxMenuItemIconSVGLen {
 				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
 				return

@@ -14,6 +14,7 @@ type CustomMenuItem struct {
 	Visibility string `json:"visibility"` // "user" or "admin"
 	SortOrder  int    `json:"sort_order"`
 	Position   string `json:"position"`   // "sidebar" or "header"; empty defaults to "sidebar"
+	OpenMode   string `json:"open_mode"`  // "iframe" or "new_tab"; empty defaults to "iframe"
 }
 
 // SystemSettings represents the admin settings API response payload.

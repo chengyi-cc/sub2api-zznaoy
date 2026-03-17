@@ -1378,7 +1378,7 @@
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-4">
                 <!-- Label -->
                 <div>
                   <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -1414,8 +1414,19 @@
                   </select>
                 </div>
 
+                <!-- Open Mode -->
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.customMenu.openMode') }}
+                  </label>
+                  <select v-model="item.open_mode" class="input text-sm">
+                    <option value="iframe">{{ t('admin.settings.customMenu.openModeIframe') }}</option>
+                    <option value="new_tab">{{ t('admin.settings.customMenu.openModeNewTab') }}</option>
+                  </select>
+                </div>
+
                 <!-- URL (full width) -->
-                <div class="sm:col-span-3">
+                <div class="sm:col-span-4">
                   <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                     {{ t('admin.settings.customMenu.url') }}
                   </label>
@@ -1428,7 +1439,7 @@
                 </div>
 
                 <!-- SVG Icon (full width) -->
-                <div class="sm:col-span-3">
+                <div class="sm:col-span-4">
                   <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                     {{ t('admin.settings.customMenu.iconSvg') }}
                   </label>
@@ -1849,7 +1860,7 @@ const form = reactive<SettingsForm>({
   purchase_subscription_enabled: false,
   purchase_subscription_url: '',
   sora_client_enabled: false,
-  custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number; position: 'sidebar' | 'header'}>,
+  custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number; position: 'sidebar' | 'header'; open_mode: 'iframe' | 'new_tab'}>,
   frontend_url: '',
   smtp_host: '',
   smtp_port: 587,
@@ -1995,6 +2006,7 @@ function addMenuItem() {
     visibility: 'user',
     sort_order: form.custom_menu_items.length,
     position: 'sidebar',
+    open_mode: 'iframe',
   })
 }
 

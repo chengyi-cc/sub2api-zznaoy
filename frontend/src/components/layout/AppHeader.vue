@@ -39,15 +39,26 @@
         </a>
 
         <!-- Header Custom Menu Items -->
-        <router-link
-          v-for="item in headerMenuItems"
-          :key="item.id"
-          :to="`/custom/${item.id}`"
-          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-        >
-          <span v-if="item.icon_svg" class="h-4 w-4 flex-shrink-0 header-svg-icon" v-html="sanitizeSvg(item.icon_svg)"></span>
-          <span class="hidden sm:inline">{{ item.label }}</span>
-        </router-link>
+        <template v-for="item in headerMenuItems" :key="item.id">
+          <a
+            v-if="item.open_mode === 'new_tab'"
+            :href="item.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+          >
+            <span v-if="item.icon_svg" class="h-4 w-4 flex-shrink-0 header-svg-icon" v-html="sanitizeSvg(item.icon_svg)"></span>
+            <span class="hidden sm:inline">{{ item.label }}</span>
+          </a>
+          <router-link
+            v-else
+            :to="`/custom/${item.id}`"
+            class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+          >
+            <span v-if="item.icon_svg" class="h-4 w-4 flex-shrink-0 header-svg-icon" v-html="sanitizeSvg(item.icon_svg)"></span>
+            <span class="hidden sm:inline">{{ item.label }}</span>
+          </router-link>
+        </template>
 
         <!-- Language Switcher -->
         <LocaleSwitcher />
