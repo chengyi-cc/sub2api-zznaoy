@@ -378,6 +378,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")
 				return
 			}
+			if item.Position == "" {
+				items[i].Position = "sidebar"
+			} else if item.Position != "sidebar" && item.Position != "header" {
+				response.BadRequest(c, "Custom menu item position must be 'sidebar' or 'header'")
+				return
+			}
 			if len(item.IconSVG) > maxMenuItemIconSVGLen {
 				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
 				return

@@ -545,17 +545,17 @@ const personalNavItems = computed((): NavItem[] => {
   return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
 })
 
-// Custom menu items filtered by visibility
+// Custom menu items filtered by visibility (exclude header-positioned items)
 const customMenuItemsForUser = computed(() => {
   const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
   return items
-    .filter((item) => item.visibility === 'user')
+    .filter((item) => item.visibility === 'user' && item.position !== 'header')
     .sort((a, b) => a.sort_order - b.sort_order)
 })
 
 const customMenuItemsForAdmin = computed(() => {
   return adminSettingsStore.customMenuItems
-    .filter((item) => item.visibility === 'admin')
+    .filter((item) => item.visibility === 'admin' && item.position !== 'header')
     .sort((a, b) => a.sort_order - b.sort_order)
 })
 

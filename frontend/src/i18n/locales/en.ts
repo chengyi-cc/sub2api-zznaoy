@@ -4139,7 +4139,7 @@ export default {
       },
       customMenu: {
         title: 'Custom Menu Pages',
-        description: 'Add custom iframe pages to the sidebar navigation. Each page can be visible to regular users or administrators.',
+        description: 'Add custom iframe pages to the sidebar or top navigation. Each page can be visible to regular users or administrators.',
         itemLabel: 'Menu Item #{n}',
         name: 'Menu Name',
         namePlaceholder: 'e.g. Help Center',
@@ -4153,6 +4153,9 @@ export default {
         visibility: 'Visible To',
         visibilityUser: 'Regular Users',
         visibilityAdmin: 'Administrators',
+        position: 'Display Position',
+        positionSidebar: 'Sidebar',
+        positionHeader: 'Top Navigation Bar',
         add: 'Add Menu Item',
         remove: 'Remove',
         moveUp: 'Move Up',

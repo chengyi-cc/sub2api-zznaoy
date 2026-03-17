@@ -38,6 +38,17 @@
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
         </a>
 
+        <!-- Header Custom Menu Items -->
+        <router-link
+          v-for="item in headerMenuItems"
+          :key="item.id"
+          :to="`/custom/${item.id}`"
+          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+        >
+          <span v-if="item.icon_svg" class="h-4 w-4 flex-shrink-0 header-svg-icon" v-html="sanitizeSvg(item.icon_svg)"></span>
+          <span class="hidden sm:inline">{{ item.label }}</span>
+        </router-link>
+
         <!-- Language Switcher -->
         <LocaleSwitcher />
 
@@ -200,6 +211,7 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { sanitizeSvg } from '@/utils/sanitize'
 
 const router = useRouter()
 const route = useRoute()
@@ -214,6 +226,16 @@ const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => appStore.docUrl)
+
+const headerMenuItems = computed(() => {
+  const publicItems = (appStore.cachedPublicSettings?.custom_menu_items ?? [])
+    .filter((item) => item.position === 'header' && item.visibility === 'user')
+  const adminItems = authStore.isAdmin
+    ? adminSettingsStore.customMenuItems
+        .filter((item) => item.position === 'header' && item.visibility === 'admin')
+    : []
+  return [...publicItems, ...adminItems].sort((a, b) => a.sort_order - b.sort_order)
+})
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {
@@ -316,5 +338,12 @@ onBeforeUnmount(() => {
 .dropdown-leave-to {
   opacity: 0;
   transform: scale(0.95) translateY(-4px);
+}
+
+.header-svg-icon :deep(svg) {
+  width: 1rem;
+  height: 1rem;
+  stroke: currentColor;
+  fill: none;
 }
 </style>

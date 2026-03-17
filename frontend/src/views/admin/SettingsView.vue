@@ -1378,7 +1378,7 @@
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <!-- Label -->
                 <div>
                   <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -1403,8 +1403,19 @@
                   </select>
                 </div>
 
+                <!-- Position -->
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.customMenu.position') }}
+                  </label>
+                  <select v-model="item.position" class="input text-sm">
+                    <option value="sidebar">{{ t('admin.settings.customMenu.positionSidebar') }}</option>
+                    <option value="header">{{ t('admin.settings.customMenu.positionHeader') }}</option>
+                  </select>
+                </div>
+
                 <!-- URL (full width) -->
-                <div class="sm:col-span-2">
+                <div class="sm:col-span-3">
                   <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                     {{ t('admin.settings.customMenu.url') }}
                   </label>
@@ -1417,7 +1428,7 @@
                 </div>
 
                 <!-- SVG Icon (full width) -->
-                <div class="sm:col-span-2">
+                <div class="sm:col-span-3">
                   <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                     {{ t('admin.settings.customMenu.iconSvg') }}
                   </label>
@@ -1838,7 +1849,7 @@ const form = reactive<SettingsForm>({
   purchase_subscription_enabled: false,
   purchase_subscription_url: '',
   sora_client_enabled: false,
-  custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
+  custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number; position: 'sidebar' | 'header'}>,
   frontend_url: '',
   smtp_host: '',
   smtp_port: 587,
@@ -1983,6 +1994,7 @@ function addMenuItem() {
     url: '',
     visibility: 'user',
     sort_order: form.custom_menu_items.length,
+    position: 'sidebar',
   })
 }
 

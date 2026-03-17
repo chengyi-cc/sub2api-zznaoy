@@ -82,6 +82,7 @@ export interface CustomMenuItem {
   url: string
   visibility: 'user' | 'admin'
   sort_order: number
+  position: 'sidebar' | 'header'
 }
 
 export interface PublicSettings {

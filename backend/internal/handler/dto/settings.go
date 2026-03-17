@@ -13,6 +13,7 @@ type CustomMenuItem struct {
 	URL        string `json:"url"`
 	Visibility string `json:"visibility"` // "user" or "admin"
 	SortOrder  int    `json:"sort_order"`
+	Position   string `json:"position"`   // "sidebar" or "header"; empty defaults to "sidebar"
 }
 
 // SystemSettings represents the admin settings API response payload.
