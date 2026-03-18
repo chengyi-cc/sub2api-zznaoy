@@ -735,36 +735,40 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 }
 
 // CheckAndResetWindows 检查并重置过期的窗口
+// 使用锚定时间：新窗口起点 = 旧窗口到期时间，避免因懒惰触发导致重置时间漂移。
+// 若用户多个周期未使用，自动快进到包含当前时间的最近周期。
 func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *UserSubscription) error {
-	windowStart := time.Now()
 	needsInvalidateCache := false
 
 	// 日窗口重置（24小时）
 	if sub.NeedsDailyReset() {
-		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
+		newStart := anchoredWindowStart(*sub.DailyWindowStart, 24*time.Hour)
+		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, newStart); err != nil {
 			return err
 		}
-		sub.DailyWindowStart = &windowStart
+		sub.DailyWindowStart = &newStart
 		sub.DailyUsageUSD = 0
 		needsInvalidateCache = true
 	}
 
 	// 周窗口重置（7天）
 	if sub.NeedsWeeklyReset() {
-		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
+		newStart := anchoredWindowStart(*sub.WeeklyWindowStart, 7*24*time.Hour)
+		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, newStart); err != nil {
 			return err
 		}
-		sub.WeeklyWindowStart = &windowStart
+		sub.WeeklyWindowStart = &newStart
 		sub.WeeklyUsageUSD = 0
 		needsInvalidateCache = true
 	}
 
 	// 月窗口重置（30天）
 	if sub.NeedsMonthlyReset() {
-		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, windowStart); err != nil {
+		newStart := anchoredWindowStart(*sub.MonthlyWindowStart, 30*24*time.Hour)
+		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, newStart); err != nil {
 			return err
 		}
-		sub.MonthlyWindowStart = &windowStart
+		sub.MonthlyWindowStart = &newStart
 		sub.MonthlyUsageUSD = 0
 		needsInvalidateCache = true
 	}
@@ -778,6 +782,15 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 	}
 
 	return nil
+}
+
+// anchoredWindowStart 计算锚定的新窗口起点。
+// 从旧窗口起点按 period 步进，找到包含当前时间的最近周期起点，
+// 避免因懒惰触发（用户延迟请求）导致重置时间逐步漂移。
+func anchoredWindowStart(oldStart time.Time, period time.Duration) time.Time {
+	elapsed := time.Since(oldStart)
+	periods := int(elapsed / period)
+	return oldStart.Add(time.Duration(periods) * period)
 }
 
 // CheckUsageLimits 检查使用限额（返回错误如果超限）
