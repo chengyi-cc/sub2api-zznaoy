@@ -632,8 +632,8 @@ func TestAnthropicToResponses_ThinkingEnabled(t *testing.T) {
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Reasoning)
-	// thinking.type is ignored for effort; default xhigh applies.
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	// thinking.type is ignored for effort; default high applies.
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 	assert.Contains(t, resp.Include, "reasoning.encrypted_content")
 	assert.NotContains(t, resp.Include, "reasoning.summary")
@@ -650,8 +650,8 @@ func TestAnthropicToResponses_ThinkingAdaptive(t *testing.T) {
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Reasoning)
-	// thinking.type is ignored for effort; default xhigh applies.
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	// thinking.type is ignored for effort; default high applies.
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 	assert.NotContains(t, resp.Include, "reasoning.summary")
 }
@@ -666,9 +666,9 @@ func TestAnthropicToResponses_ThinkingDisabled(t *testing.T) {
 
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
-	// Default effort applies (high → xhigh) even when thinking is disabled.
+	// Default effort applies (high → high) even when thinking is disabled.
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 }
 
 func TestAnthropicToResponses_NoThinking(t *testing.T) {
@@ -680,9 +680,9 @@ func TestAnthropicToResponses_NoThinking(t *testing.T) {
 
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
-	// Default effort applies (high → xhigh) when no thinking/output_config is set.
+	// Default effort applies (high → high) when no thinking/output_config is set.
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 }
 
 // ---------------------------------------------------------------------------
@@ -690,7 +690,7 @@ func TestAnthropicToResponses_NoThinking(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestAnthropicToResponses_OutputConfigOverridesDefault(t *testing.T) {
-	// Default is xhigh, but output_config.effort="low" overrides. low→low after mapping.
+	// Default is high, but output_config.effort="low" overrides. low→low after mapping.
 	req := &AnthropicRequest{
 		Model:        "gpt-5.2",
 		MaxTokens:    1024,
@@ -708,7 +708,7 @@ func TestAnthropicToResponses_OutputConfigOverridesDefault(t *testing.T) {
 
 func TestAnthropicToResponses_OutputConfigWithoutThinking(t *testing.T) {
 	// No thinking field, but output_config.effort="medium" → creates reasoning.
-	// medium→high after mapping.
+	// medium→medium after 1:1 mapping.
 	req := &AnthropicRequest{
 		Model:        "gpt-5.2",
 		MaxTokens:    1024,
@@ -719,12 +719,12 @@ func TestAnthropicToResponses_OutputConfigWithoutThinking(t *testing.T) {
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "high", resp.Reasoning.Effort)
+	assert.Equal(t, "medium", resp.Reasoning.Effort)
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 }
 
 func TestAnthropicToResponses_OutputConfigHigh(t *testing.T) {
-	// output_config.effort="high" → mapped to "xhigh".
+	// output_config.effort="high" → mapped to "high" (1:1, both sides' default).
 	req := &AnthropicRequest{
 		Model:        "gpt-5.2",
 		MaxTokens:    1024,
@@ -735,12 +735,28 @@ func TestAnthropicToResponses_OutputConfigHigh(t *testing.T) {
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Reasoning)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
+	assert.Equal(t, "auto", resp.Reasoning.Summary)
+}
+
+func TestAnthropicToResponses_OutputConfigMax(t *testing.T) {
+	// output_config.effort="max" → mapped to OpenAI's highest supported level "xhigh".
+	req := &AnthropicRequest{
+		Model:        "gpt-5.2",
+		MaxTokens:    1024,
+		Messages:     []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		OutputConfig: &AnthropicOutputConfig{Effort: "max"},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Reasoning)
 	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 }
 
 func TestAnthropicToResponses_NoOutputConfig(t *testing.T) {
-	// No output_config → default xhigh regardless of thinking.type.
+	// No output_config → default high regardless of thinking.type.
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
 		MaxTokens: 1024,
@@ -751,11 +767,11 @@ func TestAnthropicToResponses_NoOutputConfig(t *testing.T) {
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 }
 
 func TestAnthropicToResponses_OutputConfigWithoutEffort(t *testing.T) {
-	// output_config present but effort empty (e.g. only format set) → default xhigh.
+	// output_config present but effort empty (e.g. only format set) → default high.
 	req := &AnthropicRequest{
 		Model:        "gpt-5.2",
 		MaxTokens:    1024,
@@ -766,7 +782,7 @@ func TestAnthropicToResponses_OutputConfigWithoutEffort(t *testing.T) {
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 }
 
 // ---------------------------------------------------------------------------
@@ -1007,4 +1023,115 @@ func TestAnthropicToResponses_ImageEmptyMediaType(t *testing.T) {
 	assert.Equal(t, "input_image", parts[0].Type)
 	// Should default to image/png when media_type is empty.
 	assert.Equal(t, "data:image/png;base64,iVBOR", parts[0].ImageURL)
+}
+
+// ---------------------------------------------------------------------------
+// normalizeToolParameters tests
+// ---------------------------------------------------------------------------
+
+func TestNormalizeToolParameters(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    json.RawMessage
+		expected string
+	}{
+		{
+			name:     "nil input",
+			input:    nil,
+			expected: `{"type":"object","properties":{}}`,
+		},
+		{
+			name:     "empty input",
+			input:    json.RawMessage(``),
+			expected: `{"type":"object","properties":{}}`,
+		},
+		{
+			name:     "null input",
+			input:    json.RawMessage(`null`),
+			expected: `{"type":"object","properties":{}}`,
+		},
+		{
+			name:     "object without properties",
+			input:    json.RawMessage(`{"type":"object"}`),
+			expected: `{"type":"object","properties":{}}`,
+		},
+		{
+			name:     "object with properties",
+			input:    json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`),
+			expected: `{"type":"object","properties":{"city":{"type":"string"}}}`,
+		},
+		{
+			name:     "non-object type",
+			input:    json.RawMessage(`{"type":"string"}`),
+			expected: `{"type":"string"}`,
+		},
+		{
+			name:     "object with additional fields preserved",
+			input:    json.RawMessage(`{"type":"object","required":["name"]}`),
+			expected: `{"type":"object","required":["name"],"properties":{}}`,
+		},
+		{
+			name:     "invalid JSON passthrough",
+			input:    json.RawMessage(`not json`),
+			expected: `not json`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeToolParameters(tt.input)
+			if tt.name == "invalid JSON passthrough" {
+				assert.Equal(t, tt.expected, string(result))
+			} else {
+				assert.JSONEq(t, tt.expected, string(result))
+			}
+		})
+	}
+}
+
+func TestAnthropicToResponses_ToolWithoutProperties(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
+		},
+		Tools: []AnthropicTool{
+			{Name: "mcp__pencil__get_style_guide_tags", Description: "Get style tags", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	require.Len(t, resp.Tools, 1)
+	assert.Equal(t, "function", resp.Tools[0].Type)
+	assert.Equal(t, "mcp__pencil__get_style_guide_tags", resp.Tools[0].Name)
+
+	// Parameters must have "properties" field after normalization.
+	var params map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(resp.Tools[0].Parameters, &params))
+	assert.Contains(t, params, "properties")
+}
+
+func TestAnthropicToResponses_ToolWithNilSchema(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
+		},
+		Tools: []AnthropicTool{
+			{Name: "simple_tool", Description: "A tool"},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	require.Len(t, resp.Tools, 1)
+	var params map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(resp.Tools[0].Parameters, &params))
+	assert.JSONEq(t, `"object"`, string(params["type"]))
+	assert.JSONEq(t, `{}`, string(params["properties"]))
 }

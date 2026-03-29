@@ -17,6 +17,13 @@ type CustomMenuItem struct {
 	OpenMode   string `json:"open_mode"`  // "iframe" or "new_tab"; empty defaults to "iframe"
 }
 
+// CustomEndpoint represents an admin-configured API endpoint for quick copy.
+type CustomEndpoint struct {
+	Name        string `json:"name"`
+	Endpoint    string `json:"endpoint"`
+	Description string `json:"description"`
+}
+
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
 	RegistrationEnabled              bool     `json:"registration_enabled"`
@@ -58,6 +65,7 @@ type SystemSettings struct {
 	PurchaseSubscriptionURL     string           `json:"purchase_subscription_url"`
 	SoraClientEnabled           bool             `json:"sora_client_enabled"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
 	DefaultConcurrency   int                          `json:"default_concurrency"`
 	DefaultBalance       float64                      `json:"default_balance"`
@@ -81,12 +89,17 @@ type SystemSettings struct {
 	OpsMetricsIntervalSeconds    int    `json:"ops_metrics_interval_seconds"`
 
 	MinClaudeCodeVersion string `json:"min_claude_code_version"`
+	MaxClaudeCodeVersion string `json:"max_claude_code_version"`
 
 	// 分组隔离
 	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
 
 	// Backend Mode
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
+
+	// Gateway forwarding behavior
+	EnableFingerprintUnification bool `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough    bool `json:"enable_metadata_passthrough"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -115,6 +128,7 @@ type PublicSettings struct {
 	PurchaseSubscriptionEnabled      bool             `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL          string           `json:"purchase_subscription_url"`
 	CustomMenuItems                  []CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints                  []CustomEndpoint `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
 	SoraClientEnabled                bool             `json:"sora_client_enabled"`
 	BackendModeEnabled               bool             `json:"backend_mode_enabled"`
@@ -176,9 +190,11 @@ type StreamTimeoutSettings struct {
 
 // RectifierSettings 请求整流器配置 DTO
 type RectifierSettings struct {
-	Enabled                  bool `json:"enabled"`
-	ThinkingSignatureEnabled bool `json:"thinking_signature_enabled"`
-	ThinkingBudgetEnabled    bool `json:"thinking_budget_enabled"`
+	Enabled                  bool     `json:"enabled"`
+	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"`
+	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
+	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
+	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
 }
 
 // BetaPolicyRule Beta 策略规则 DTO
@@ -218,4 +234,18 @@ func ParseUserVisibleMenuItems(raw string) []CustomMenuItem {
 		}
 	}
 	return filtered
+}
+
+// ParseCustomEndpoints parses a JSON string into a slice of CustomEndpoint.
+// Returns empty slice on empty/invalid input.
+func ParseCustomEndpoints(raw string) []CustomEndpoint {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[]" {
+		return []CustomEndpoint{}
+	}
+	var items []CustomEndpoint
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return []CustomEndpoint{}
+	}
+	return items
 }

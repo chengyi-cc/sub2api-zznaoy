@@ -50,8 +50,11 @@ type AdminService interface {
 	// API Key management (admin)
 	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error)
 
+	// ReplaceUserGroup 替换用户的专属分组：授予新分组权限、迁移 Key、移除旧分组权限
+	ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error)
+
 	// Account management
-	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64) ([]Account, int64, error)
+	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, int64, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
@@ -62,6 +65,12 @@ type AdminService interface {
 	SetAccountError(ctx context.Context, id int64, errorMsg string) error
 	// EnsureOpenAIPrivacy 检查 OpenAI OAuth 账号 privacy_mode，未设置则尝试关闭训练数据共享并持久化。
 	EnsureOpenAIPrivacy(ctx context.Context, account *Account) string
+	// EnsureAntigravityPrivacy 检查 Antigravity OAuth 账号 privacy_mode，未设置则调用 setUserSettings 并持久化。
+	EnsureAntigravityPrivacy(ctx context.Context, account *Account) string
+	// ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
+	ForceOpenAIPrivacy(ctx context.Context, account *Account) string
+	// ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
+	ForceAntigravityPrivacy(ctx context.Context, account *Account) string
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
 	CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error
@@ -268,6 +277,11 @@ type AdminUpdateAPIKeyGroupIDResult struct {
 	AutoGrantedGroupAccess bool   // true if a new exclusive group permission was auto-added
 	GrantedGroupID         *int64 // the group ID that was auto-granted
 	GrantedGroupName       string // the group name that was auto-granted
+}
+
+// ReplaceUserGroupResult 分组替换操作的结果
+type ReplaceUserGroupResult struct {
+	MigratedKeys int64 // 迁移的 Key 数量
 }
 
 // BulkUpdateAccountsResult is the aggregated response for bulk updates.
@@ -1377,10 +1391,75 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	return result, nil
 }
 
+// ReplaceUserGroup 替换用户的专属分组
+func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error) {
+	if oldGroupID == newGroupID {
+		return nil, infraerrors.BadRequest("SAME_GROUP", "old and new group must be different")
+	}
+
+	// 验证新分组存在且为活跃的专属标准分组
+	newGroup, err := s.groupRepo.GetByID(ctx, newGroupID)
+	if err != nil {
+		return nil, err
+	}
+	if newGroup.Status != StatusActive {
+		return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
+	}
+	if !newGroup.IsExclusive {
+		return nil, infraerrors.BadRequest("GROUP_NOT_EXCLUSIVE", "target group is not exclusive")
+	}
+	if newGroup.IsSubscriptionType() {
+		return nil, infraerrors.BadRequest("GROUP_IS_SUBSCRIPTION", "subscription groups are not supported for replacement")
+	}
+
+	// 事务保证原子性
+	if s.entClient == nil {
+		return nil, fmt.Errorf("entClient is nil, cannot perform group replacement")
+	}
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	opCtx := dbent.NewTxContext(ctx, tx)
+
+	// 1. 授予新分组权限
+	if err := s.userRepo.AddGroupToAllowedGroups(opCtx, userID, newGroupID); err != nil {
+		return nil, fmt.Errorf("add new group to allowed groups: %w", err)
+	}
+
+	// 2. 迁移绑定旧分组的 Key 到新分组
+	migrated, err := s.apiKeyRepo.UpdateGroupIDByUserAndGroup(opCtx, userID, oldGroupID, newGroupID)
+	if err != nil {
+		return nil, fmt.Errorf("migrate api keys: %w", err)
+	}
+
+	// 3. 移除旧分组权限
+	if err := s.userRepo.RemoveGroupFromUserAllowedGroups(opCtx, userID, oldGroupID); err != nil {
+		return nil, fmt.Errorf("remove old group from allowed groups: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// 失效该用户所有 Key 的认证缓存
+	if s.authCacheInvalidator != nil {
+		keys, keyErr := s.apiKeyRepo.ListKeysByUserID(ctx, userID)
+		if keyErr == nil {
+			for _, k := range keys {
+				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, k)
+			}
+		}
+	}
+
+	return &ReplaceUserGroupResult{MigratedKeys: migrated}, nil
+}
+
 // Account management implementations
-func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64) ([]Account, int64, error) {
+func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
-	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID)
+	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -2562,10 +2641,8 @@ func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Acc
 	if s.privacyClientFactory == nil {
 		return ""
 	}
-	if account.Extra != nil {
-		if _, ok := account.Extra["privacy_mode"]; ok {
-			return ""
-		}
+	if shouldSkipOpenAIPrivacyEnsure(account.Extra) {
+		return ""
 	}
 
 	token, _ := account.Credentials["access_token"].(string)
@@ -2586,5 +2663,117 @@ func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Acc
 	}
 
 	_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode})
+	return mode
+}
+
+// ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
+func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Account) string {
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return ""
+	}
+	if s.privacyClientFactory == nil {
+		return ""
+	}
+
+	token, _ := account.Credentials["access_token"].(string)
+	if token == "" {
+		return ""
+	}
+
+	var proxyURL string
+	if account.ProxyID != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+		}
+	}
+
+	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
+	if mode == "" {
+		return ""
+	}
+
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode}); err != nil {
+		logger.LegacyPrintf("service.admin", "force_update_openai_privacy_mode_failed: account_id=%d err=%v", account.ID, err)
+		return mode
+	}
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+	}
+	account.Extra["privacy_mode"] = mode
+	return mode
+}
+
+// EnsureAntigravityPrivacy 检查 Antigravity OAuth 账号隐私状态。
+// 如果 Extra["privacy_mode"] 已存在（无论成功或失败），直接跳过。
+// 仅对从未设置过隐私的账号执行 setUserSettings + fetchUserInfo 流程。
+// 用户可通过前端 ForceAntigravityPrivacy（SetPrivacy 按钮）强制重新设置。
+func (s *adminServiceImpl) EnsureAntigravityPrivacy(ctx context.Context, account *Account) string {
+	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
+		return ""
+	}
+	// 已设置过则跳过（无论成功或失败），用户可通过 Force 手动重试
+	if account.Extra != nil {
+		if existing, ok := account.Extra["privacy_mode"].(string); ok && existing != "" {
+			return existing
+		}
+	}
+
+	token, _ := account.Credentials["access_token"].(string)
+	if token == "" {
+		return ""
+	}
+
+	projectID, _ := account.Credentials["project_id"].(string)
+
+	var proxyURL string
+	if account.ProxyID != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+		}
+	}
+
+	mode := setAntigravityPrivacy(ctx, token, projectID, proxyURL)
+	if mode == "" {
+		return ""
+	}
+
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode}); err != nil {
+		logger.LegacyPrintf("service.admin", "update_antigravity_privacy_mode_failed: account_id=%d err=%v", account.ID, err)
+		return mode
+	}
+	applyAntigravityPrivacyMode(account, mode)
+	return mode
+}
+
+// ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
+func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account *Account) string {
+	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
+		return ""
+	}
+
+	token, _ := account.Credentials["access_token"].(string)
+	if token == "" {
+		return ""
+	}
+
+	projectID, _ := account.Credentials["project_id"].(string)
+
+	var proxyURL string
+	if account.ProxyID != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+		}
+	}
+
+	mode := setAntigravityPrivacy(ctx, token, projectID, proxyURL)
+	if mode == "" {
+		return ""
+	}
+
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode}); err != nil {
+		logger.LegacyPrintf("service.admin", "force_update_antigravity_privacy_mode_failed: account_id=%d err=%v", account.ID, err)
+		return mode
+	}
+	applyAntigravityPrivacyMode(account, mode)
 	return mode
 }

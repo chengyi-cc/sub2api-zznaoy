@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/tidwall/gjson"
 )
 
 // RateLimitService 处理限流和过载状态管理
@@ -150,7 +151,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
 		lowerBody := strings.ToLower(string(responseBody))
-		// 账号已停用：无论 OAuth 还是 APIKey，直接标记 error 状态，不尝试刷新
+		// 账号已停用：无论 OAuth 还是 APIKey，直接标记 error 状态，不尝试刷新。
 		if strings.Contains(lowerBody, "account_deactivated") {
 			msg := "Account deactivated (401): " + upstreamMsg
 			if account.Type == AccountTypeOAuth && s.tokenCacheInvalidator != nil {
@@ -160,24 +161,39 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			}
 			s.handleAuthError(ctx, account, msg)
 			shouldDisable = true
-		} else if account.Type == AccountTypeOAuth && account.Platform != PlatformAntigravity {
-			// 非停用的 OAuth 401（如 token 过期/失效）：失效缓存 + 强制刷新 + 临时冷却
-			// Antigravity 除外：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制。
+			break
+		}
+		// OpenAI: token_invalidated / token_revoked 表示 token 被永久作废（非过期），直接标记 error
+		openai401Code := extractUpstreamErrorCode(responseBody)
+		if account.Platform == PlatformOpenAI && (openai401Code == "token_invalidated" || openai401Code == "token_revoked") {
+			msg := "Token revoked (401): account authentication permanently revoked"
+			if upstreamMsg != "" {
+				msg = "Token revoked (401): " + upstreamMsg
+			}
+			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
+			break
+		}
+		// OAuth 账号在 401 错误时临时不可调度（给 token 刷新窗口）；非 OAuth 账号保持原有 SetError 行为。
+		// Antigravity 除外：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制。
+		if account.Type == AccountTypeOAuth && account.Platform != PlatformAntigravity {
+			// 1. 失效缓存
 			if s.tokenCacheInvalidator != nil {
 				if err := s.tokenCacheInvalidator.InvalidateToken(ctx, account); err != nil {
 					slog.Warn("oauth_401_invalidate_cache_failed", "account_id", account.ID, "error", err)
 				}
 			}
-			// 设置 expires_at 为当前时间，强制下次请求刷新 token
+			// 2. 设置 expires_at 为当前时间，强制下次请求刷新 token
 			if account.Credentials == nil {
 				account.Credentials = make(map[string]any)
 			}
 			account.Credentials["expires_at"] = time.Now().Format(time.RFC3339)
-			if err := s.accountRepo.Update(ctx, account); err != nil {
+			if err := persistAccountCredentials(ctx, s.accountRepo, account, account.Credentials); err != nil {
 				slog.Warn("oauth_401_force_refresh_update_failed", "account_id", account.ID, "error", err)
 			} else {
 				slog.Info("oauth_401_force_refresh_set", "account_id", account.ID, "platform", account.Platform)
 			}
+			// 3. 临时不可调度，替代 SetError（保持 status=active 让刷新服务能拾取）
 			msg := "Authentication failed (401): invalid or expired credentials"
 			if upstreamMsg != "" {
 				msg = "OAuth 401: " + upstreamMsg
@@ -201,6 +217,13 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			shouldDisable = true
 		}
 	case 402:
+		// OpenAI: deactivated_workspace 表示工作区已停用，直接标记 error
+		if account.Platform == PlatformOpenAI && gjson.GetBytes(responseBody, "detail.code").String() == "deactivated_workspace" {
+			msg := "Workspace deactivated (402): workspace has been deactivated"
+			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
+			break
+		}
 		// 支付要求：余额不足或计费问题，停止调度
 		msg := "Payment required (402): insufficient balance or billing issue"
 		if upstreamMsg != "" {
@@ -1119,10 +1142,13 @@ func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Acc
 		slog.Info("account_session_window_initialized", "account_id", account.ID, "window_start", start, "window_end", end, "status", status)
 	}
 
-	// 窗口重置时清除旧的 utilization，避免残留上个窗口的数据
+	// 窗口重置时清除旧的 utilization 和被动采样数据，避免残留上个窗口的数据
 	if windowEnd != nil && needInitWindow {
 		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-			"session_window_utilization": nil,
+			"session_window_utilization":   nil,
+			"passive_usage_7d_utilization": nil,
+			"passive_usage_7d_reset":       nil,
+			"passive_usage_sampled_at":     nil,
 		})
 	}
 
@@ -1130,14 +1156,33 @@ func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Acc
 		slog.Warn("session_window_update_failed", "account_id", account.ID, "error", err)
 	}
 
-	// 存储真实的 utilization 值（0-1 小数），供 estimateSetupTokenUsage 使用
+	// 被动采样：从响应头收集 5h + 7d utilization，合并为一次 DB 写入
+	extraUpdates := make(map[string]any, 4)
+	// 5h utilization（0-1 小数），供 estimateSetupTokenUsage 使用
 	if utilStr := headers.Get("anthropic-ratelimit-unified-5h-utilization"); utilStr != "" {
 		if util, err := strconv.ParseFloat(utilStr, 64); err == nil {
-			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-				"session_window_utilization": util,
-			}); err != nil {
-				slog.Warn("session_window_utilization_update_failed", "account_id", account.ID, "error", err)
+			extraUpdates["session_window_utilization"] = util
+		}
+	}
+	// 7d utilization（0-1 小数）
+	if utilStr := headers.Get("anthropic-ratelimit-unified-7d-utilization"); utilStr != "" {
+		if util, err := strconv.ParseFloat(utilStr, 64); err == nil {
+			extraUpdates["passive_usage_7d_utilization"] = util
+		}
+	}
+	// 7d reset timestamp
+	if resetStr := headers.Get("anthropic-ratelimit-unified-7d-reset"); resetStr != "" {
+		if ts, err := strconv.ParseInt(resetStr, 10, 64); err == nil {
+			if ts > 1e11 {
+				ts = ts / 1000
 			}
+			extraUpdates["passive_usage_7d_reset"] = ts
+		}
+	}
+	if len(extraUpdates) > 0 {
+		extraUpdates["passive_usage_sampled_at"] = time.Now().UTC().Format(time.RFC3339)
+		if err := s.accountRepo.UpdateExtra(ctx, account.ID, extraUpdates); err != nil {
+			slog.Warn("passive_usage_update_failed", "account_id", account.ID, "error", err)
 		}
 	}
 

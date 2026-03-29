@@ -86,6 +86,12 @@ export interface CustomMenuItem {
   open_mode: 'iframe' | 'new_tab'
 }
 
+export interface CustomEndpoint {
+  name: string
+  endpoint: string
+  description: string
+}
+
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
@@ -106,6 +112,7 @@ export interface PublicSettings {
   purchase_subscription_enabled: boolean
   purchase_subscription_url: string
   custom_menu_items: CustomMenuItem[]
+  custom_endpoints: CustomEndpoint[]
   linuxdo_oauth_enabled: boolean
   sora_client_enabled: boolean
   backend_mode_enabled: boolean
@@ -719,6 +726,7 @@ export interface Account {
 
   // TLS指纹伪装（仅 Anthropic OAuth/SetupToken 账号有效）
   enable_tls_fingerprint?: boolean | null
+  tls_fingerprint_profile_id?: number | null
 
   // 会话ID伪装（仅 Anthropic OAuth/SetupToken 账号有效）
   // 启用后将在15分钟内固定 metadata.user_id 中的 session ID
@@ -783,6 +791,7 @@ export interface AntigravityModelQuota {
 }
 
 export interface AccountUsageInfo {
+  source?: 'passive' | 'active'
   updated_at: string | null
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null
@@ -979,7 +988,6 @@ export interface UsageLog {
   account_id: number | null
   request_id: string
   model: string
-  upstream_model?: string | null
   service_tier?: string | null
   reasoning_effort?: string | null
   inbound_endpoint?: string | null
@@ -1034,6 +1042,8 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
+  upstream_model?: string | null
+
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null
 

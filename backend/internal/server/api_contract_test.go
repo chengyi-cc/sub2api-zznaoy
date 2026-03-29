@@ -537,9 +537,13 @@ func TestAPIContracts(t *testing.T) {
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"min_claude_code_version": "",
+					"max_claude_code_version": "",
 					"allow_ungrouped_key_scheduling": false,
 					"backend_mode_enabled": false,
-					"custom_menu_items": []
+					"enable_fingerprint_unification": true,
+					"enable_metadata_passthrough": false,
+					"custom_menu_items": [],
+					"custom_endpoints": []
 				}
 			}`,
 		},
@@ -807,6 +811,10 @@ func (r *stubUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID
 	return 0, errors.New("not implemented")
 }
 
+func (r *stubUserRepo) RemoveGroupFromUserAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
+	return errors.New("not implemented")
+}
+
 func (r *stubUserRepo) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
 	return errors.New("not implemented")
 }
@@ -984,7 +992,7 @@ func (s *stubAccountRepo) List(ctx context.Context, params pagination.Pagination
 	return nil, nil, errors.New("not implemented")
 }
 
-func (s *stubAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64) ([]service.Account, *pagination.PaginationResult, error) {
+func (s *stubAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 }
 
@@ -1507,6 +1515,22 @@ func (r *stubApiKeyRepo) SearchAPIKeys(ctx context.Context, userID int64, keywor
 
 func (r *stubApiKeyRepo) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, errors.New("not implemented")
+}
+
+func (r *stubApiKeyRepo) UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
+	var updated int64
+	for id, key := range r.byID {
+		if key.UserID != userID || key.GroupID == nil || *key.GroupID != oldGroupID {
+			continue
+		}
+		clone := *key
+		gid := newGroupID
+		clone.GroupID = &gid
+		r.byID[id] = &clone
+		r.byKey[clone.Key] = &clone
+		updated++
+	}
+	return updated, nil
 }
 
 func (r *stubApiKeyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {

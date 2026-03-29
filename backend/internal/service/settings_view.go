@@ -43,6 +43,7 @@ type SystemSettings struct {
 	PurchaseSubscriptionURL     string
 	SoraClientEnabled           bool
 	CustomMenuItems             string // JSON array of custom menu items
+	CustomEndpoints             string // JSON array of custom endpoints
 
 	DefaultConcurrency   int
 	DefaultBalance       float64
@@ -67,12 +68,17 @@ type SystemSettings struct {
 
 	// Claude Code version check
 	MinClaudeCodeVersion string
+	MaxClaudeCodeVersion string
 
 	// 分组隔离：允许未分组 Key 调度（默认 false → 403）
 	AllowUngroupedKeyScheduling bool
 
 	// Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	BackendModeEnabled bool
+
+	// Gateway forwarding behavior
+	EnableFingerprintUnification bool // 是否统一 OAuth 账号的指纹头（默认 true）
+	EnableMetadataPassthrough    bool // 是否透传客户端原始 metadata（默认 false）
 }
 
 type DefaultSubscriptionSetting struct {
@@ -103,6 +109,7 @@ type PublicSettings struct {
 	PurchaseSubscriptionURL     string
 	SoraClientEnabled           bool
 	CustomMenuItems             string // JSON array of custom menu items
+	CustomEndpoints             string // JSON array of custom endpoints
 
 	LinuxDoOAuthEnabled bool
 	BackendModeEnabled  bool
@@ -183,9 +190,11 @@ func DefaultStreamTimeoutSettings() *StreamTimeoutSettings {
 
 // RectifierSettings 请求整流器配置
 type RectifierSettings struct {
-	Enabled                  bool `json:"enabled"`                    // 总开关
-	ThinkingSignatureEnabled bool `json:"thinking_signature_enabled"` // Thinking 签名整流
-	ThinkingBudgetEnabled    bool `json:"thinking_budget_enabled"`    // Thinking Budget 整流
+	Enabled                  bool     `json:"enabled"`                    // 总开关
+	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"` // Thinking 签名整流
+	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`    // Thinking Budget 整流
+	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`   // API Key 签名整流开关
+	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`  // API Key 自定义匹配关键词
 }
 
 // DefaultRectifierSettings 返回默认的整流器配置（全部启用）

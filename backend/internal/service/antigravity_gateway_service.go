@@ -643,6 +643,7 @@ urlFallbackLoop:
 					AccountID:          p.account.ID,
 					AccountName:        p.account.Name,
 					UpstreamStatusCode: 0,
+					UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 					Kind:               "request_error",
 					Message:            safeErr,
 				})
@@ -720,6 +721,7 @@ urlFallbackLoop:
 							AccountName:        p.account.Name,
 							UpstreamStatusCode: resp.StatusCode,
 							UpstreamRequestID:  resp.Header.Get("x-request-id"),
+							UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 							Kind:               "retry",
 							Message:            upstreamMsg,
 							Detail:             getUpstreamDetail(respBody),
@@ -754,6 +756,7 @@ urlFallbackLoop:
 							AccountName:        p.account.Name,
 							UpstreamStatusCode: resp.StatusCode,
 							UpstreamRequestID:  resp.Header.Get("x-request-id"),
+							UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 							Kind:               "retry",
 							Message:            upstreamMsg,
 							Detail:             getUpstreamDetail(respBody),
@@ -1359,7 +1362,10 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	}
 	accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
-		return nil, s.writeClaudeError(c, http.StatusBadGateway, "authentication_error", "Failed to get upstream access token")
+		return nil, &UpstreamFailoverError{
+			StatusCode:   http.StatusBadGateway,
+			ResponseBody: []byte(`{"error":{"type":"authentication_error","message":"Failed to get upstream access token"},"type":"error"}`),
+		}
 	}
 
 	// 获取 project_id（部分账户类型可能没有）
@@ -1739,7 +1745,8 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	return &ForwardResult{
 		RequestID:        requestID,
 		Usage:            *usage,
-		Model:            billingModel, // 使用映射模型用于计费和日志
+		Model:            originalModel,
+		UpstreamModel:    billingModel,
 		Stream:           claudeReq.Stream,
 		Duration:         time.Since(startTime),
 		FirstTokenMs:     firstTokenMs,
@@ -2101,7 +2108,10 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	}
 	accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
-		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Failed to get upstream access token")
+		return nil, &UpstreamFailoverError{
+			StatusCode:   http.StatusBadGateway,
+			ResponseBody: []byte(`{"error":{"message":"Failed to get upstream access token","status":"UNAVAILABLE"}}`),
+		}
 	}
 
 	// 获取 project_id（部分账户类型可能没有）
@@ -2429,7 +2439,8 @@ handleSuccess:
 	return &ForwardResult{
 		RequestID:        requestID,
 		Usage:            *usage,
-		Model:            billingModel,
+		Model:            originalModel,
+		UpstreamModel:    billingModel,
 		Stream:           stream,
 		Duration:         time.Since(startTime),
 		FirstTokenMs:     firstTokenMs,

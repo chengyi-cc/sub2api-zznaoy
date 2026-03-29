@@ -12,6 +12,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
+// tokenRefreshTempUnschedDuration token 刷新重试耗尽后临时不可调度的持续时间
+const tokenRefreshTempUnschedDuration = 10 * time.Minute
+
 // TokenRefreshService OAuth token自动刷新服务
 // 定期检查并刷新即将过期的token
 type TokenRefreshService struct {
@@ -125,7 +128,7 @@ func (s *TokenRefreshService) Start() {
 	)
 }
 
-// Stop 停止刷新服务
+// Stop 停止刷新服务（可安全多次调用）
 func (s *TokenRefreshService) Stop() {
 	close(s.stopCh)
 	s.wg.Wait()
@@ -277,8 +280,7 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 			newCredentials, err = refresher.Refresh(ctx, account)
 			if newCredentials != nil {
 				newCredentials["_token_version"] = time.Now().UnixMilli()
-				account.Credentials = newCredentials
-				if saveErr := s.accountRepo.Update(ctx, account); saveErr != nil {
+				if saveErr := persistAccountCredentials(ctx, s.accountRepo, account, newCredentials); saveErr != nil {
 					return fmt.Errorf("failed to save credentials: %w", saveErr)
 				}
 			}
@@ -298,6 +300,8 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 					"error", setErr,
 				)
 			}
+			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
+			s.ensureOpenAIPrivacy(ctx, account)
 			return err
 		}
 
@@ -317,13 +321,31 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 		}
 	}
 
-	// 可重试错误耗尽：仅记录日志，不标记 error（可能是临时网络问题，下个周期继续重试）
+	// 可重试错误耗尽：临时标记账号不可调度，避免请求路径反复命中已知失败的账号
 	slog.Warn("token_refresh.retry_exhausted",
 		"account_id", account.ID,
 		"platform", account.Platform,
 		"max_retries", s.cfg.MaxRetries,
 		"error", lastErr,
 	)
+
+	// 刷新失败但 access_token 可能仍有效，尝试设置隐私
+	s.ensureOpenAIPrivacy(ctx, account)
+
+	// 设置临时不可调度 10 分钟（不标记 error，保持 status=active 让下个刷新周期能继续尝试）
+	until := time.Now().Add(tokenRefreshTempUnschedDuration)
+	reason := fmt.Sprintf("token refresh retry exhausted: %v", lastErr)
+	if setErr := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); setErr != nil {
+		slog.Warn("token_refresh.set_temp_unschedulable_failed",
+			"account_id", account.ID,
+			"error", setErr,
+		)
+	} else {
+		slog.Info("token_refresh.temp_unschedulable_set",
+			"account_id", account.ID,
+			"until", until.Format(time.RFC3339),
+		)
+	}
 
 	return lastErr
 }
@@ -387,6 +409,8 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 	}
 	// OpenAI OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则尝试关闭训练数据共享
 	s.ensureOpenAIPrivacy(ctx, account)
+	// Antigravity OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则调用 setUserSettings
+	s.ensureAntigravityPrivacy(ctx, account)
 }
 
 // errRefreshSkipped 表示刷新被跳过（锁竞争或已被其他路径刷新），不计入 failed 或 refreshed
@@ -424,11 +448,8 @@ func (s *TokenRefreshService) ensureOpenAIPrivacy(ctx context.Context, account *
 	if s.privacyClientFactory == nil {
 		return
 	}
-	// 已设置过则跳过
-	if account.Extra != nil {
-		if _, ok := account.Extra["privacy_mode"]; ok {
-			return
-		}
+	if shouldSkipOpenAIPrivacyEnsure(account.Extra) {
+		return
 	}
 
 	token, _ := account.Credentials["access_token"].(string)
@@ -455,6 +476,53 @@ func (s *TokenRefreshService) ensureOpenAIPrivacy(ctx context.Context, account *
 		)
 	} else {
 		slog.Info("token_refresh.privacy_mode_set",
+			"account_id", account.ID,
+			"privacy_mode", mode,
+		)
+	}
+}
+
+// ensureAntigravityPrivacy 后台刷新中检查 Antigravity OAuth 账号隐私状态。
+// 仅做 Extra["privacy_mode"] 存在性检查，不发起 HTTP 请求，避免每轮循环产生额外网络开销。
+// 用户可通过前端 SetPrivacy 按钮强制重新设置。
+func (s *TokenRefreshService) ensureAntigravityPrivacy(ctx context.Context, account *Account) {
+	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
+		return
+	}
+	// 已设置过（无论成功或失败）则跳过，不发 HTTP
+	if account.Extra != nil {
+		if _, ok := account.Extra["privacy_mode"]; ok {
+			return
+		}
+	}
+
+	token, _ := account.Credentials["access_token"].(string)
+	if token == "" {
+		return
+	}
+
+	projectID, _ := account.Credentials["project_id"].(string)
+
+	var proxyURL string
+	if account.ProxyID != nil && s.proxyRepo != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+		}
+	}
+
+	mode := setAntigravityPrivacy(ctx, token, projectID, proxyURL)
+	if mode == "" {
+		return
+	}
+
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode}); err != nil {
+		slog.Warn("token_refresh.update_antigravity_privacy_mode_failed",
+			"account_id", account.ID,
+			"error", err,
+		)
+	} else {
+		applyAntigravityPrivacyMode(account, mode)
+		slog.Info("token_refresh.antigravity_privacy_mode_set",
 			"account_id", account.ID,
 			"privacy_mode", mode,
 		)

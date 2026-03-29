@@ -159,6 +159,7 @@ func (h *SoraGatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, reqModel, clientStream, body)
+	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(clientStream, false)))
 
 	platform := ""
 	if forced, ok := middleware2.GetForcePlatformFromContext(c); ok {
@@ -484,6 +485,9 @@ func (h *SoraGatewayHandler) handleConcurrencyError(c *gin.Context, err error, s
 }
 
 func (h *SoraGatewayHandler) handleFailoverExhausted(c *gin.Context, statusCode int, responseHeaders http.Header, responseBody []byte, streamStarted bool) {
+	upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
+	service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
+
 	status, errType, errMsg := h.mapUpstreamError(statusCode, responseHeaders, responseBody)
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
 }

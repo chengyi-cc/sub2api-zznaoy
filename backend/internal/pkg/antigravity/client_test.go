@@ -250,6 +250,27 @@ func TestGetTier_两者都为nil(t *testing.T) {
 	}
 }
 
+func TestTierIDToPlanType(t *testing.T) {
+	tests := []struct {
+		tierID string
+		want   string
+	}{
+		{"free-tier", "Free"},
+		{"g1-pro-tier", "Pro"},
+		{"g1-ultra-tier", "Ultra"},
+		{"FREE-TIER", "Free"},
+		{"", "Free"},
+		{"unknown-tier", "unknown-tier"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.tierID, func(t *testing.T) {
+			if got := TierIDToPlanType(tt.tierID); got != tt.want {
+				t.Errorf("TierIDToPlanType(%q) = %q, want %q", tt.tierID, got, tt.want)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // NewClient
 // ---------------------------------------------------------------------------
@@ -274,8 +295,8 @@ func TestNewClient_无代理(t *testing.T) {
 	if client.httpClient == nil {
 		t.Fatal("httpClient 为 nil")
 	}
-	if client.httpClient.Timeout != 30*time.Second {
-		t.Errorf("Timeout 不匹配: got %v, want 30s", client.httpClient.Timeout)
+	if client.httpClient.Timeout != clientTimeout {
+		t.Errorf("Timeout 不匹配: got %v, want %v", client.httpClient.Timeout, clientTimeout)
 	}
 	// 无代理时 Transport 应为 nil（使用默认）
 	if client.httpClient.Transport != nil {
@@ -322,11 +343,11 @@ func TestNewClient_无效代理URL(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// isConnectionError
+// IsConnectionError
 // ---------------------------------------------------------------------------
 
 func TestIsConnectionError_nil(t *testing.T) {
-	if isConnectionError(nil) {
+	if IsConnectionError(nil) {
 		t.Error("nil 错误不应判定为连接错误")
 	}
 }
@@ -338,7 +359,7 @@ func TestIsConnectionError_超时错误(t *testing.T) {
 		Net: "tcp",
 		Err: &timeoutError{},
 	}
-	if !isConnectionError(err) {
+	if !IsConnectionError(err) {
 		t.Error("超时错误应判定为连接错误")
 	}
 }
@@ -356,7 +377,7 @@ func TestIsConnectionError_netOpError(t *testing.T) {
 		Net: "tcp",
 		Err: fmt.Errorf("connection refused"),
 	}
-	if !isConnectionError(err) {
+	if !IsConnectionError(err) {
 		t.Error("net.OpError 应判定为连接错误")
 	}
 }
@@ -367,14 +388,14 @@ func TestIsConnectionError_urlError(t *testing.T) {
 		URL: "https://example.com",
 		Err: fmt.Errorf("some error"),
 	}
-	if !isConnectionError(err) {
+	if !IsConnectionError(err) {
 		t.Error("url.Error 应判定为连接错误")
 	}
 }
 
 func TestIsConnectionError_普通错误(t *testing.T) {
 	err := fmt.Errorf("some random error")
-	if isConnectionError(err) {
+	if IsConnectionError(err) {
 		t.Error("普通错误不应判定为连接错误")
 	}
 }
@@ -386,7 +407,7 @@ func TestIsConnectionError_包装的netOpError(t *testing.T) {
 		Err: fmt.Errorf("connection refused"),
 	}
 	err := fmt.Errorf("wrapping: %w", inner)
-	if !isConnectionError(err) {
+	if !IsConnectionError(err) {
 		t.Error("被包装的 net.OpError 应判定为连接错误")
 	}
 }
@@ -798,6 +819,12 @@ type redirectRoundTripper struct {
 	// 原始 URL 前缀 -> 替换目标 URL 的映射
 	redirects map[string]string
 	transport http.RoundTripper
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func (rt *redirectRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -1270,6 +1297,12 @@ func TestClient_LoadCodeAssist_Success_RealCall(t *testing.T) {
 		}
 		if reqBody.Metadata.IDEType != "ANTIGRAVITY" {
 			t.Errorf("IDEType 不匹配: got %s, want ANTIGRAVITY", reqBody.Metadata.IDEType)
+		}
+		if strings.TrimSpace(reqBody.Metadata.IDEVersion) == "" {
+			t.Errorf("IDEVersion 不应为空")
+		}
+		if reqBody.Metadata.IDEName != "antigravity" {
+			t.Errorf("IDEName 不匹配: got %s, want antigravity", reqBody.Metadata.IDEName)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
