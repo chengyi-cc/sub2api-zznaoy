@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { getIntlLocale } from '@/i18n'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -21,7 +22,7 @@ interface Props {
   queryMode: string
   loading: boolean
   lastUpdated: Date | null
-  thresholds?: OpsMetricThresholds | null // 阈值配置
+  thresholds?: OpsMetricThresholds | null // Threshold settings
   autoRefreshEnabled?: boolean
   autoRefreshCountdown?: number
   fullscreen?: boolean
@@ -47,7 +48,7 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const adminSettingsStore = useAdminSettingsStore()
 
 const realtimeWindow = ref<RealtimeWindow>('1min')
@@ -105,6 +106,21 @@ function formatCustomTimeRangeLabel(startTime: string, endTime: string): string 
 }
 
 const groups = ref<Array<{ id: number; name: string; platform: string }>>([])
+const lastUpdatedLabel = computed(() => {
+  const intlLocale = getIntlLocale(locale.value)
+  if (!props.lastUpdated) {
+    return t('common.unknown')
+  }
+
+  return new Intl.DateTimeFormat(intlLocale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).format(props.lastUpdated)
+})
 
 const platformOptions = computed(() => [
   { value: '', label: t('common.all') },
@@ -176,7 +192,7 @@ function handleGroupChange(val: string | number | boolean | null) {
 function handleTimeRangeChange(val: string | number | boolean | null) {
   const newValue = String(val || '1h')
   if (newValue === 'custom') {
-    // 初始化为最近1小时
+    // Initialize to the last hour.
     const now = new Date()
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
     customStartTimeInput.value = oneHourAgo.toISOString().slice(0, 16)
@@ -200,8 +216,8 @@ function handleCustomTimeRangeConfirm() {
 
 function handleCustomTimeRangeCancel() {
   showCustomTimeRangeDialog.value = false
-  // 如果当前不是 custom，不需要做任何事
-  // 如果当前是 custom，保持不变
+  // If the current range is not custom, do nothing.
+  // If the current range is custom, keep the current selection.
 }
 
 function handleQueryModeChange(val: string | number | boolean | null) {
@@ -883,12 +899,12 @@ function handleToolbarRefresh() {
             {{ props.loading ? t('admin.ops.loadingText') : t('admin.ops.ready') }}
           </span>
 
-          <span>·</span>
-          <span>{{ t('common.refresh') }}: {{ props.lastUpdated ? props.lastUpdated.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/\//g, '-') : t('common.unknown') }}</span>
+          <span>&middot;</span>
+          <span>{{ t('common.refresh') }}: {{ lastUpdatedLabel }}</span>
 
           <template v-if="props.autoRefreshEnabled && props.autoRefreshCountdown !== undefined">
-            <span>·</span>
-            <span>剩余 {{ props.autoRefreshCountdown }}s</span>
+            <span>&middot;</span>
+            <span>{{ t('admin.ops.settings.autoRefreshCountdown', { seconds: props.autoRefreshCountdown }) }}</span>
           </template>
         </div>
       </div>
@@ -1444,7 +1460,7 @@ function handleToolbarRefresh() {
             {{ cpuPercentValue == null ? '-' : `${cpuPercentValue.toFixed(1)}%` }}
           </div>
           <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
-            {{ t('common.warning') }} 80% · {{ t('common.critical') }} 95%
+            {{ t('common.warning') }} 80% &middot; {{ t('common.critical') }} 95%
           </div>
         </div>
 
@@ -1477,9 +1493,9 @@ function handleToolbarRefresh() {
           </div>
           <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
             {{ t('admin.ops.conns') }} {{ dbConnOpenValue ?? '-' }} / {{ dbMaxOpenConnsValue ?? '-' }}
-            · {{ t('admin.ops.active') }} {{ dbConnActiveValue ?? '-' }}
-            · {{ t('admin.ops.idle') }} {{ dbConnIdleValue ?? '-' }}
-            <span v-if="dbConnWaitingValue != null"> · {{ t('admin.ops.waiting') }} {{ dbConnWaitingValue }} </span>
+            &middot; {{ t('admin.ops.active') }} {{ dbConnActiveValue ?? '-' }}
+            &middot; {{ t('admin.ops.idle') }} {{ dbConnIdleValue ?? '-' }}
+            <span v-if="dbConnWaitingValue != null"> &middot; {{ t('admin.ops.waiting') }} {{ dbConnWaitingValue }} </span>
           </div>
         </div>
 
@@ -1494,8 +1510,8 @@ function handleToolbarRefresh() {
           </div>
           <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
             {{ t('admin.ops.conns') }} {{ redisConnTotalValue ?? '-' }} / {{ redisPoolSizeValue ?? '-' }}
-            <span v-if="redisConnActiveValue != null"> · {{ t('admin.ops.active') }} {{ redisConnActiveValue }} </span>
-            <span v-if="redisConnIdleValue != null"> · {{ t('admin.ops.idle') }} {{ redisConnIdleValue }} </span>
+            <span v-if="redisConnActiveValue != null"> &middot; {{ t('admin.ops.active') }} {{ redisConnActiveValue }} </span>
+            <span v-if="redisConnIdleValue != null"> &middot; {{ t('admin.ops.idle') }} {{ redisConnIdleValue }} </span>
           </div>
         </div>
 
@@ -1510,10 +1526,10 @@ function handleToolbarRefresh() {
           </div>
           <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
             {{ t('admin.ops.current') }} <span class="font-mono">{{ goroutineCountValue ?? '-' }}</span>
-            · {{ t('common.warning') }} <span class="font-mono">{{ goroutinesWarnThreshold }}</span>
-            · {{ t('common.critical') }} <span class="font-mono">{{ goroutinesCriticalThreshold }}</span>
+            &middot; {{ t('common.warning') }} <span class="font-mono">{{ goroutinesWarnThreshold }}</span>
+            &middot; {{ t('common.critical') }} <span class="font-mono">{{ goroutinesCriticalThreshold }}</span>
             <span v-if="systemMetrics?.concurrency_queue_depth != null">
-              · {{ t('admin.ops.queue') }} <span class="font-mono">{{ systemMetrics.concurrency_queue_depth }}</span>
+              &middot; {{ t('admin.ops.queue') }} <span class="font-mono">{{ systemMetrics.concurrency_queue_depth }}</span>
             </span>
           </div>
         </div>
@@ -1536,7 +1552,7 @@ function handleToolbarRefresh() {
 
           <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
             {{ t('common.total') }} <span class="font-mono">{{ jobHeartbeats.length }}</span>
-            · {{ t('common.warning') }} <span class="font-mono">{{ jobsWarnCount }}</span>
+            &middot; {{ t('common.warning') }} <span class="font-mono">{{ jobsWarnCount }}</span>
           </div>
         </div>
       </div>

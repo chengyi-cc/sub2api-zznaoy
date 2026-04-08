@@ -287,6 +287,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { getLocaleListSeparator } from '@/i18n'
 import { AuthLayout } from '@/components/layout'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -573,7 +574,7 @@ function buildEmailSuffixNotAllowedMessage(): string {
   if (normalizedWhitelist.length === 0) {
     return t('auth.emailSuffixNotAllowed')
   }
-  const separator = String(locale.value || '').toLowerCase().startsWith('zh') ? '、' : ', '
+  const separator = getLocaleListSeparator(locale.value)
   return t('auth.emailSuffixNotAllowedWithAllowed', {
     suffixes: normalizedWhitelist.join(separator)
   })

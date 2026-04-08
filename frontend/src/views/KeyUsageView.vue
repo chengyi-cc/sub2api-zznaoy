@@ -363,12 +363,48 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { getIntlLocale } from '@/i18n'
 import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
+
+const quotaWindowLabels = computed(() => {
+  switch (locale.value) {
+    case 'ru':
+      return {
+        day: '\u0434',
+        week: '\u043D',
+        month: '\u043C\u0435\u0441',
+        hour: '\u0447',
+        minute: '\u043C'
+      }
+    case 'zh':
+      return {
+        day: '\u65E5',
+        week: '\u5468',
+        month: '\u6708',
+        hour: '\u65F6',
+        minute: '\u5206'
+      }
+    default:
+      return {
+        day: 'D',
+        week: 'W',
+        month: 'M',
+        hour: 'h',
+        minute: 'm'
+      }
+  }
+})
+
+const rateLimitWindowLabels = computed<Record<string, string>>(() => ({
+  '5h': `5${quotaWindowLabels.value.hour}`,
+  '1d': quotaWindowLabels.value.day,
+  '7d': `7${quotaWindowLabels.value.day}`
+}))
 
 // ==================== Site Settings (same as HomeView) ====================
 
@@ -631,7 +667,7 @@ const detailRows = computed<DetailRow[]>(() => {
       })
     }
     if (data.rate_limits) {
-      const windowMap: Record<string, string> = { '5h': '5H', '1d': locale.value === 'zh' ? '日' : 'D', '7d': '7D' }
+      const windowMap = rateLimitWindowLabels.value
       for (const rl of data.rate_limits) {
         const pct = rl.limit > 0 ? (rl.used / rl.limit) * 100 : 0
         let valueStr = `${usd(rl.used)} / ${usd(rl.limit)}`
@@ -659,21 +695,21 @@ const detailRows = computed<DetailRow[]>(() => {
         const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
         rows.push({
           iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${quotaWindowLabels.value.day})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
         })
       }
       if (sub.weekly_limit_usd > 0) {
         const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
         rows.push({
           iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${quotaWindowLabels.value.week})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
         })
       }
       if (sub.monthly_limit_usd > 0) {
         const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
         rows.push({
           iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${quotaWindowLabels.value.month})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
         })
       }
       if (sub.expires_at) {
@@ -740,13 +776,13 @@ function usd(value: number | null | undefined): string {
 
 function fmtNum(val: number | null | undefined): string {
   if (val == null) return '-'
-  return val.toLocaleString()
+  return val.toLocaleString(getIntlLocale(locale.value))
 }
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '-'
   const d = new Date(iso)
-  const loc = locale.value === 'zh' ? 'zh-CN' : 'en-US'
+  const loc = getIntlLocale(locale.value)
   return d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
@@ -817,9 +853,9 @@ function formatResetTime(resetAt: string | null | undefined): string {
   const days = Math.floor(diff / 86400000)
   const hours = Math.floor((diff % 86400000) / 3600000)
   const mins = Math.floor((diff % 3600000) / 60000)
-  if (days > 0) return `${days}d ${hours}h`
-  if (hours > 0) return `${hours}h ${mins}m`
-  return `${mins}m`
+  if (days > 0) return `${days}${quotaWindowLabels.value.day} ${hours}${quotaWindowLabels.value.hour}`
+  if (hours > 0) return `${hours}${quotaWindowLabels.value.hour} ${mins}${quotaWindowLabels.value.minute}`
+  return `${mins}${quotaWindowLabels.value.minute}`
 }
 
 onMounted(() => {

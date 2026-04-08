@@ -1,19 +1,25 @@
 import { createI18n } from 'vue-i18n'
 
-type LocaleCode = 'en' | 'zh'
+type LocaleCode = 'en' | 'ru' | 'zh'
 
 type LocaleMessages = Record<string, any>
 
 const LOCALE_KEY = 'sub2api_locale'
 const DEFAULT_LOCALE: LocaleCode = 'en'
+const INTL_LOCALE_MAP: Record<LocaleCode, string> = {
+  en: 'en-US',
+  ru: 'ru-RU',
+  zh: 'zh-CN'
+}
 
 const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages }>> = {
   en: () => import('./locales/en'),
+  ru: () => import('./locales/ru'),
   zh: () => import('./locales/zh')
 }
 
 function isLocaleCode(value: string): value is LocaleCode {
-  return value === 'en' || value === 'zh'
+  return value === 'en' || value === 'ru' || value === 'zh'
 }
 
 function getDefaultLocale(): LocaleCode {
@@ -26,6 +32,9 @@ function getDefaultLocale(): LocaleCode {
   if (browserLang.startsWith('zh')) {
     return 'zh'
   }
+  if (browserLang.startsWith('ru')) {
+    return 'ru'
+  }
 
   return DEFAULT_LOCALE
 }
@@ -35,8 +44,7 @@ export const i18n = createI18n({
   locale: getDefaultLocale(),
   fallbackLocale: DEFAULT_LOCALE,
   messages: {},
-  // 禁用 HTML 消息警告 - 引导步骤使用富文本内容（driver.js 支持 HTML）
-  // 这些内容是内部定义的，不存在 XSS 风险
+  // Some onboarding content intentionally renders trusted HTML.
   warnHtmlMessage: false
 })
 
@@ -69,7 +77,7 @@ export async function setLocale(locale: string): Promise<void> {
   localStorage.setItem(LOCALE_KEY, locale)
   document.documentElement.setAttribute('lang', locale)
 
-  // 同步更新浏览器页签标题，使其跟随语言切换
+  // Keep the page title aligned with the active locale.
   const { resolveDocumentTitle } = await import('@/router/title')
   const { default: router } = await import('@/router')
   const { useAppStore } = await import('@/stores/app')
@@ -83,9 +91,18 @@ export function getLocale(): LocaleCode {
   return isLocaleCode(current) ? current : DEFAULT_LOCALE
 }
 
+export function getIntlLocale(locale: string = getLocale()): string {
+  return isLocaleCode(locale) ? INTL_LOCALE_MAP[locale] : INTL_LOCALE_MAP[DEFAULT_LOCALE]
+}
+
+export function getLocaleListSeparator(locale: string = getLocale()): string {
+  return locale === 'zh' ? '\u3001' : ', '
+}
+
 export const availableLocales = [
-  { code: 'en', name: 'English', flag: '🇺🇸' },
-  { code: 'zh', name: '中文', flag: '🇨🇳' }
+  { code: 'en', name: 'English', flag: '\uD83C\uDDFA\uD83C\uDDF8' },
+  { code: 'ru', name: '\u0420\u0443\u0441\u0441\u043A\u0438\u0439', flag: '\uD83C\uDDF7\uD83C\uDDFA' },
+  { code: 'zh', name: '\u4E2D\u6587', flag: '\uD83C\uDDE8\uD83C\uDDF3' }
 ] as const
 
 export default i18n
