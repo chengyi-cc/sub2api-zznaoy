@@ -1650,7 +1650,11 @@ export default {
         allowDispatchHint: 'When enabled, API keys in this OpenAI group can dispatch requests through /v1/messages endpoint',
         defaultModel: 'Default mapped model',
         defaultModelPlaceholder: 'e.g., gpt-4.1',
-        defaultModelHint: 'When account has no model mapping configured, all request models will be mapped to this model'
+        defaultModelHint: 'When account has no model mapping configured, all request models will be mapped to this model',
+        forcePriority: 'Force fast mode',
+        forcePriorityHint: 'Force all requests in this OpenAI group to use service_tier=priority and override any client-provided value',
+        forcePriorityEnabled: 'Enabled: all requests are forced to priority',
+        forcePriorityDisabled: 'Disabled'
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',

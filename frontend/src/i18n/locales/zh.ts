@@ -1737,7 +1737,11 @@ export default {
         allowDispatchHint: '启用后，此 OpenAI 分组的 API Key 可以通过 /v1/messages 端点调度请求',
         defaultModel: '默认映射模型',
         defaultModelPlaceholder: '例如: gpt-4.1',
-        defaultModelHint: '当账号未配置模型映射时，所有请求模型将映射到此模型'
+        defaultModelHint: '当账号未配置模型映射时，所有请求模型将映射到此模型',
+        forcePriority: '强制快速模式',
+        forcePriorityHint: '开启后，该 OpenAI 分组的所有请求都会强制使用 service_tier=priority，并覆盖客户端传入的值',
+        forcePriorityEnabled: '已启用：所有请求强制使用 priority',
+        forcePriorityDisabled: '未启用'
       },
       invalidRequestFallback: {
         title: '无效请求兜底分组',

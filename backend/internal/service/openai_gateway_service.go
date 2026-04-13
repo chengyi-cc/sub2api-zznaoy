@@ -868,6 +868,32 @@ func getAPIKeyIDFromContext(c *gin.Context) int64 {
 	return apiKey.ID
 }
 
+func getAPIKeyFromContext(c *gin.Context) *APIKey {
+	if c == nil {
+		return nil
+	}
+	v, exists := c.Get("api_key")
+	if !exists {
+		return nil
+	}
+	apiKey, ok := v.(*APIKey)
+	if !ok || apiKey == nil {
+		return nil
+	}
+	return apiKey
+}
+
+func shouldForceOpenAIPriority(c *gin.Context) bool {
+	apiKey := getAPIKeyFromContext(c)
+	if apiKey == nil || apiKey.Group == nil {
+		return false
+	}
+	if apiKey.Group.Platform != PlatformOpenAI {
+		return false
+	}
+	return apiKey.Group.ForceOpenAIPriority
+}
+
 // isolateOpenAISessionID 将 apiKeyID 混入 session 标识符，
 // 确保不同 API Key 的用户即使使用相同的原始 session_id/conversation_id，
 // 到达上游的标识符也不同，防止跨用户会话碰撞。
@@ -1851,6 +1877,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	if passthroughEnabled {
+		if shouldForceOpenAIPriority(c) {
+			forcedBody, err := sjson.SetBytes(originalBody, "service_tier", "priority")
+			if err != nil {
+				return nil, fmt.Errorf("force OpenAI priority service tier: %w", err)
+			}
+			originalBody = forcedBody
+			body = forcedBody
+		}
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, reqModel)
 		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
@@ -1986,6 +2020,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
 		}
+	}
+
+	if shouldForceOpenAIPriority(c) {
+		reqBody["service_tier"] = "priority"
+		bodyModified = true
+		markPatchSet("service_tier", "priority")
 	}
 
 	// Handle max_output_tokens based on platform and account type

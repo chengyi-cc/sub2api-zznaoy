@@ -717,6 +717,27 @@
             />
             <p class="input-hint">{{ t('admin.groups.openaiMessages.defaultModelHint') }}</p>
           </div>
+
+          <div class="mt-4 flex items-center justify-between">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400">{{ t('admin.groups.openaiMessages.forcePriority') }}</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ createForm.force_openai_priority ? t('admin.groups.openaiMessages.forcePriorityEnabled') : t('admin.groups.openaiMessages.forcePriorityDisabled') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="createForm.force_openai_priority = !createForm.force_openai_priority"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="createForm.force_openai_priority ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="createForm.force_openai_priority ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.groups.openaiMessages.forcePriorityHint') }}</p>
         </div>
 
         <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
@@ -1434,6 +1455,27 @@
             />
             <p class="input-hint">{{ t('admin.groups.openaiMessages.defaultModelHint') }}</p>
           </div>
+
+          <div class="mt-4 flex items-center justify-between">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400">{{ t('admin.groups.openaiMessages.forcePriority') }}</label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ editForm.force_openai_priority ? t('admin.groups.openaiMessages.forcePriorityEnabled') : t('admin.groups.openaiMessages.forcePriorityDisabled') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="editForm.force_openai_priority = !editForm.force_openai_priority"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="editForm.force_openai_priority ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="editForm.force_openai_priority ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.groups.openaiMessages.forcePriorityHint') }}</p>
         </div>
 
         <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
@@ -2019,6 +2061,7 @@ const createForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   default_mapped_model: 'gpt-5.4',
+  force_openai_priority: false,
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
   require_privacy_set: false,
@@ -2260,6 +2303,7 @@ const editForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   default_mapped_model: '',
+  force_openai_priority: false,
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
   require_privacy_set: false,
@@ -2406,6 +2450,7 @@ const closeCreateModal = () => {
   createForm.require_oauth_only = false
   createForm.require_privacy_set = false
   createForm.default_mapped_model = 'gpt-5.4'
+  createForm.force_openai_priority = false
   createForm.supported_model_scopes = ['claude', 'gemini_text', 'gemini_image']
   createForm.mcp_xml_inject = true
   createForm.copy_accounts_from_group_ids = []
@@ -2488,6 +2533,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.require_oauth_only = group.require_oauth_only ?? false
   editForm.require_privacy_set = group.require_privacy_set ?? false
   editForm.default_mapped_model = group.default_mapped_model || ''
+  editForm.force_openai_priority = group.force_openai_priority ?? false
   editForm.model_routing_enabled = group.model_routing_enabled || false
   editForm.supported_model_scopes = group.supported_model_scopes || ['claude', 'gemini_text', 'gemini_image']
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true
@@ -2592,6 +2638,7 @@ watch(
     if (newVal !== 'openai') {
       createForm.allow_messages_dispatch = false
       createForm.default_mapped_model = ''
+      createForm.force_openai_priority = false
     }
     if (!['openai', 'antigravity', 'anthropic', 'gemini'].includes(newVal)) {
       createForm.require_oauth_only = false

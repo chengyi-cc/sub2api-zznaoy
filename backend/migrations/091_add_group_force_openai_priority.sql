@@ -1,0 +1,2 @@
+ALTER TABLE groups
+ADD COLUMN IF NOT EXISTS force_openai_priority BOOLEAN NOT NULL DEFAULT false;

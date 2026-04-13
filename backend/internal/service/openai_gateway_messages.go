@@ -59,6 +59,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if containsBetaToken(c.GetHeader("anthropic-beta"), claude.BetaFastMode) {
 		responsesReq.ServiceTier = "priority"
 	}
+	if shouldForceOpenAIPriority(c) {
+		responsesReq.ServiceTier = "priority"
+	}
 
 	// 3. Model mapping
 	billingModel := resolveOpenAIForwardModel(account, normalizedModel, defaultMappedModel)

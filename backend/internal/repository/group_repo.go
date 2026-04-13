@@ -34,6 +34,65 @@ func newGroupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *groupRep
 	return &groupRepository{client: client, sql: sqlq}
 }
 
+func setGroupForceOpenAIPriority(ctx context.Context, sqlq sqlExecutor, groupID int64, enabled bool) error {
+	if groupID <= 0 {
+		return nil
+	}
+	_, err := sqlq.ExecContext(ctx, `
+		UPDATE groups
+		SET force_openai_priority = $1
+		WHERE id = $2 AND deleted_at IS NULL
+	`, enabled, groupID)
+	return err
+}
+
+func isMissingForceOpenAIPriorityColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "force_openai_priority") && strings.Contains(msg, "column")
+}
+
+func loadGroupForceOpenAIPriorityMap(ctx context.Context, sqlq sqlExecutor, groupIDs []int64) (map[int64]bool, error) {
+	result := make(map[int64]bool, len(groupIDs))
+	if len(groupIDs) == 0 {
+		return result, nil
+	}
+
+	rows, err := sqlq.QueryContext(ctx, `
+		SELECT id, force_openai_priority
+		FROM groups
+		WHERE id = ANY($1) AND deleted_at IS NULL
+	`, pq.Array(groupIDs))
+	if err != nil {
+		if isMissingForceOpenAIPriorityColumnError(err) {
+			return result, nil
+		}
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var id int64
+		var enabled bool
+		if err := rows.Scan(&id, &enabled); err != nil {
+			return nil, err
+		}
+		result[id] = enabled
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func applyGroupForceOpenAIPriority(groups []service.Group, flags map[int64]bool) {
+	for i := range groups {
+		groups[i].ForceOpenAIPriority = flags[groups[i].ID]
+	}
+}
+
 func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) error {
 	builder := r.client.Group.Create().
 		SetName(groupIn.Name).
@@ -73,6 +132,9 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		groupIn.ID = created.ID
 		groupIn.CreatedAt = created.CreatedAt
 		groupIn.UpdatedAt = created.UpdatedAt
+		if err := setGroupForceOpenAIPriority(ctx, r.sql, groupIn.ID, groupIn.ForceOpenAIPriority); err != nil {
+			return err
+		}
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 			logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group create failed: group=%d err=%v", groupIn.ID, err)
 		}
@@ -99,7 +161,13 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 	}
-	return groupEntityToService(m), nil
+	out := groupEntityToService(m)
+	flags, err := loadGroupForceOpenAIPriorityMap(ctx, r.sql, []int64{out.ID})
+	if err != nil {
+		return nil, err
+	}
+	out.ForceOpenAIPriority = flags[out.ID]
+	return out, nil
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
@@ -185,6 +253,9 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	if err != nil {
 		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
 	}
+	if err := setGroupForceOpenAIPriority(ctx, r.sql, groupIn.ID, groupIn.ForceOpenAIPriority); err != nil {
+		return err
+	}
 	groupIn.UpdatedAt = updated.UpdatedAt
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupIn.ID, err)
@@ -257,6 +328,9 @@ func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
+	if flags, err := loadGroupForceOpenAIPriorityMap(ctx, r.sql, groupIDs); err == nil {
+		applyGroupForceOpenAIPriority(outGroups, flags)
+	}
 
 	return outGroups, paginationResultFromTotal(int64(total), params), nil
 }
@@ -287,6 +361,9 @@ func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, erro
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
+	if flags, err := loadGroupForceOpenAIPriorityMap(ctx, r.sql, groupIDs); err == nil {
+		applyGroupForceOpenAIPriority(outGroups, flags)
+	}
 
 	return outGroups, nil
 }
@@ -316,6 +393,9 @@ func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform str
 			outGroups[i].ActiveAccountCount = c.Active
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
+	}
+	if flags, err := loadGroupForceOpenAIPriorityMap(ctx, r.sql, groupIDs); err == nil {
+		applyGroupForceOpenAIPriority(outGroups, flags)
 	}
 
 	return outGroups, nil

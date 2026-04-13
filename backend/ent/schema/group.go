@@ -137,6 +137,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("require_privacy_set").
 			Default(false).
 			Comment("调度时仅允许 privacy 已成功设置的账号"),
+		field.Bool("force_openai_priority").
+			Default(false).
+			Comment("Force OpenAI requests in this group to use service_tier=priority"),
 		field.String("default_mapped_model").
 			MaxLen(100).
 			Default("").

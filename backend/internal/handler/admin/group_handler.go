@@ -109,6 +109,7 @@ type CreateGroupRequest struct {
 	RequireOAuthOnly      bool   `json:"require_oauth_only"`
 	RequirePrivacySet     bool   `json:"require_privacy_set"`
 	DefaultMappedModel    string `json:"default_mapped_model"`
+	ForceOpenAIPriority   bool   `json:"force_openai_priority"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -143,6 +144,7 @@ type UpdateGroupRequest struct {
 	RequireOAuthOnly      *bool   `json:"require_oauth_only"`
 	RequirePrivacySet     *bool   `json:"require_privacy_set"`
 	DefaultMappedModel    *string `json:"default_mapped_model"`
+	ForceOpenAIPriority   *bool   `json:"force_openai_priority"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -257,6 +259,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
+		ForceOpenAIPriority:             req.ForceOpenAIPriority,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -307,6 +310,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
+		ForceOpenAIPriority:             req.ForceOpenAIPriority,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {

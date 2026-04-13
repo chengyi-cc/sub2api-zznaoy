@@ -156,6 +156,7 @@ type CreateGroupInput struct {
 	DefaultMappedModel    string
 	RequireOAuthOnly      bool
 	RequirePrivacySet     bool
+	ForceOpenAIPriority   bool
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -190,6 +191,7 @@ type UpdateGroupInput struct {
 	DefaultMappedModel    *string
 	RequireOAuthOnly      *bool
 	RequirePrivacySet     *bool
+	ForceOpenAIPriority   *bool
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -908,6 +910,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
+		ForceOpenAIPriority:             input.ForceOpenAIPriority,
 	}
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
@@ -1134,6 +1137,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.DefaultMappedModel != nil {
 		group.DefaultMappedModel = *input.DefaultMappedModel
+	}
+	if input.ForceOpenAIPriority != nil {
+		group.ForceOpenAIPriority = *input.ForceOpenAIPriority
 	}
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {

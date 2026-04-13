@@ -62,6 +62,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 	}
 	responsesReq.Model = upstreamModel
+	if shouldForceOpenAIPriority(c) {
+		responsesReq.ServiceTier = "priority"
+	}
 
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),

@@ -1591,7 +1591,11 @@ export default {
         allowDispatchHint: 'Когда включено, API-ключи в этой группе OpenAI могут отправлять запросы через эндпоинт /v1/messages',
         defaultModel: 'Модель по умолчанию после маппинга',
         defaultModelPlaceholder: 'например, gpt-4.1',
-        defaultModelHint: 'Если для аккаунта не настроен маппинг моделей, все модели запросов будут сопоставляться с этой моделью'
+        defaultModelHint: 'Если для аккаунта не настроен маппинг моделей, все модели запросов будут сопоставляться с этой моделью',
+        forcePriority: 'Принудительный fast-режим',
+        forcePriorityHint: 'Для всех запросов этой группы OpenAI будет принудительно ставиться service_tier=priority, даже если клиент передал свое значение',
+        forcePriorityEnabled: 'Включено: все запросы принудительно идут с priority',
+        forcePriorityDisabled: 'Отключено'
       },
       invalidRequestFallback: {
         title: 'Fallback-группа для недопустимого запроса',
