@@ -105,11 +105,12 @@ type CreateGroupRequest struct {
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string `json:"supported_model_scopes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
-	AllowMessagesDispatch bool   `json:"allow_messages_dispatch"`
-	RequireOAuthOnly      bool   `json:"require_oauth_only"`
-	RequirePrivacySet     bool   `json:"require_privacy_set"`
-	DefaultMappedModel    string `json:"default_mapped_model"`
-	ForceOpenAIPriority   bool   `json:"force_openai_priority"`
+	AllowMessagesDispatch       bool                                      `json:"allow_messages_dispatch"`
+	RequireOAuthOnly            bool                                      `json:"require_oauth_only"`
+	RequirePrivacySet           bool                                      `json:"require_privacy_set"`
+	DefaultMappedModel          string                                    `json:"default_mapped_model"`
+	ForceOpenAIPriority         bool                                      `json:"force_openai_priority"`
+	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -140,11 +141,12 @@ type UpdateGroupRequest struct {
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string `json:"supported_model_scopes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
-	AllowMessagesDispatch *bool   `json:"allow_messages_dispatch"`
-	RequireOAuthOnly      *bool   `json:"require_oauth_only"`
-	RequirePrivacySet     *bool   `json:"require_privacy_set"`
-	DefaultMappedModel    *string `json:"default_mapped_model"`
-	ForceOpenAIPriority   *bool   `json:"force_openai_priority"`
+	AllowMessagesDispatch       *bool                                      `json:"allow_messages_dispatch"`
+	RequireOAuthOnly            *bool                                      `json:"require_oauth_only"`
+	RequirePrivacySet           *bool                                      `json:"require_privacy_set"`
+	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
+	ForceOpenAIPriority         *bool                                      `json:"force_openai_priority"`
+	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -162,6 +164,8 @@ func (h *GroupHandler) List(c *gin.Context) {
 		search = search[:100]
 	}
 	isExclusiveStr := c.Query("is_exclusive")
+	sortBy := c.DefaultQuery("sort_by", "sort_order")
+	sortOrder := c.DefaultQuery("sort_order", "asc")
 
 	var isExclusive *bool
 	if isExclusiveStr != "" {
@@ -169,7 +173,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 		isExclusive = &val
 	}
 
-	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive)
+	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -260,6 +264,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		ForceOpenAIPriority:             req.ForceOpenAIPriority,
+		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -311,6 +316,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		ForceOpenAIPriority:             req.ForceOpenAIPriority,
+		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {

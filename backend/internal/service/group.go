@@ -3,7 +3,11 @@ package service
 import (
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
+
+type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 
 type Group struct {
 	ID             int64
@@ -38,12 +42,13 @@ type Group struct {
 
 	SortOrder int
 
-	// OpenAI group-level routing options.
-	AllowMessagesDispatch bool
-	RequireOAuthOnly      bool
-	RequirePrivacySet     bool
-	DefaultMappedModel    string
-	ForceOpenAIPriority   bool
+	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	AllowMessagesDispatch       bool
+	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）
+	RequirePrivacySet           bool // 调度时仅允许 privacy 已成功设置的账号（OpenAI/Antigravity/Anthropic/Gemini）
+	DefaultMappedModel          string
+	ForceOpenAIPriority         bool
+	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
