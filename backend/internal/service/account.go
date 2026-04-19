@@ -1170,17 +1170,6 @@ func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
 	return ok && enabled
 }
 
-// IsAnthropicStripThinkingEnabled 返回 Anthropic 账号是否启用请求级 thinking 字段过滤。
-// 字段：accounts.extra.strip_thinking。
-// 仅 Anthropic 非 Bedrock 账号生效，字段缺失或类型不正确时按 false 处理。
-func (a *Account) IsAnthropicStripThinkingEnabled() bool {
-	if a == nil || a.Platform != PlatformAnthropic || a.Type == AccountTypeBedrock || a.Extra == nil {
-		return false
-	}
-	enabled, ok := a.Extra["strip_thinking"].(bool)
-	return ok && enabled
-}
-
 // WebSearch 模拟三态常量
 const (
 	WebSearchModeDefault  = "default"  // 跟随渠道配置

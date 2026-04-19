@@ -3942,9 +3942,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body
-		if account.IsAnthropicStripThinkingEnabled() {
-			passthroughBody = StripTopLevelThinkingField(passthroughBody)
-		}
 		passthroughModel := parsed.Model
 		if passthroughModel != "" {
 			if mappedModel := account.GetMappedModel(passthroughModel); mappedModel != passthroughModel {
@@ -3981,9 +3978,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}
 
 	body := parsed.Body
-	if account != nil && account.IsAnthropicStripThinkingEnabled() {
-		body = StripTopLevelThinkingField(body)
-	}
 	reqModel := parsed.Model
 	reqStream := parsed.Stream
 	originalModel := reqModel
@@ -8180,9 +8174,6 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body
-		if account.IsAnthropicStripThinkingEnabled() {
-			passthroughBody = StripTopLevelThinkingField(passthroughBody)
-		}
 		if reqModel := parsed.Model; reqModel != "" {
 			if mappedModel := account.GetMappedModel(reqModel); mappedModel != reqModel {
 				passthroughBody = s.replaceModelInBody(passthroughBody, mappedModel)
