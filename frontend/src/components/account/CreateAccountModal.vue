@@ -2401,6 +2401,35 @@
 
       <!-- Anthropic API Key: Web Search Emulation (hidden when global disabled) -->
       <div
+        v-if="form.platform === 'anthropic'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.stripThinking') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.anthropic.stripThinkingDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="anthropicStripThinkingEnabled = !anthropicStripThinkingEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              anthropicStripThinkingEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                anthropicStripThinkingEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
+      <div
         v-if="form.platform === 'anthropic' && accountCategory === 'apikey' && webSearchGlobalEnabled"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
@@ -3075,6 +3104,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
+const anthropicStripThinkingEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
 const {
@@ -3416,6 +3446,7 @@ watch(
     }
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
+      anthropicStripThinkingEnabled.value = false
       webSearchEmulationMode.value = 'default'
     }
     // Reset OAuth states
@@ -3437,6 +3468,9 @@ watch(
     if (platform !== 'anthropic' || category !== 'apikey') {
       anthropicPassthroughEnabled.value = false
       webSearchEmulationMode.value = 'default'
+    }
+    if (platform !== 'anthropic') {
+      anthropicStripThinkingEnabled.value = false
     }
   }
 )
@@ -3801,6 +3835,7 @@ const resetForm = () => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   anthropicPassthroughEnabled.value = false
+  anthropicStripThinkingEnabled.value = false
   webSearchEmulationMode.value = 'default'
   // Reset quota control state
   windowCostEnabled.value = false
@@ -3879,20 +3914,29 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
 }
 
 const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  if (form.platform !== 'anthropic' || accountCategory.value !== 'apikey') {
+  if (form.platform !== 'anthropic') {
     return base
   }
 
   const extra: Record<string, unknown> = { ...(base || {}) }
-  if (anthropicPassthroughEnabled.value) {
-    extra.anthropic_passthrough = true
+
+  if (anthropicStripThinkingEnabled.value) {
+    extra.strip_thinking = true
   } else {
-    delete extra.anthropic_passthrough
+    delete extra.strip_thinking
   }
-  if (webSearchEmulationMode.value === 'default') {
-    delete extra.web_search_emulation
-  } else {
-    extra.web_search_emulation = webSearchEmulationMode.value
+
+  if (accountCategory.value === 'apikey') {
+    if (anthropicPassthroughEnabled.value) {
+      extra.anthropic_passthrough = true
+    } else {
+      delete extra.anthropic_passthrough
+    }
+    if (webSearchEmulationMode.value === 'default') {
+      delete extra.web_search_emulation
+    } else {
+      extra.web_search_emulation = webSearchEmulationMode.value
+    }
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
@@ -4659,7 +4703,7 @@ const handleAnthropicExchange = async (authCode: string) => {
 
     const credentials: Record<string, unknown> = { ...tokenInfo }
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
-    await createAccountAndFinish(form.platform, addMethod.value as AccountType, credentials, extra)
+    await createAccountAndFinish(form.platform, addMethod.value as AccountType, credentials, buildAnthropicExtra(extra))
   } catch (error: any) {
     oauth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(oauth.error.value)
@@ -4795,7 +4839,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
-          extra,
+          extra: buildAnthropicExtra(extra),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,

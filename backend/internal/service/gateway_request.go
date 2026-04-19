@@ -380,6 +380,25 @@ func FilterThinkingBlocks(body []byte) []byte {
 	return filterThinkingBlocksInternal(body, false)
 }
 
+// StripTopLevelThinkingField removes top-level thinking field from request body.
+// Used for account-level compatibility rules on Anthropic channels.
+func StripTopLevelThinkingField(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	if !gjson.ValidBytes(body) {
+		return body
+	}
+	if !gjson.GetBytes(body, "thinking").Exists() {
+		return body
+	}
+	out, err := sjson.DeleteBytes(body, "thinking")
+	if err != nil {
+		return body
+	}
+	return removeThinkingDependentContextStrategies(out)
+}
+
 // FilterThinkingBlocksForRetry strips thinking-related constructs for retry scenarios.
 //
 // Why:

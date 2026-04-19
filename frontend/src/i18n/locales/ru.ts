@@ -2217,7 +2217,9 @@ export default {
       },
       anthropic: {
         apiKeyPassthrough: 'Автопроброс (только авторизация)',
-        apiKeyPassthroughDesc: 'Применяется только к Anthropic API Key аккаунтам. Когда включено, messages/count_tokens пересылаются в passthrough-режиме только с заменой auth, при этом сохраняются биллинг, управление параллелизмом, аудит и safety-фильтрация. Отключение мгновенно откатывает это поведение.'
+        apiKeyPassthroughDesc: 'Применяется только к Anthropic API Key аккаунтам. Когда включено, messages/count_tokens пересылаются в passthrough-режиме только с заменой auth, при этом сохраняются биллинг, управление параллелизмом, аудит и safety-фильтрация. Отключение мгновенно откатывает это поведение.',
+        stripThinking: 'Фильтровать поле Thinking',
+        stripThinkingDesc: 'Применяется только к Anthropic-аккаунтам. При включении шлюз удаляет верхнеуровневое поле thinking перед отправкой в upstream, чтобы избежать ошибок несовместимых каналов.'
       },
       modelRestriction: 'Ограничение моделей (необязательно)',
       modelWhitelist: 'Белый список моделей',

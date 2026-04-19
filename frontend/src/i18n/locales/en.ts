@@ -2394,6 +2394,9 @@ export default {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
         apiKeyPassthroughDesc:
           'Only applies to Anthropic API Key accounts. When enabled, messages/count_tokens are forwarded in passthrough mode with auth replacement only, while billing/concurrency/audit and safety filtering are preserved. Disable to roll back immediately.',
+        stripThinking: 'Strip Thinking Field',
+        stripThinkingDesc:
+          'Only applies to Anthropic accounts. When enabled, the gateway removes the top-level thinking field before upstream forwarding to avoid incompatible channel errors.',
         webSearchEmulation: 'Web Search Emulation',
         webSearchEmulationDesc:
           'Enable web search emulation for this API Key account. When a pure web_search request is detected, the gateway calls a third-party search API and constructs the response locally. Default follows channel config.',
