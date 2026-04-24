@@ -669,48 +669,6 @@ const ChevronDownIcon = {
     )
 }
 
-<<<<<<< HEAD
-// User navigation items (for regular users)
-const userNavItems = computed((): NavItem[] => {
-  const items: NavItem[] = [
-    { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    ...(appStore.cachedPublicSettings?.payment_enabled
-      ? [
-          {
-            path: '/purchase',
-            label: t('nav.buySubscription'),
-            icon: RechargeSubscriptionIcon,
-            hideInSimpleMode: true
-          },
-        ]
-      : []),
-    ...(appStore.cachedPublicSettings?.payment_enabled
-      ? [
-          {
-            path: '/orders',
-            label: t('nav.myOrders'),
-            icon: OrderListIcon,
-            hideInSimpleMode: true
-          },
-        ]
-      : []),
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    { path: '/profile', label: t('nav.profile'), icon: UserIcon },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
-      path: item.open_mode === 'new_tab' ? item.url : `/custom/${item.id}`,
-      label: item.label,
-      icon: null,
-      iconSvg: item.icon_svg,
-      openMode: item.open_mode,
-      externalUrl: item.url,
-    })),
-  ]
-  return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
-})
-=======
 // Public-settings flags go through the registry in utils/featureFlags.ts,
 // which handles the opt-in vs opt-out fallback when settings haven't loaded
 // yet. Admin-only flags (not in public settings) stay inline below.
@@ -719,7 +677,6 @@ const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
->>>>>>> upstream/main
 
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
@@ -836,11 +793,7 @@ const adminNavItems = computed((): NavItem[] => {
 
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
   for (const cm of customMenuItemsForAdmin.value) {
-<<<<<<< HEAD
-    baseItems.push({ path: cm.open_mode === 'new_tab' ? cm.url : `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg, openMode: cm.open_mode, externalUrl: cm.url })
-=======
-    visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
->>>>>>> upstream/main
+    visible.push({ path: cm.open_mode === 'new_tab' ? cm.url : `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg, openMode: cm.open_mode, externalUrl: cm.url })
   }
   return visible
 })
