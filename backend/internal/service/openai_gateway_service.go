@@ -899,21 +899,6 @@ func getAPIKeyIDFromContext(c *gin.Context) int64 {
 	return apiKey.ID
 }
 
-func getAPIKeyFromContext(c *gin.Context) *APIKey {
-	if c == nil {
-		return nil
-	}
-	v, exists := c.Get("api_key")
-	if !exists {
-		return nil
-	}
-	apiKey, ok := v.(*APIKey)
-	if !ok || apiKey == nil {
-		return nil
-	}
-	return apiKey
-}
-
 func shouldForceOpenAIPriority(c *gin.Context) bool {
 	apiKey := getAPIKeyFromContext(c)
 	if apiKey == nil || apiKey.Group == nil {
