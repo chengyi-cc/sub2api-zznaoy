@@ -200,6 +200,62 @@
           </div>
         </div>
 
+        <!-- User reconciliation overview -->
+        <div
+          class="rounded-md border p-4"
+          :class="detail.user_overview.exceeds_total_recharge
+            ? 'border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-900/10'
+            : 'border-gray-200 dark:border-dark-700'"
+        >
+          <div class="mb-2 flex items-center justify-between">
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {{ t('invoice.detailUserOverview') }}
+            </div>
+            <div
+              v-if="detail.user_overview.exceeds_total_recharge"
+              class="text-xs font-semibold text-red-600 dark:text-red-400"
+            >
+              ⚠ {{ t('invoice.detailExceedsRecharge') }}
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+            <div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.userTotalRecharged') }}</div>
+              <div class="mt-0.5 text-base font-semibold text-gray-900 dark:text-white">
+                ¥{{ detail.user_overview.total_recharged.toFixed(2) }}
+              </div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.userBalance') }}</div>
+              <div class="mt-0.5 text-base font-semibold text-gray-900 dark:text-white">
+                ¥{{ detail.user_overview.balance.toFixed(2) }}
+              </div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.userIssuedTotal') }}</div>
+              <div class="mt-0.5 text-base font-semibold text-emerald-600 dark:text-emerald-400">
+                ¥{{ detail.user_overview.issued_total.toFixed(2) }}
+              </div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.userInFlightTotal') }}</div>
+              <div class="mt-0.5 text-base font-semibold text-yellow-600 dark:text-yellow-400">
+                ¥{{ detail.user_overview.in_flight_total.toFixed(2) }}
+              </div>
+            </div>
+          </div>
+          <div
+            v-if="detail.user_overview.total_recharged > 0"
+            class="mt-3 border-t border-gray-200 pt-3 text-xs dark:border-dark-700"
+            :class="detail.user_overview.exceeds_total_recharge ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'"
+          >
+            {{ t('invoice.userIssuedPlusInFlight') }}: ¥{{ detail.user_overview.issued_plus_in_flight.toFixed(2) }}
+            /
+            ¥{{ detail.user_overview.total_recharged.toFixed(2) }}
+            ({{ ((detail.user_overview.issued_plus_in_flight / detail.user_overview.total_recharged) * 100).toFixed(1) }}%)
+          </div>
+        </div>
+
         <!-- Amount reconciliation -->
         <div
           class="rounded-md border p-4"

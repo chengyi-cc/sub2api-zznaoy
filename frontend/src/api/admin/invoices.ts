@@ -47,6 +47,15 @@ export interface InvoiceDetailRedeem {
   eligible: boolean
 }
 
+export interface InvoiceUserOverview {
+  total_recharged: number
+  balance: number
+  issued_total: number
+  in_flight_total: number
+  issued_plus_in_flight: number
+  exceeds_total_recharge: boolean
+}
+
 export interface InvoiceRequestDetail {
   request: InvoiceRequest
   user_email: string
@@ -56,6 +65,7 @@ export interface InvoiceRequestDetail {
   computed_sum: number
   amount_match: boolean
   all_eligible: boolean
+  user_overview: InvoiceUserOverview
 }
 
 export async function adminGetInvoiceDetail(id: number): Promise<InvoiceRequestDetail> {

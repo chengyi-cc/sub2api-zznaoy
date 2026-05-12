@@ -710,16 +710,30 @@ func (s *InvoiceService) AdminGet(ctx context.Context, requestID int64) (*dbent.
 }
 
 // InvoiceRequestDetail 管理员审核详情视图：在发票申请记录外
-// 还包含关联订单 / 兑换码的当前状态 + 申请人邮箱，便于人工对账。
+// 还包含关联订单 / 兑换码的当前状态 + 申请人邮箱 + 申请人对账概览，
+// 便于人工对账和反欺诈判断（防止超开/多开发票）。
 type InvoiceRequestDetail struct {
-	Request      *dbent.InvoiceRequest `json:"request"`
-	UserEmail    string                `json:"user_email"`
-	UserName     string                `json:"user_name"`
-	Orders       []InvoiceDetailOrder  `json:"orders"`
-	RedeemCodes  []InvoiceDetailRedeem `json:"redeem_codes"`
-	ComputedSum  float64               `json:"computed_sum"`  // 当前数据库中订单 + 兑换码合计，可与 request.amount 对照
-	AmountMatch  bool                  `json:"amount_match"`  // ComputedSum == request.amount 时为 true
-	AllEligible  bool                  `json:"all_eligible"`  // 所有订单 COMPLETED 且兑换码合规
+	Request     *dbent.InvoiceRequest `json:"request"`
+	UserEmail   string                `json:"user_email"`
+	UserName    string                `json:"user_name"`
+	Orders      []InvoiceDetailOrder  `json:"orders"`
+	RedeemCodes []InvoiceDetailRedeem `json:"redeem_codes"`
+	ComputedSum float64               `json:"computed_sum"` // 当前数据库中订单 + 兑换码合计，可与 request.amount 对照
+	AmountMatch bool                  `json:"amount_match"` // ComputedSum == request.amount 时为 true
+	AllEligible bool                  `json:"all_eligible"` // 所有订单 COMPLETED 且兑换码合规
+
+	// 申请人对账概览（反欺诈核心数据）
+	UserOverview InvoiceUserOverview `json:"user_overview"`
+}
+
+// InvoiceUserOverview 申请人发票相关的累计金额视图。
+type InvoiceUserOverview struct {
+	TotalRecharged       float64 `json:"total_recharged"`         // 用户总充值金额（user.total_recharged）
+	Balance              float64 `json:"balance"`                 // 用户当前余额（参考）
+	IssuedTotal          float64 `json:"issued_total"`            // 已开具发票总金额（包含本次若已 issued）
+	InFlightTotal        float64 `json:"in_flight_total"`         // 在途（pending + approved）发票总金额（包含本次若 pending/approved）
+	IssuedPlusInFlight   float64 `json:"issued_plus_in_flight"`   // 上面两个之和
+	ExceedsTotalRecharge bool    `json:"exceeds_total_recharge"`  // issued + in_flight > total_recharged 时为 true（超开警告）
 }
 
 // InvoiceDetailOrder 详情中的订单视图，含订单**当前**状态而不是申请时快照。
@@ -760,10 +774,34 @@ func (s *InvoiceService) AdminGetDetail(ctx context.Context, requestID int64) (*
 		AllEligible: true,
 	}
 
-	// 申请人信息
+	// 申请人信息 + 对账概览
 	if user, err := s.userRepo.GetByID(ctx, r.UserID); err == nil && user != nil {
 		detail.UserEmail = user.Email
 		detail.UserName = user.Username
+		detail.UserOverview.TotalRecharged = user.TotalRecharged
+		detail.UserOverview.Balance = user.Balance
+	}
+
+	// 聚合该用户所有发票申请的金额（不只是当前这条）
+	allUserReqs, err := s.entClient.InvoiceRequest.Query().
+		Where(invoicerequest.UserIDEQ(r.UserID)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate user invoice totals: %w", err)
+	}
+	for _, ir := range allUserReqs {
+		switch ir.Status {
+		case domain.InvoiceStatusIssued:
+			detail.UserOverview.IssuedTotal += ir.Amount
+		case domain.InvoiceStatusPending, domain.InvoiceStatusApproved:
+			detail.UserOverview.InFlightTotal += ir.Amount
+		}
+	}
+	detail.UserOverview.IssuedPlusInFlight = detail.UserOverview.IssuedTotal + detail.UserOverview.InFlightTotal
+	// 超开判定：仅当用户有 total_recharged > 0 时才做对比（避免新用户/0 充值时误报）
+	if detail.UserOverview.TotalRecharged > 0 &&
+		detail.UserOverview.IssuedPlusInFlight > detail.UserOverview.TotalRecharged+0.01 {
+		detail.UserOverview.ExceedsTotalRecharge = true
 	}
 
 	// 订单当前状态

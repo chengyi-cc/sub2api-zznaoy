@@ -78,14 +78,15 @@ func (h *InvoiceHandler) Detail(c *gin.Context) {
 	// 但 Request 字段是 ent.InvoiceRequest 含敏感字段（如内部文件路径），
 	// 替换成与列表一致的 DTO 视图。
 	response.Success(c, gin.H{
-		"request":      dto.InvoiceRequestFromEnt(d.Request),
-		"user_email":   d.UserEmail,
-		"user_name":    d.UserName,
-		"orders":       d.Orders,
-		"redeem_codes": d.RedeemCodes,
-		"computed_sum": d.ComputedSum,
-		"amount_match": d.AmountMatch,
-		"all_eligible": d.AllEligible,
+		"request":       dto.InvoiceRequestFromEnt(d.Request),
+		"user_email":    d.UserEmail,
+		"user_name":     d.UserName,
+		"orders":        d.Orders,
+		"redeem_codes":  d.RedeemCodes,
+		"computed_sum":  d.ComputedSum,
+		"amount_match":  d.AmountMatch,
+		"all_eligible":  d.AllEligible,
+		"user_overview": d.UserOverview,
 	})
 }
 
