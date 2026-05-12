@@ -4769,6 +4769,26 @@
               </div>
               <Toggle v-model="form.invoice_enabled" />
             </div>
+
+            <div v-if="form.invoice_enabled">
+              <label class="input-label">
+                {{ t('admin.settings.features.invoice.minAmount') }}
+              </label>
+              <div class="relative">
+                <input
+                  v-model.number="form.invoice_min_amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input pr-8"
+                  placeholder="200"
+                />
+                <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">¥</span>
+              </div>
+              <p class="mt-1 text-xs text-gray-400">
+                {{ t('admin.settings.features.invoice.minAmountHint') }}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -6547,6 +6567,7 @@ const form = reactive<SettingsForm>({
   affiliate_enabled: false,
   // Invoice (发票申请) feature switch
   invoice_enabled: false,
+  invoice_min_amount: 200,
 });
 
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
@@ -7654,6 +7675,7 @@ async function saveSettings() {
       affiliate_enabled: form.affiliate_enabled,
       // Invoice (发票申请) feature switch
       invoice_enabled: form.invoice_enabled,
+      invoice_min_amount: Number(form.invoice_min_amount) || 0,
     };
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，

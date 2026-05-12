@@ -18,6 +18,7 @@ import (
 	"net/mail"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -434,6 +435,21 @@ func (s *InvoiceService) CreateRequest(ctx context.Context, input CreateInvoiceR
 	for _, cid := range input.RedeemCodeIDs {
 		if _, taken := claimedCodes[cid]; taken {
 			return nil, ErrInvoiceRedeemAlreadyClaimed
+		}
+	}
+
+	// 单次开票最低金额校验：管理员可在系统设置里配置；0 = 不限制。
+	// 兜底放在最后（确保即便前端绕过表单 disable 也挡得住）。
+	if s.settingService != nil {
+		minAmount := s.settingService.GetInvoiceMinAmount(ctx)
+		if minAmount > 0 && totalAmount < minAmount {
+			return nil, infraerrors.BadRequest(
+				"INVOICE_AMOUNT_BELOW_MIN",
+				"invoice amount is below the minimum threshold",
+			).WithMetadata(map[string]string{
+				"min_amount":   strconv.FormatFloat(minAmount, 'f', 2, 64),
+				"total_amount": strconv.FormatFloat(totalAmount, 'f', 2, 64),
+			})
 		}
 	}
 

@@ -25,6 +25,7 @@ const (
 	AffiliateRebateRateMax              = 100.0
 	AffiliateEnabledDefault             = false // 邀请返利总开关默认关闭
 	InvoiceEnabledDefault               = false // 发票申请总开关默认关闭
+	InvoiceMinAmountDefault             = 200.0 // 单次开票最低金额默认 200 元（0 = 不限制）
 	AffiliateRebateFreezeHoursDefault   = 0     // 0 = 不冻结（向后兼容）
 	AffiliateRebateFreezeHoursMax       = 720   // 最大 30 天
 	AffiliateRebateDurationDaysDefault  = 0     // 0 = 永久有效
@@ -105,6 +106,7 @@ const (
 	SettingKeyInvitationCodeEnabled            = "invitation_code_enabled"             // 是否启用邀请码注册
 	SettingKeyAffiliateEnabled                 = "affiliate_enabled"                   // 邀请返利功能总开关
 	SettingKeyInvoiceEnabled                   = "invoice_enabled"                     // 发票申请功能总开关
+	SettingKeyInvoiceMinAmount                 = "invoice_min_amount"                  // 单次开票最低金额（0 = 不限制）
 	SettingKeyAffiliateRebateRate              = "affiliate_rebate_rate"               // 邀请返利比例（百分比，0-100）
 	SettingKeyAffiliateRebateFreezeHours       = "affiliate_rebate_freeze_hours"       // 返利冻结期（小时，0=不冻结）
 	SettingKeyAffiliateRebateDurationDays      = "affiliate_rebate_duration_days"      // 返利有效期（天，0=永久）

@@ -5295,6 +5295,8 @@ export default {
           description: '允许用户基于已完成订单提交开票申请，管理员审核后开具并上传发票 PDF。默认关闭。',
           enabled: '启用发票申请',
           enabledHint: '关闭后用户和管理员菜单中的"发票管理"入口都会隐藏，发票相关接口也会拒绝访问。',
+          minAmount: '单次开票最低金额',
+          minAmountHint: '低于此金额将无法提交开票申请；填 0 表示不限制。默认 200 元。',
         },
         affiliate: {
           title: '邀请返利',
@@ -6934,6 +6936,8 @@ export default {
     remarkPlaceholder: '可选',
     amount: '金额',
     totalAmount: '合计金额',
+    minAmountHint: '最低开票金额 ¥{min}',
+    belowMinAmount: '低于最低开票金额 ¥{min}',
     orders: '个订单',
     selectOrders: '选择开票订单',
     selectOrdersHint: '仅显示已完成订单和余额兑换码，可多选合并开票',

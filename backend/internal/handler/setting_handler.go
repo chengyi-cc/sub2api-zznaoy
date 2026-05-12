@@ -87,6 +87,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		InvoiceEnabled: settings.InvoiceEnabled,
 
+		InvoiceMinAmount: settings.InvoiceMinAmount,
+
 		RiskControlEnabled: settings.RiskControlEnabled,
 	})
 }

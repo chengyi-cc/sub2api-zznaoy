@@ -235,6 +235,7 @@ export interface PublicSettings {
   available_channels_enabled: boolean
   affiliate_enabled: boolean
   invoice_enabled: boolean
+  invoice_min_amount: number
 }
 
 export interface AuthResponse {

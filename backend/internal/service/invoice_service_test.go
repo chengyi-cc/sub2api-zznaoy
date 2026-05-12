@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -607,4 +608,118 @@ func TestInvoiceService_AdminIssue_BlocksOnRedeemCodeValueZeroed(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "INVOICE_REDEEM_STATE_CHANGED")
+}
+
+// ---- Min-amount guard ----
+
+// invoiceTestSettingRepo 是最小化的 SettingRepository mock，仅实现测试需要的方法。
+type invoiceTestSettingRepo struct {
+	values map[string]string
+}
+
+func newInvoiceTestSettingRepo(initial map[string]string) *invoiceTestSettingRepo {
+	values := make(map[string]string, len(initial))
+	for k, v := range initial {
+		values[k] = v
+	}
+	return &invoiceTestSettingRepo{values: values}
+}
+
+func (r *invoiceTestSettingRepo) Get(ctx context.Context, key string) (*Setting, error) {
+	v, ok := r.values[key]
+	if !ok {
+		return nil, ErrSettingNotFound
+	}
+	return &Setting{Key: key, Value: v}, nil
+}
+func (r *invoiceTestSettingRepo) GetValue(ctx context.Context, key string) (string, error) {
+	v, ok := r.values[key]
+	if !ok {
+		return "", nil
+	}
+	return v, nil
+}
+func (r *invoiceTestSettingRepo) Set(ctx context.Context, key, value string) error {
+	r.values[key] = value
+	return nil
+}
+func (r *invoiceTestSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, k := range keys {
+		if v, ok := r.values[k]; ok {
+			out[k] = v
+		}
+	}
+	return out, nil
+}
+func (r *invoiceTestSettingRepo) SetMultiple(ctx context.Context, settings map[string]string) error {
+	for k, v := range settings {
+		r.values[k] = v
+	}
+	return nil
+}
+func (r *invoiceTestSettingRepo) GetAll(ctx context.Context) (map[string]string, error) {
+	out := make(map[string]string, len(r.values))
+	for k, v := range r.values {
+		out[k] = v
+	}
+	return out, nil
+}
+func (r *invoiceTestSettingRepo) Delete(ctx context.Context, key string) error {
+	delete(r.values, key)
+	return nil
+}
+
+// withInvoiceMinAmount 给 service 挂一个返回固定 min 值的 SettingService。
+func withInvoiceMinAmount(t *testing.T, svc *InvoiceService, minAmount float64) {
+	t.Helper()
+	repo := newInvoiceTestSettingRepo(map[string]string{
+		SettingKeyInvoiceMinAmount: strconv.FormatFloat(minAmount, 'f', -1, 64),
+	})
+	svc.settingService = NewSettingService(repo, nil)
+}
+
+func TestInvoiceService_CreateRequest_BlocksWhenBelowMinAmount(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	withInvoiceMinAmount(t, svc, 200)
+	user, orderIDs := seedUserAndCompletedOrders(t, client, 1, 100) // 100 < 200
+
+	_, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:          user.ID,
+		PaymentOrderIDs: orderIDs,
+		InvoiceType:     domain.InvoiceTypePersonal,
+		Title:           "John",
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "INVOICE_AMOUNT_BELOW_MIN")
+}
+
+func TestInvoiceService_CreateRequest_AllowsAtOrAboveMinAmount(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	withInvoiceMinAmount(t, svc, 200)
+	user, orderIDs := seedUserAndCompletedOrders(t, client, 2, 100) // 100*2 = 200
+
+	req, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:          user.ID,
+		PaymentOrderIDs: orderIDs,
+		InvoiceType:     domain.InvoiceTypePersonal,
+		Title:           "John",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 200.0, req.Amount)
+}
+
+func TestInvoiceService_CreateRequest_ZeroMinAmount_NotEnforced(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	withInvoiceMinAmount(t, svc, 0) // 0 = 不限制
+	user, orderIDs := seedUserAndCompletedOrders(t, client, 1, 1)
+
+	req, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:          user.ID,
+		PaymentOrderIDs: orderIDs,
+		InvoiceType:     domain.InvoiceTypePersonal,
+		Title:           "John",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1.0, req.Amount)
 }

@@ -265,6 +265,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		InvoiceEnabled: settings.InvoiceEnabled,
+
+		InvoiceMinAmount: settings.InvoiceMinAmount,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)
@@ -570,6 +572,9 @@ type UpdateSettingsRequest struct {
 
 	// Invoice (发票申请) feature switch
 	InvoiceEnabled *bool `json:"invoice_enabled"`
+
+	// 单次开票最低金额（0 = 不限制；nil = 不修改沿用现值）
+	InvoiceMinAmount *float64 `json:"invoice_min_amount"`
 
 	// 风控中心功能开关
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
@@ -1522,6 +1527,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.InvoiceEnabled
 		}(),
+		InvoiceMinAmount: func() float64 {
+			if req.InvoiceMinAmount != nil {
+				v := *req.InvoiceMinAmount
+				if v < 0 {
+					v = 0
+				}
+				return v
+			}
+			return previousSettings.InvoiceMinAmount
+		}(),
 		RiskControlEnabled: func() bool {
 			if req.RiskControlEnabled != nil {
 				return *req.RiskControlEnabled
@@ -1809,6 +1824,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
 		InvoiceEnabled: updatedSettings.InvoiceEnabled,
+
+		InvoiceMinAmount: updatedSettings.InvoiceMinAmount,
 
 		RiskControlEnabled: updatedSettings.RiskControlEnabled,
 	}
@@ -2213,6 +2230,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.InvoiceEnabled != after.InvoiceEnabled {
 		changed = append(changed, "invoice_enabled")
+	}
+	if before.InvoiceMinAmount != after.InvoiceMinAmount {
+		changed = append(changed, "invoice_min_amount")
 	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")

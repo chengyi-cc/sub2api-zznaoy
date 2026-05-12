@@ -4937,6 +4937,8 @@ export default {
     remarkPlaceholder: 'Необязательно',
     amount: 'Сумма',
     totalAmount: 'Итого',
+    minAmountHint: 'Минимум ¥{min}',
+    belowMinAmount: 'Ниже минимума ¥{min}',
     orders: 'заказов',
     selectOrders: 'Выберите заказы для счёта',
     selectOrdersHint: 'Показываются только завершённые заказы и активированные коды на баланс; можно объединять',

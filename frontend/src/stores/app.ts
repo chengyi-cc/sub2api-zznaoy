@@ -360,6 +360,7 @@ export const useAppStore = defineStore('app', () => {
         risk_control_enabled: false,
         affiliate_enabled: false,
         invoice_enabled: false,
+        invoice_min_amount: 200,
       }
     }
 

@@ -527,6 +527,9 @@ export interface SystemSettings {
   // Invoice (发票申请) feature switch
   invoice_enabled: boolean;
 
+  // 单次开票最低金额（0 = 不限制）
+  invoice_min_amount: number;
+
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
 }
@@ -722,6 +725,9 @@ export interface UpdateSettingsRequest {
 
   // Invoice (发票申请) feature switch
   invoice_enabled?: boolean;
+
+  // 单次开票最低金额（0 = 不限制）
+  invoice_min_amount?: number;
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;

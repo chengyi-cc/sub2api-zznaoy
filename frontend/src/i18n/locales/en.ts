@@ -5132,6 +5132,8 @@ export default {
           description: 'Allow users to submit invoice requests for completed orders. Admins review and upload the invoice PDF. Disabled by default.',
           enabled: 'Enable Invoice',
           enabledHint: 'When off, both user and admin "Invoice" menu entries are hidden and invoice APIs are rejected.',
+          minAmount: 'Minimum invoice amount',
+          minAmountHint: 'Requests with amount below this threshold are rejected. Set 0 to disable. Default 200.',
         },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',
@@ -6750,6 +6752,8 @@ export default {
     remarkPlaceholder: 'Optional',
     amount: 'Amount',
     totalAmount: 'Total amount',
+    minAmountHint: 'Minimum ¥{min}',
+    belowMinAmount: 'Below minimum ¥{min}',
     orders: 'orders',
     selectOrders: 'Select orders to invoice',
     selectOrdersHint: 'Only completed orders and balance redeem codes are listed; multi-select to merge into one invoice',

@@ -627,6 +627,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyInvoiceEnabled,
+		SettingKeyInvoiceMinAmount,
 		SettingKeyRiskControlEnabled,
 	}
 
@@ -733,6 +734,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
 		InvoiceEnabled: settings[SettingKeyInvoiceEnabled] == "true",
+
+		InvoiceMinAmount: parsePositiveFloat(settings[SettingKeyInvoiceMinAmount], InvoiceMinAmountDefault),
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 	}, nil
@@ -887,10 +890,11 @@ type PublicSettingsInjectionPayload struct {
 	// that hid the "可用渠道" menu on page refresh.
 	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
-	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
-	AffiliateEnabled                     bool `json:"affiliate_enabled"`
-	InvoiceEnabled                       bool `json:"invoice_enabled"`
-	RiskControlEnabled                   bool `json:"risk_control_enabled"`
+	AvailableChannelsEnabled             bool    `json:"available_channels_enabled"`
+	AffiliateEnabled                     bool    `json:"affiliate_enabled"`
+	InvoiceEnabled                       bool    `json:"invoice_enabled"`
+	InvoiceMinAmount                     float64 `json:"invoice_min_amount"`
+	RiskControlEnabled                   bool    `json:"risk_control_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -952,6 +956,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		InvoiceEnabled:                       settings.InvoiceEnabled,
+		InvoiceMinAmount:                     settings.InvoiceMinAmount,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 	}, nil
 }
@@ -1574,6 +1579,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Invoice (发票申请) feature switch
 	updates[SettingKeyInvoiceEnabled] = strconv.FormatBool(settings.InvoiceEnabled)
 
+	// 单次开票最低金额（0 = 不限制）
+	updates[SettingKeyInvoiceMinAmount] = strconv.FormatFloat(normalizeInvoiceMinAmount(settings.InvoiceMinAmount), 'f', -1, 64)
+
 	// 风控中心功能开关
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
 
@@ -1963,6 +1971,39 @@ func (s *SettingService) IsInvoiceEnabled(ctx context.Context) bool {
 		return false // 默认关闭
 	}
 	return value == "true"
+}
+
+// GetInvoiceMinAmount 读取单次开票最低金额。
+// 返回 >= 0；0 表示不限制。解析失败/缺失回退到 InvoiceMinAmountDefault。
+func (s *SettingService) GetInvoiceMinAmount(ctx context.Context) float64 {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyInvoiceMinAmount)
+	if err != nil {
+		return InvoiceMinAmountDefault
+	}
+	return parsePositiveFloat(value, InvoiceMinAmountDefault)
+}
+
+// parsePositiveFloat 把字符串解析为 float64；负值会被夹回 0；解析失败回退到 fallback。
+func parsePositiveFloat(s string, fallback float64) float64 {
+	if strings.TrimSpace(s) == "" {
+		return fallback
+	}
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return fallback
+	}
+	if v < 0 {
+		return 0
+	}
+	return v
+}
+
+// normalizeInvoiceMinAmount 写入前做一次保守归一化：负值视为 0。
+func normalizeInvoiceMinAmount(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	return v
 }
 
 // GetAffiliateRebateRatePercent 读取并 clamp 全局返利比例。
@@ -2368,6 +2409,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Invoice (发票申请) feature (default disabled; opt-in)
 		SettingKeyInvoiceEnabled: "false",
 
+		// 单次开票最低金额（默认 200 元）
+		SettingKeyInvoiceMinAmount: strconv.FormatFloat(InvoiceMinAmountDefault, 'f', -1, 64),
+
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
 
@@ -2737,6 +2781,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Invoice (发票申请) feature (default: disabled; strict true)
 	result.InvoiceEnabled = settings[SettingKeyInvoiceEnabled] == "true"
+
+	// 单次开票最低金额（解析失败/缺失回退到默认值）
+	result.InvoiceMinAmount = parsePositiveFloat(settings[SettingKeyInvoiceMinAmount], InvoiceMinAmountDefault)
 
 	// 风控中心功能（默认关闭，严格 true 才启用）
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"

@@ -264,6 +264,18 @@
           >
             {{ t('invoice.totalAmount') }}:
             <span class="font-semibold">¥{{ totalAmount.toFixed(2) }}</span>
+            <span
+              v-if="belowMinAmount"
+              class="ml-2 text-red-600 dark:text-red-400"
+            >
+              {{ t('invoice.belowMinAmount', { min: minAmount.toFixed(2) }) }}
+            </span>
+            <span
+              v-else-if="minAmount > 0"
+              class="ml-2 text-xs text-gray-400"
+            >
+              {{ t('invoice.minAmountHint', { min: minAmount.toFixed(2) }) }}
+            </span>
           </div>
         </div>
 
@@ -365,8 +377,17 @@ import {
   type EligibleOrder,
   type EligibleRedeemCode
 } from '@/api/invoice'
+import { useAppStore } from '@/stores/app'
 
 const { t } = useI18n()
+const appStore = useAppStore()
+
+// 单次开票最低金额阈值（来自 public settings 的 invoice_min_amount，0 = 不限制）。
+const minAmount = computed(() => {
+  const raw = appStore.cachedPublicSettings?.invoice_min_amount
+  if (typeof raw !== 'number' || !isFinite(raw) || raw < 0) return 0
+  return raw
+})
 
 const items = ref<InvoiceRequest[]>([])
 const loading = ref(false)
@@ -406,7 +427,15 @@ const canSubmit = computed(() => {
   if (form.payment_order_ids.length + form.redeem_code_ids.length === 0) return false
   if (!form.title.trim()) return false
   if (form.invoice_type === 'company' && !form.tax_no.trim()) return false
+  if (minAmount.value > 0 && totalAmount.value < minAmount.value) return false
   return true
+})
+
+// belowMinAmount: 已选择来源但金额不足最低额度
+const belowMinAmount = computed(() => {
+  if (minAmount.value <= 0) return false
+  if (form.payment_order_ids.length + form.redeem_code_ids.length === 0) return false
+  return totalAmount.value < minAmount.value
 })
 
 // formatRedeemCode 显示兑换码的前 4 位和后 4 位（隐私友好，但仍可辨识）

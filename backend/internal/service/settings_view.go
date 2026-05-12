@@ -127,6 +127,7 @@ type SystemSettings struct {
 	RiskControlEnabled           bool
 	AffiliateEnabled             bool
 	InvoiceEnabled               bool
+	InvoiceMinAmount             float64
 	AffiliateRebateRate          float64
 	AffiliateRebateFreezeHours   int
 	AffiliateRebateDurationDays  int
@@ -263,6 +264,9 @@ type PublicSettings struct {
 
 	// Invoice (发票申请) feature toggle
 	InvoiceEnabled bool `json:"invoice_enabled"`
+
+	// 单次开票最低金额（0 = 不限制）
+	InvoiceMinAmount float64 `json:"invoice_min_amount"`
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
