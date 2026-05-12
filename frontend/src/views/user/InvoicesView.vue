@@ -161,7 +161,12 @@
     </div>
 
     <!-- Create Modal -->
-    <BaseDialog :show="showCreate" :title="t('invoice.newRequest')" @close="closeCreateModal">
+    <BaseDialog
+      :show="showCreate"
+      :title="t('invoice.newRequest')"
+      width="wide"
+      @close="closeCreateModal"
+    >
       <div class="space-y-4">
         <!-- Eligible orders -->
         <div>
@@ -188,29 +193,29 @@
               </div>
               <div
                 v-else
-                class="max-h-40 overflow-y-auto rounded-md border border-gray-200 dark:border-dark-700"
+                class="max-h-56 overflow-y-auto rounded-md border border-gray-200 dark:border-dark-700"
               >
                 <label
                   v-for="o in eligibleOrders"
                   :key="o.order_id"
-                  class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
+                  class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
                 >
                   <input
                     type="checkbox"
                     :value="o.order_id"
                     v-model="form.payment_order_ids"
-                    class="h-4 w-4"
+                    class="h-4 w-4 flex-shrink-0"
                   />
-                  <div class="flex-1 text-sm">
-                    <div class="font-medium text-gray-900 dark:text-white">
-                      ¥{{ o.amount.toFixed(2) }}
-                      <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                        #{{ o.order_id }} · {{ o.out_trade_no }}
-                      </span>
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-sm font-medium text-gray-900 dark:text-white">
+                      #{{ o.order_id }} · {{ o.out_trade_no }}
                     </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                    <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                       {{ formatDateTime(o.completed_at) }}
                     </div>
+                  </div>
+                  <div class="flex-shrink-0 text-lg font-semibold text-emerald-600 dark:text-emerald-400">
+                    ¥{{ o.amount.toFixed(2) }}
                   </div>
                 </label>
               </div>
@@ -230,29 +235,29 @@
               </div>
               <div
                 v-else
-                class="max-h-40 overflow-y-auto rounded-md border border-gray-200 dark:border-dark-700"
+                class="max-h-56 overflow-y-auto rounded-md border border-gray-200 dark:border-dark-700"
               >
                 <label
                   v-for="c in eligibleRedeemCodes"
                   :key="c.redeem_code_id"
-                  class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
+                  class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
                 >
                   <input
                     type="checkbox"
                     :value="c.redeem_code_id"
                     v-model="form.redeem_code_ids"
-                    class="h-4 w-4"
+                    class="h-4 w-4 flex-shrink-0"
                   />
-                  <div class="flex-1 text-sm">
-                    <div class="font-medium text-gray-900 dark:text-white">
-                      ¥{{ c.value.toFixed(2) }}
-                      <span class="ml-2 font-mono text-xs text-gray-500 dark:text-gray-400">
-                        {{ formatRedeemCode(c.code) }}
-                      </span>
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate font-mono text-sm font-medium text-gray-900 dark:text-white">
+                      {{ c.code }}
                     </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                    <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                       {{ formatDateTime(c.used_at) }}
                     </div>
+                  </div>
+                  <div class="flex-shrink-0 text-lg font-semibold text-emerald-600 dark:text-emerald-400">
+                    ¥{{ c.value.toFixed(2) }}
                   </div>
                 </label>
               </div>
