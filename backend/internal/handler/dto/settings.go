@@ -221,6 +221,9 @@ type SystemSettings struct {
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
+	// Invoice (发票申请) feature switch
+	InvoiceEnabled bool `json:"invoice_enabled"`
+
 	// OpenAI fast/flex policy
 	OpenAIFastPolicySettings *OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
 }
@@ -284,6 +287,8 @@ type PublicSettings struct {
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
+
+	InvoiceEnabled bool `json:"invoice_enabled"`
 
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 }

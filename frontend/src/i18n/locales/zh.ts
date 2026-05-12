@@ -5290,6 +5290,12 @@ export default {
           enabled: '启用风控中心',
           enabledHint: '关闭后管理员侧边栏入口隐藏，网关内容审计不会执行。',
         },
+        invoice: {
+          title: '发票申请',
+          description: '允许用户基于已完成订单提交开票申请，管理员审核后开具并上传发票 PDF。默认关闭。',
+          enabled: '启用发票申请',
+          enabledHint: '关闭后用户和管理员菜单中的"发票管理"入口都会隐藏，发票相关接口也会拒绝访问。',
+        },
         affiliate: {
           title: '邀请返利',
           description: '老用户邀请新用户注册，新用户充值后老用户按比例获得返利额度。默认关闭。',

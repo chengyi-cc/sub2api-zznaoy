@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -119,8 +121,9 @@ func RegisterUserRoutes(
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
 
-		// 发票申请
+		// 发票申请（受 invoice_enabled 总开关控制）
 		invoice := authenticated.Group("/invoice")
+		invoice.Use(invoiceFeatureGuard(settingService))
 		{
 			invoice.GET("/eligible-orders", h.Invoice.ListEligibleOrders)
 			invoice.POST("/requests", h.Invoice.Create)
@@ -128,5 +131,20 @@ func RegisterUserRoutes(
 			invoice.GET("/requests/:id", h.Invoice.Get)
 			invoice.GET("/requests/:id/download", h.Invoice.Download)
 		}
+	}
+}
+
+// invoiceFeatureGuard 拦截发票相关请求；当 invoice_enabled=false 时返回 404
+// （而不是 403），让前端无差别处理"功能未启用"和"路由不存在"。
+func invoiceFeatureGuard(settingService *service.SettingService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if settingService == nil || !settingService.IsInvoiceEnabled(c.Request.Context()) {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
+				"code":    http.StatusNotFound,
+				"message": "Invoice feature is disabled",
+			})
+			return
+		}
+		c.Next()
 	}
 }

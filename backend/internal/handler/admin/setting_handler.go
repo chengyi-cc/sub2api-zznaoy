@@ -263,6 +263,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
+
+		InvoiceEnabled: settings.InvoiceEnabled,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)
@@ -565,6 +567,9 @@ type UpdateSettingsRequest struct {
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
+
+	// Invoice (发票申请) feature switch
+	InvoiceEnabled *bool `json:"invoice_enabled"`
 
 	// 风控中心功能开关
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
@@ -1511,6 +1516,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AffiliateEnabled
 		}(),
+		InvoiceEnabled: func() bool {
+			if req.InvoiceEnabled != nil {
+				return *req.InvoiceEnabled
+			}
+			return previousSettings.InvoiceEnabled
+		}(),
 		RiskControlEnabled: func() bool {
 			if req.RiskControlEnabled != nil {
 				return *req.RiskControlEnabled
@@ -1796,6 +1807,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
+
+		InvoiceEnabled: updatedSettings.InvoiceEnabled,
 
 		RiskControlEnabled: updatedSettings.RiskControlEnabled,
 	}
@@ -2197,6 +2210,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
+	}
+	if before.InvoiceEnabled != after.InvoiceEnabled {
+		changed = append(changed, "invoice_enabled")
 	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")

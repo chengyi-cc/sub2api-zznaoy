@@ -5127,6 +5127,12 @@ export default {
           enabled: 'Enable Risk Control',
           enabledHint: 'When off, the admin sidebar entry is hidden and gateway moderation is skipped.',
         },
+        invoice: {
+          title: 'Invoice',
+          description: 'Allow users to submit invoice requests for completed orders. Admins review and upload the invoice PDF. Disabled by default.',
+          enabled: 'Enable Invoice',
+          enabledHint: 'When off, both user and admin "Invoice" menu entries are hidden and invoice APIs are rejected.',
+        },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',
           description: 'Existing users invite new ones; the inviter earns a percentage rebate on the invitee’s recharges. Disabled by default.',
