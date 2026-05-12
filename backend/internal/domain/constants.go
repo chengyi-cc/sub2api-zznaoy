@@ -67,6 +67,20 @@ const (
 	SubscriptionStatusSuspended = "suspended"
 )
 
+// Invoice type constants
+const (
+	InvoiceTypePersonal = "personal" // 个人
+	InvoiceTypeCompany  = "company"  // 企业
+)
+
+// Invoice status constants
+const (
+	InvoiceStatusPending  = "pending"  // 待审核
+	InvoiceStatusApproved = "approved" // 已通过（等待开票）
+	InvoiceStatusRejected = "rejected" // 已驳回
+	InvoiceStatusIssued   = "issued"   // 已开具
+)
+
 // DefaultAntigravityModelMapping 是 Antigravity 平台的默认模型映射
 // 当账号未配置 model_mapping 时使用此默认值
 // 与前端 useModelWhitelist.ts 中的 antigravityDefaultMappings 保持一致

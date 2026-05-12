@@ -118,5 +118,15 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
+
+		// 发票申请
+		invoice := authenticated.Group("/invoice")
+		{
+			invoice.GET("/eligible-orders", h.Invoice.ListEligibleOrders)
+			invoice.POST("/requests", h.Invoice.Create)
+			invoice.GET("/requests", h.Invoice.List)
+			invoice.GET("/requests/:id", h.Invoice.Get)
+			invoice.GET("/requests/:id/download", h.Invoice.Download)
+		}
 	}
 }

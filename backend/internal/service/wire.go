@@ -518,6 +518,7 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
+	NewInvoiceService,
 )
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named

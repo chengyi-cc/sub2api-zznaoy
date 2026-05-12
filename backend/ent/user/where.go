@@ -1616,6 +1616,29 @@ func HasPendingAuthSessionsWith(preds ...predicate.PendingAuthSession) predicate
 	})
 }
 
+// HasInvoiceRequests applies the HasEdge predicate on the "invoice_requests" edge.
+func HasInvoiceRequests() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, InvoiceRequestsTable, InvoiceRequestsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasInvoiceRequestsWith applies the HasEdge predicate on the "invoice_requests" edge with a given conditions (other predicates).
+func HasInvoiceRequestsWith(preds ...predicate.InvoiceRequest) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newInvoiceRequestsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasUserAllowedGroups applies the HasEdge predicate on the "user_allowed_groups" edge.
 func HasUserAllowedGroups() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
