@@ -443,14 +443,6 @@ const belowMinAmount = computed(() => {
   return totalAmount.value < minAmount.value
 })
 
-// formatRedeemCode 显示兑换码的前 4 位和后 4 位（隐私友好，但仍可辨识）
-function formatRedeemCode(code: string): string {
-  if (!code) return ''
-  const trimmed = code.trim()
-  if (trimmed.length <= 8) return trimmed
-  return `${trimmed.slice(0, 4)}…${trimmed.slice(-4)}`
-}
-
 // sourceCountLabel 在列表中描述发票来源数量（订单 + 兑换码）
 function sourceCountLabel(item: InvoiceRequest): string {
   const orders = item.payment_order_ids?.length ?? 0
