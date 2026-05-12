@@ -939,14 +939,18 @@ func init() {
 	invoicerequest.DefaultUpdatedAt = invoicerequestDescUpdatedAt.Default.(func() time.Time)
 	// invoicerequest.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	invoicerequest.UpdateDefaultUpdatedAt = invoicerequestDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// invoicerequestDescRedeemCodeIds is the schema descriptor for redeem_code_ids field.
+	invoicerequestDescRedeemCodeIds := invoicerequestFields[2].Descriptor()
+	// invoicerequest.DefaultRedeemCodeIds holds the default value on creation for the redeem_code_ids field.
+	invoicerequest.DefaultRedeemCodeIds = invoicerequestDescRedeemCodeIds.Default.([]int64)
 	// invoicerequestDescInvoiceType is the schema descriptor for invoice_type field.
-	invoicerequestDescInvoiceType := invoicerequestFields[3].Descriptor()
+	invoicerequestDescInvoiceType := invoicerequestFields[4].Descriptor()
 	// invoicerequest.DefaultInvoiceType holds the default value on creation for the invoice_type field.
 	invoicerequest.DefaultInvoiceType = invoicerequestDescInvoiceType.Default.(string)
 	// invoicerequest.InvoiceTypeValidator is a validator for the "invoice_type" field. It is called by the builders before save.
 	invoicerequest.InvoiceTypeValidator = invoicerequestDescInvoiceType.Validators[0].(func(string) error)
 	// invoicerequestDescTitle is the schema descriptor for title field.
-	invoicerequestDescTitle := invoicerequestFields[4].Descriptor()
+	invoicerequestDescTitle := invoicerequestFields[5].Descriptor()
 	// invoicerequest.TitleValidator is a validator for the "title" field. It is called by the builders before save.
 	invoicerequest.TitleValidator = func() func(string) error {
 		validators := invoicerequestDescTitle.Validators
@@ -964,25 +968,25 @@ func init() {
 		}
 	}()
 	// invoicerequestDescTaxNo is the schema descriptor for tax_no field.
-	invoicerequestDescTaxNo := invoicerequestFields[5].Descriptor()
+	invoicerequestDescTaxNo := invoicerequestFields[6].Descriptor()
 	// invoicerequest.TaxNoValidator is a validator for the "tax_no" field. It is called by the builders before save.
 	invoicerequest.TaxNoValidator = invoicerequestDescTaxNo.Validators[0].(func(string) error)
 	// invoicerequestDescRecipientEmail is the schema descriptor for recipient_email field.
-	invoicerequestDescRecipientEmail := invoicerequestFields[6].Descriptor()
+	invoicerequestDescRecipientEmail := invoicerequestFields[7].Descriptor()
 	// invoicerequest.RecipientEmailValidator is a validator for the "recipient_email" field. It is called by the builders before save.
 	invoicerequest.RecipientEmailValidator = invoicerequestDescRecipientEmail.Validators[0].(func(string) error)
 	// invoicerequestDescStatus is the schema descriptor for status field.
-	invoicerequestDescStatus := invoicerequestFields[8].Descriptor()
+	invoicerequestDescStatus := invoicerequestFields[9].Descriptor()
 	// invoicerequest.DefaultStatus holds the default value on creation for the status field.
 	invoicerequest.DefaultStatus = invoicerequestDescStatus.Default.(string)
 	// invoicerequest.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	invoicerequest.StatusValidator = invoicerequestDescStatus.Validators[0].(func(string) error)
 	// invoicerequestDescInvoiceNo is the schema descriptor for invoice_no field.
-	invoicerequestDescInvoiceNo := invoicerequestFields[10].Descriptor()
+	invoicerequestDescInvoiceNo := invoicerequestFields[11].Descriptor()
 	// invoicerequest.InvoiceNoValidator is a validator for the "invoice_no" field. It is called by the builders before save.
 	invoicerequest.InvoiceNoValidator = invoicerequestDescInvoiceNo.Validators[0].(func(string) error)
 	// invoicerequestDescInvoiceFilePath is the schema descriptor for invoice_file_path field.
-	invoicerequestDescInvoiceFilePath := invoicerequestFields[11].Descriptor()
+	invoicerequestDescInvoiceFilePath := invoicerequestFields[12].Descriptor()
 	// invoicerequest.InvoiceFilePathValidator is a validator for the "invoice_file_path" field. It is called by the builders before save.
 	invoicerequest.InvoiceFilePathValidator = invoicerequestDescInvoiceFilePath.Validators[0].(func(string) error)
 	paymentauditlogFields := schema.PaymentAuditLog{}.Fields()

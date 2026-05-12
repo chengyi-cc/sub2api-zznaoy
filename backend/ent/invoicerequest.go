@@ -27,6 +27,8 @@ type InvoiceRequest struct {
 	UserID int64 `json:"user_id,omitempty"`
 	// PaymentOrderIds holds the value of the "payment_order_ids" field.
 	PaymentOrderIds []int64 `json:"payment_order_ids,omitempty"`
+	// RedeemCodeIds holds the value of the "redeem_code_ids" field.
+	RedeemCodeIds []int64 `json:"redeem_code_ids,omitempty"`
 	// Amount holds the value of the "amount" field.
 	Amount float64 `json:"amount,omitempty"`
 	// InvoiceType holds the value of the "invoice_type" field.
@@ -82,7 +84,7 @@ func (*InvoiceRequest) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case invoicerequest.FieldPaymentOrderIds:
+		case invoicerequest.FieldPaymentOrderIds, invoicerequest.FieldRedeemCodeIds:
 			values[i] = new([]byte)
 		case invoicerequest.FieldAmount:
 			values[i] = new(sql.NullFloat64)
@@ -137,6 +139,14 @@ func (_m *InvoiceRequest) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.PaymentOrderIds); err != nil {
 					return fmt.Errorf("unmarshal field payment_order_ids: %w", err)
+				}
+			}
+		case invoicerequest.FieldRedeemCodeIds:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field redeem_code_ids", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.RedeemCodeIds); err != nil {
+					return fmt.Errorf("unmarshal field redeem_code_ids: %w", err)
 				}
 			}
 		case invoicerequest.FieldAmount:
@@ -271,6 +281,9 @@ func (_m *InvoiceRequest) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("payment_order_ids=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PaymentOrderIds))
+	builder.WriteString(", ")
+	builder.WriteString("redeem_code_ids=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RedeemCodeIds))
 	builder.WriteString(", ")
 	builder.WriteString("amount=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Amount))

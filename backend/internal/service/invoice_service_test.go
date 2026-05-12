@@ -357,3 +357,182 @@ func TestInvoiceService_AdminIssue_AcceptsValidPDFHeader(t *testing.T) {
 	require.NotNil(t, issued.InvoiceFilePath)
 	require.True(t, strings.HasSuffix(*issued.InvoiceFilePath, ".pdf"))
 }
+
+// ---- Redeem-code source paths ----
+
+// seedUsedBalanceRedeemCode 给 user 注入一条已使用的余额兑换码，返回它的 ID。
+func seedUsedBalanceRedeemCode(t *testing.T, client *dbent.Client, userID int64, code string, value float64) int64 {
+	t.Helper()
+	now := time.Now()
+	rc, err := client.RedeemCode.Create().
+		SetCode(code).
+		SetType(RedeemTypeBalance).
+		SetValue(value).
+		SetStatus(StatusUsed).
+		SetUsedBy(userID).
+		SetUsedAt(now).
+		Save(context.Background())
+	require.NoError(t, err)
+	return rc.ID
+}
+
+func TestInvoiceService_ListEligibleSources_ReturnsBalanceCodesAndExcludesOthers(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
+	ctx := context.Background()
+
+	// Eligible: balance code, used, owned by user, value > 0
+	balanceID := seedUsedBalanceRedeemCode(t, client, user.ID, "BAL-1234567890", 50)
+
+	// Ineligible: concurrency type
+	_, err := client.RedeemCode.Create().
+		SetCode("CONC-1111111111").
+		SetType(RedeemTypeConcurrency).
+		SetValue(5).
+		SetStatus(StatusUsed).
+		SetUsedBy(user.ID).
+		SetUsedAt(time.Now()).
+		Save(ctx)
+	require.NoError(t, err)
+
+	// Ineligible: balance but unused
+	_, err = client.RedeemCode.Create().
+		SetCode("BAL-UNUSED-22222").
+		SetType(RedeemTypeBalance).
+		SetValue(30).
+		SetStatus(StatusUnused).
+		Save(ctx)
+	require.NoError(t, err)
+
+	// Ineligible: balance used but value=0 (defensive guard)
+	_, err = client.RedeemCode.Create().
+		SetCode("BAL-ZERO-33333").
+		SetType(RedeemTypeBalance).
+		SetValue(0).
+		SetStatus(StatusUsed).
+		SetUsedBy(user.ID).
+		SetUsedAt(time.Now()).
+		Save(ctx)
+	require.NoError(t, err)
+
+	sources, err := svc.ListEligibleSources(ctx, user.ID)
+	require.NoError(t, err)
+	require.Len(t, sources.RedeemCodes, 1)
+	require.Equal(t, balanceID, sources.RedeemCodes[0].RedeemCodeID)
+	require.Equal(t, 50.0, sources.RedeemCodes[0].Value)
+}
+
+func TestInvoiceService_CreateRequest_AcceptsBalanceRedeemCode(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
+	codeID := seedUsedBalanceRedeemCode(t, client, user.ID, "BAL-CREATE-AAAA", 80)
+
+	req, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:        user.ID,
+		RedeemCodeIDs: []int64{codeID},
+		InvoiceType:   domain.InvoiceTypePersonal,
+		Title:         "John",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 80.0, req.Amount)
+	require.Empty(t, req.PaymentOrderIds)
+	require.Equal(t, []int64{codeID}, req.RedeemCodeIds)
+}
+
+func TestInvoiceService_CreateRequest_MixedOrderAndRedeemCode_MergesAmounts(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, orderIDs := seedUserAndCompletedOrders(t, client, 1, 100)
+	codeID := seedUsedBalanceRedeemCode(t, client, user.ID, "BAL-MIX-AAAAA", 50)
+
+	req, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:          user.ID,
+		PaymentOrderIDs: orderIDs,
+		RedeemCodeIDs:   []int64{codeID},
+		InvoiceType:     domain.InvoiceTypeCompany,
+		Title:           "Acme Inc.",
+		TaxNo:           "91110000000000000X",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 150.0, req.Amount)
+	require.Len(t, req.PaymentOrderIds, 1)
+	require.Len(t, req.RedeemCodeIds, 1)
+}
+
+func TestInvoiceService_CreateRequest_RejectsNonBalanceRedeemCode(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
+	rc, err := client.RedeemCode.Create().
+		SetCode("CONC-TEST-12345").
+		SetType(RedeemTypeConcurrency).
+		SetValue(5).
+		SetStatus(StatusUsed).
+		SetUsedBy(user.ID).
+		SetUsedAt(time.Now()).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:        user.ID,
+		RedeemCodeIDs: []int64{rc.ID},
+		InvoiceType:   domain.InvoiceTypePersonal,
+		Title:         "John",
+	})
+	require.ErrorIs(t, err, ErrInvoiceRedeemNotEligible)
+}
+
+func TestInvoiceService_CreateRequest_RejectsForeignRedeemCode(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
+
+	other, err := client.User.Create().
+		SetEmail("other-redeem@example.com").
+		SetPasswordHash("hash").
+		SetRole(RoleUser).
+		SetStatus(StatusActive).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	otherCodeID := seedUsedBalanceRedeemCode(t, client, other.ID, "BAL-OTHER-FFFF", 30)
+
+	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:        user.ID,
+		RedeemCodeIDs: []int64{otherCodeID},
+		InvoiceType:   domain.InvoiceTypePersonal,
+		Title:         "John",
+	})
+	require.ErrorIs(t, err, ErrInvoiceRedeemInvalid)
+}
+
+func TestInvoiceService_CreateRequest_RejectsAlreadyClaimedRedeemCode(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
+	codeID := seedUsedBalanceRedeemCode(t, client, user.ID, "BAL-CLAIM-12345", 60)
+
+	_, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:        user.ID,
+		RedeemCodeIDs: []int64{codeID},
+		InvoiceType:   domain.InvoiceTypePersonal,
+		Title:         "First",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:        user.ID,
+		RedeemCodeIDs: []int64{codeID},
+		InvoiceType:   domain.InvoiceTypePersonal,
+		Title:         "Second",
+	})
+	require.ErrorIs(t, err, ErrInvoiceRedeemAlreadyClaimed)
+}
+
+func TestInvoiceService_CreateRequest_RejectsEmptySources(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
+
+	_, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:      user.ID,
+		InvoiceType: domain.InvoiceTypePersonal,
+		Title:       "No sources",
+	})
+	require.ErrorIs(t, err, ErrInvoiceSourcesEmpty)
+}

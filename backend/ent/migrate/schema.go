@@ -784,6 +784,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "payment_order_ids", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "redeem_code_ids", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "invoice_type", Type: field.TypeString, Size: 20, Default: "personal"},
 		{Name: "title", Type: field.TypeString, Size: 200},
@@ -806,7 +807,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "invoice_requests_users_invoice_requests",
-				Columns:    []*schema.Column{InvoiceRequestsColumns[16]},
+				Columns:    []*schema.Column{InvoiceRequestsColumns[17]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -815,12 +816,12 @@ var (
 			{
 				Name:    "invoicerequest_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{InvoiceRequestsColumns[16]},
+				Columns: []*schema.Column{InvoiceRequestsColumns[17]},
 			},
 			{
 				Name:    "invoicerequest_status",
 				Unique:  false,
-				Columns: []*schema.Column{InvoiceRequestsColumns[10]},
+				Columns: []*schema.Column{InvoiceRequestsColumns[11]},
 			},
 			{
 				Name:    "invoicerequest_created_at",
@@ -830,7 +831,7 @@ var (
 			{
 				Name:    "invoicerequest_user_id_status",
 				Unique:  false,
-				Columns: []*schema.Column{InvoiceRequestsColumns[16], InvoiceRequestsColumns[10]},
+				Columns: []*schema.Column{InvoiceRequestsColumns[17], InvoiceRequestsColumns[11]},
 			},
 		},
 	}

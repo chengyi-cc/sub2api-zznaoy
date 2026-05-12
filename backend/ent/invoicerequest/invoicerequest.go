@@ -22,6 +22,8 @@ const (
 	FieldUserID = "user_id"
 	// FieldPaymentOrderIds holds the string denoting the payment_order_ids field in the database.
 	FieldPaymentOrderIds = "payment_order_ids"
+	// FieldRedeemCodeIds holds the string denoting the redeem_code_ids field in the database.
+	FieldRedeemCodeIds = "redeem_code_ids"
 	// FieldAmount holds the string denoting the amount field in the database.
 	FieldAmount = "amount"
 	// FieldInvoiceType holds the string denoting the invoice_type field in the database.
@@ -66,6 +68,7 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldUserID,
 	FieldPaymentOrderIds,
+	FieldRedeemCodeIds,
 	FieldAmount,
 	FieldInvoiceType,
 	FieldTitle,
@@ -97,6 +100,8 @@ var (
 	DefaultUpdatedAt func() time.Time
 	// UpdateDefaultUpdatedAt holds the default value on update for the "updated_at" field.
 	UpdateDefaultUpdatedAt func() time.Time
+	// DefaultRedeemCodeIds holds the default value on creation for the "redeem_code_ids" field.
+	DefaultRedeemCodeIds []int64
 	// DefaultInvoiceType holds the default value on creation for the "invoice_type" field.
 	DefaultInvoiceType string
 	// InvoiceTypeValidator is a validator for the "invoice_type" field. It is called by the builders before save.

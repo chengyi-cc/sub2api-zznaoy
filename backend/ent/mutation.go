@@ -19792,6 +19792,8 @@ type InvoiceRequestMutation struct {
 	updated_at              *time.Time
 	payment_order_ids       *[]int64
 	appendpayment_order_ids []int64
+	redeem_code_ids         *[]int64
+	appendredeem_code_ids   []int64
 	amount                  *float64
 	addamount               *float64
 	invoice_type            *string
@@ -20069,6 +20071,57 @@ func (m *InvoiceRequestMutation) AppendedPaymentOrderIds() ([]int64, bool) {
 func (m *InvoiceRequestMutation) ResetPaymentOrderIds() {
 	m.payment_order_ids = nil
 	m.appendpayment_order_ids = nil
+}
+
+// SetRedeemCodeIds sets the "redeem_code_ids" field.
+func (m *InvoiceRequestMutation) SetRedeemCodeIds(i []int64) {
+	m.redeem_code_ids = &i
+	m.appendredeem_code_ids = nil
+}
+
+// RedeemCodeIds returns the value of the "redeem_code_ids" field in the mutation.
+func (m *InvoiceRequestMutation) RedeemCodeIds() (r []int64, exists bool) {
+	v := m.redeem_code_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRedeemCodeIds returns the old "redeem_code_ids" field's value of the InvoiceRequest entity.
+// If the InvoiceRequest object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InvoiceRequestMutation) OldRedeemCodeIds(ctx context.Context) (v []int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRedeemCodeIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRedeemCodeIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRedeemCodeIds: %w", err)
+	}
+	return oldValue.RedeemCodeIds, nil
+}
+
+// AppendRedeemCodeIds adds i to the "redeem_code_ids" field.
+func (m *InvoiceRequestMutation) AppendRedeemCodeIds(i []int64) {
+	m.appendredeem_code_ids = append(m.appendredeem_code_ids, i...)
+}
+
+// AppendedRedeemCodeIds returns the list of values that were appended to the "redeem_code_ids" field in this mutation.
+func (m *InvoiceRequestMutation) AppendedRedeemCodeIds() ([]int64, bool) {
+	if len(m.appendredeem_code_ids) == 0 {
+		return nil, false
+	}
+	return m.appendredeem_code_ids, true
+}
+
+// ResetRedeemCodeIds resets all changes to the "redeem_code_ids" field.
+func (m *InvoiceRequestMutation) ResetRedeemCodeIds() {
+	m.redeem_code_ids = nil
+	m.appendredeem_code_ids = nil
 }
 
 // SetAmount sets the "amount" field.
@@ -20709,7 +20762,7 @@ func (m *InvoiceRequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *InvoiceRequestMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.created_at != nil {
 		fields = append(fields, invoicerequest.FieldCreatedAt)
 	}
@@ -20721,6 +20774,9 @@ func (m *InvoiceRequestMutation) Fields() []string {
 	}
 	if m.payment_order_ids != nil {
 		fields = append(fields, invoicerequest.FieldPaymentOrderIds)
+	}
+	if m.redeem_code_ids != nil {
+		fields = append(fields, invoicerequest.FieldRedeemCodeIds)
 	}
 	if m.amount != nil {
 		fields = append(fields, invoicerequest.FieldAmount)
@@ -20774,6 +20830,8 @@ func (m *InvoiceRequestMutation) Field(name string) (ent.Value, bool) {
 		return m.UserID()
 	case invoicerequest.FieldPaymentOrderIds:
 		return m.PaymentOrderIds()
+	case invoicerequest.FieldRedeemCodeIds:
+		return m.RedeemCodeIds()
 	case invoicerequest.FieldAmount:
 		return m.Amount()
 	case invoicerequest.FieldInvoiceType:
@@ -20815,6 +20873,8 @@ func (m *InvoiceRequestMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldUserID(ctx)
 	case invoicerequest.FieldPaymentOrderIds:
 		return m.OldPaymentOrderIds(ctx)
+	case invoicerequest.FieldRedeemCodeIds:
+		return m.OldRedeemCodeIds(ctx)
 	case invoicerequest.FieldAmount:
 		return m.OldAmount(ctx)
 	case invoicerequest.FieldInvoiceType:
@@ -20875,6 +20935,13 @@ func (m *InvoiceRequestMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPaymentOrderIds(v)
+		return nil
+	case invoicerequest.FieldRedeemCodeIds:
+		v, ok := value.([]int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRedeemCodeIds(v)
 		return nil
 	case invoicerequest.FieldAmount:
 		v, ok := value.(float64)
@@ -21098,6 +21165,9 @@ func (m *InvoiceRequestMutation) ResetField(name string) error {
 		return nil
 	case invoicerequest.FieldPaymentOrderIds:
 		m.ResetPaymentOrderIds()
+		return nil
+	case invoicerequest.FieldRedeemCodeIds:
+		m.ResetRedeemCodeIds()
 		return nil
 	case invoicerequest.FieldAmount:
 		m.ResetAmount()

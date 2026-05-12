@@ -16,10 +16,23 @@ export interface EligibleOrder {
   completed_at: string
 }
 
+export interface EligibleRedeemCode {
+  redeem_code_id: number
+  code: string
+  value: number
+  used_at: string
+}
+
+export interface EligibleSources {
+  orders: EligibleOrder[]
+  redeem_codes: EligibleRedeemCode[]
+}
+
 export interface InvoiceRequest {
   id: number
   user_id: number
   payment_order_ids: number[]
+  redeem_code_ids: number[]
   amount: number
   invoice_type: InvoiceType
   title: string
@@ -37,7 +50,8 @@ export interface InvoiceRequest {
 }
 
 export interface CreateInvoiceRequestPayload {
-  payment_order_ids: number[]
+  payment_order_ids?: number[]
+  redeem_code_ids?: number[]
   invoice_type: InvoiceType
   title: string
   tax_no?: string
@@ -57,6 +71,11 @@ const BASE = '/invoice'
 
 export async function listEligibleOrders(): Promise<EligibleOrder[]> {
   const { data } = await apiClient.get<EligibleOrder[]>(`${BASE}/eligible-orders`)
+  return data
+}
+
+export async function listEligibleSources(): Promise<EligibleSources> {
+  const { data } = await apiClient.get<EligibleSources>(`${BASE}/eligible-sources`)
   return data
 }
 
@@ -107,6 +126,7 @@ export async function downloadInvoice(id: number, filename = 'invoice.pdf'): Pro
 
 export const invoiceAPI = {
   listEligibleOrders,
+  listEligibleSources,
   createInvoiceRequest,
   listInvoiceRequests,
   getInvoiceRequest,

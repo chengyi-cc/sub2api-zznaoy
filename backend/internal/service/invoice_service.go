@@ -26,6 +26,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/invoicerequest"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -65,13 +66,27 @@ func (s *InvoiceService) lockInvoiceRequestByID(ctx context.Context, tx *dbent.T
 	return q.Only(ctx)
 }
 
+// lockRedeemCodesByIDs 在事务内按 ID 列表查询 redeem_codes 并加行锁。
+// 与 lockPaymentOrdersByIDs 同语义；非 Postgres 时跳过 FOR UPDATE。
+func (s *InvoiceService) lockRedeemCodesByIDs(ctx context.Context, tx *dbent.Tx, ids []int64) ([]*dbent.RedeemCode, error) {
+	q := tx.RedeemCode.Query().Where(redeemcode.IDIn(ids...))
+	if s.dialect == dialect.Postgres {
+		q = q.ForUpdate()
+	}
+	return q.All(ctx)
+}
+
 var (
 	ErrInvoiceRequestNotFound    = infraerrors.NotFound("INVOICE_REQUEST_NOT_FOUND", "invoice request not found")
 	ErrInvoiceForbidden          = infraerrors.Forbidden("INVOICE_FORBIDDEN", "no permission for this invoice request")
-	ErrInvoiceOrdersEmpty        = infraerrors.BadRequest("INVOICE_ORDERS_EMPTY", "at least one payment order is required")
-	ErrInvoiceOrdersInvalid      = infraerrors.BadRequest("INVOICE_ORDERS_INVALID", "one or more payment orders are invalid or not yours")
-	ErrInvoiceOrderNotEligible   = infraerrors.BadRequest("INVOICE_ORDER_NOT_ELIGIBLE", "payment order is not eligible for invoice")
+	ErrInvoiceOrdersEmpty         = infraerrors.BadRequest("INVOICE_ORDERS_EMPTY", "at least one payment order is required")
+	ErrInvoiceSourcesEmpty        = infraerrors.BadRequest("INVOICE_SOURCES_EMPTY", "at least one order or redeem code is required")
+	ErrInvoiceOrdersInvalid       = infraerrors.BadRequest("INVOICE_ORDERS_INVALID", "one or more payment orders are invalid or not yours")
+	ErrInvoiceOrderNotEligible    = infraerrors.BadRequest("INVOICE_ORDER_NOT_ELIGIBLE", "payment order is not eligible for invoice")
 	ErrInvoiceOrderAlreadyClaimed = infraerrors.Conflict("INVOICE_ORDER_ALREADY_CLAIMED", "payment order already has an active invoice request")
+	ErrInvoiceRedeemInvalid       = infraerrors.BadRequest("INVOICE_REDEEM_INVALID", "one or more redeem codes are invalid or not yours")
+	ErrInvoiceRedeemNotEligible   = infraerrors.BadRequest("INVOICE_REDEEM_NOT_ELIGIBLE", "redeem code is not eligible for invoice (only used balance codes can be invoiced)")
+	ErrInvoiceRedeemAlreadyClaimed = infraerrors.Conflict("INVOICE_REDEEM_ALREADY_CLAIMED", "redeem code already has an active invoice request")
 	ErrInvoiceTaxNoRequired      = infraerrors.BadRequest("INVOICE_TAX_NO_REQUIRED", "tax_no is required for company invoice")
 	ErrInvoiceTitleRequired      = infraerrors.BadRequest("INVOICE_TITLE_REQUIRED", "title is required")
 	ErrInvoiceTypeInvalid        = infraerrors.BadRequest("INVOICE_TYPE_INVALID", "invoice_type must be personal or company")
@@ -96,6 +111,7 @@ const (
 type CreateInvoiceRequestInput struct {
 	UserID          int64
 	PaymentOrderIDs []int64
+	RedeemCodeIDs   []int64 // 仅 type=balance 的已使用兑换码 ID
 	InvoiceType     string  // personal / company
 	Title           string  // 抬头
 	TaxNo           string  // 税号（企业必填）
@@ -127,6 +143,20 @@ type EligibleOrder struct {
 	OrderType   string    `json:"order_type"`
 	PaymentType string    `json:"payment_type"`
 	CompletedAt time.Time `json:"completed_at"`
+}
+
+// EligibleRedeemCode 可开票兑换码视图（仅 type=balance 的已使用余额充值码）
+type EligibleRedeemCode struct {
+	RedeemCodeID int64     `json:"redeem_code_id"`
+	Code         string    `json:"code"` // 完整 code（前端按需展示前后 4 位）
+	Value        float64   `json:"value"`
+	UsedAt       time.Time `json:"used_at"`
+}
+
+// EligibleSources 用户可开票的所有来源
+type EligibleSources struct {
+	Orders      []EligibleOrder      `json:"orders"`
+	RedeemCodes []EligibleRedeemCode `json:"redeem_codes"`
 }
 
 // InvoiceService 发票申请服务
@@ -207,7 +237,20 @@ func (s *InvoiceService) resolveInvoiceFile(rel string) (string, error) {
 // ListEligibleOrders 列出当前用户可开票的订单。规则：
 //   - status == COMPLETED
 //   - 未被任何 pending/approved/issued 的发票申请占用
+//
+// Deprecated: 改用 ListEligibleSources，新接口会同时返回订单和兑换码。
 func (s *InvoiceService) ListEligibleOrders(ctx context.Context, userID int64) ([]EligibleOrder, error) {
+	sources, err := s.ListEligibleSources(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return sources.Orders, nil
+}
+
+// ListEligibleSources 列出当前用户所有可开票来源（订单 + 余额兑换码）。
+// 兑换码筛选规则：type=balance、status=used、used_by=当前用户、未被占用。
+// 兑换码的 Value 必须 > 0（防止赠送/退款扣减码混入）。
+func (s *InvoiceService) ListEligibleSources(ctx context.Context, userID int64) (*EligibleSources, error) {
 	orders, err := s.entClient.PaymentOrder.Query().
 		Where(
 			paymentorder.UserIDEQ(userID),
@@ -219,21 +262,36 @@ func (s *InvoiceService) ListEligibleOrders(ctx context.Context, userID int64) (
 		return nil, fmt.Errorf("query user completed orders: %w", err)
 	}
 
-	claimed, err := s.claimedOrderIDsForUser(ctx, userID)
+	codes, err := s.entClient.RedeemCode.Query().
+		Where(
+			redeemcode.UsedByEQ(userID),
+			redeemcode.StatusEQ(StatusUsed),
+			redeemcode.TypeEQ(RedeemTypeBalance),
+		).
+		Order(dbent.Desc(redeemcode.FieldUsedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query user balance redeem codes: %w", err)
+	}
+
+	claimedOrders, claimedCodes, err := s.claimedSourceIDsForUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make([]EligibleOrder, 0, len(orders))
+	out := &EligibleSources{
+		Orders:      make([]EligibleOrder, 0, len(orders)),
+		RedeemCodes: make([]EligibleRedeemCode, 0, len(codes)),
+	}
 	for _, o := range orders {
-		if _, taken := claimed[o.ID]; taken {
+		if _, taken := claimedOrders[o.ID]; taken {
 			continue
 		}
 		var completedAt time.Time
 		if o.CompletedAt != nil {
 			completedAt = *o.CompletedAt
 		}
-		out = append(out, EligibleOrder{
+		out.Orders = append(out.Orders, EligibleOrder{
 			OrderID:     o.ID,
 			OutTradeNo:  o.OutTradeNo,
 			Amount:      o.Amount,
@@ -242,11 +300,39 @@ func (s *InvoiceService) ListEligibleOrders(ctx context.Context, userID int64) (
 			CompletedAt: completedAt,
 		})
 	}
+	for _, c := range codes {
+		if _, taken := claimedCodes[c.ID]; taken {
+			continue
+		}
+		// 防御：Value <= 0 的兑换码不允许开票（极少见但理论可能：手工建的赠送码、
+		// 历史 schema 允许 0 等场景）。
+		if c.Value <= 0 {
+			continue
+		}
+		var usedAt time.Time
+		if c.UsedAt != nil {
+			usedAt = *c.UsedAt
+		}
+		out.RedeemCodes = append(out.RedeemCodes, EligibleRedeemCode{
+			RedeemCodeID: c.ID,
+			Code:         c.Code,
+			Value:        c.Value,
+			UsedAt:       usedAt,
+		})
+	}
 	return out, nil
 }
 
 // claimedOrderIDsForUser 返回该用户名下所有处于 pending/approved/issued 状态的发票申请所引用的订单 ID 集合
+//
+// Deprecated: 兑换码引入后改用 claimedSourceIDsForUser。保留以避免破坏调用点。
 func (s *InvoiceService) claimedOrderIDsForUser(ctx context.Context, userID int64) (map[int64]struct{}, error) {
+	orders, _, err := s.claimedSourceIDsForUser(ctx, userID)
+	return orders, err
+}
+
+// claimedSourceIDsForUser 返回该用户的活动发票申请引用的订单 + 兑换码 ID 集合。
+func (s *InvoiceService) claimedSourceIDsForUser(ctx context.Context, userID int64) (map[int64]struct{}, map[int64]struct{}, error) {
 	reqs, err := s.entClient.InvoiceRequest.Query().
 		Where(
 			invoicerequest.UserIDEQ(userID),
@@ -258,22 +344,27 @@ func (s *InvoiceService) claimedOrderIDsForUser(ctx context.Context, userID int6
 		).
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("query active invoice requests: %w", err)
+		return nil, nil, fmt.Errorf("query active invoice requests: %w", err)
 	}
-	claimed := make(map[int64]struct{})
+	claimedOrders := make(map[int64]struct{})
+	claimedCodes := make(map[int64]struct{})
 	for _, r := range reqs {
 		for _, oid := range r.PaymentOrderIds {
-			claimed[oid] = struct{}{}
+			claimedOrders[oid] = struct{}{}
+		}
+		for _, cid := range r.RedeemCodeIds {
+			claimedCodes[cid] = struct{}{}
 		}
 	}
-	return claimed, nil
+	return claimedOrders, claimedCodes, nil
 }
 
 // CreateRequest 用户提交发票申请
 //
-// 并发安全：整个流程在事务内执行，并对所有关联的 payment_orders 加 FOR UPDATE
-// 行锁。这样两个并发请求若引用同一订单，后到者会阻塞至前者提交后再读到最新
-// claimed 集合并被拒绝，避免重复占用同一订单创建多条 pending 申请。
+// 并发安全：整个流程在事务内执行。先 FOR UPDATE 锁定所有引用的订单 + 兑换码
+// 行，再做归属/状态校验，最后在事务内写入新的发票申请记录。锁会一直持有
+// 到 commit，期间其他并发请求会在同一资源上阻塞。配合事务内重新计算的
+// claimed 集合，能避免重复占用同一订单/兑换码。
 func (s *InvoiceService) CreateRequest(ctx context.Context, input CreateInvoiceRequestInput) (*dbent.InvoiceRequest, error) {
 	if err := s.validateCreateInput(&input); err != nil {
 		return nil, err
@@ -285,42 +376,71 @@ func (s *InvoiceService) CreateRequest(ctx context.Context, input CreateInvoiceR
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// 锁定所有引用的订单行：先 FOR UPDATE 拿订单，再做归属/状态校验，
-	// 锁会一直持有到事务提交，期间其他并发请求会在同一订单上阻塞。
-	orders, err := s.lockPaymentOrdersByIDs(ctx, tx, input.PaymentOrderIDs)
-	if err != nil {
-		return nil, fmt.Errorf("lock payment orders: %w", err)
-	}
-	if len(orders) != len(input.PaymentOrderIDs) {
-		return nil, ErrInvoiceOrdersInvalid
-	}
-
 	var totalAmount float64
-	for _, o := range orders {
-		if o.UserID != input.UserID {
+
+	// 锁定订单行 + 校验
+	if len(input.PaymentOrderIDs) > 0 {
+		orders, err := s.lockPaymentOrdersByIDs(ctx, tx, input.PaymentOrderIDs)
+		if err != nil {
+			return nil, fmt.Errorf("lock payment orders: %w", err)
+		}
+		if len(orders) != len(input.PaymentOrderIDs) {
 			return nil, ErrInvoiceOrdersInvalid
 		}
-		if o.Status != OrderStatusCompleted {
-			return nil, ErrInvoiceOrderNotEligible
+		for _, o := range orders {
+			if o.UserID != input.UserID {
+				return nil, ErrInvoiceOrdersInvalid
+			}
+			if o.Status != OrderStatusCompleted {
+				return nil, ErrInvoiceOrderNotEligible
+			}
+			totalAmount += o.Amount
 		}
-		totalAmount += o.Amount
 	}
 
-	// 在事务内重新计算 claimed 集合：因为我们已对订单行加锁，其他并发请求
-	// 此时尚未提交，但若先到者已提交了一条占用相同订单的申请，这里会读到。
-	claimed, err := s.claimedOrderIDsForUserInTx(ctx, tx, input.UserID)
+	// 锁定兑换码行 + 校验（仅 type=balance 的已使用余额码）
+	if len(input.RedeemCodeIDs) > 0 {
+		codes, err := s.lockRedeemCodesByIDs(ctx, tx, input.RedeemCodeIDs)
+		if err != nil {
+			return nil, fmt.Errorf("lock redeem codes: %w", err)
+		}
+		if len(codes) != len(input.RedeemCodeIDs) {
+			return nil, ErrInvoiceRedeemInvalid
+		}
+		for _, c := range codes {
+			if c.UsedBy == nil || *c.UsedBy != input.UserID {
+				return nil, ErrInvoiceRedeemInvalid
+			}
+			if c.Status != StatusUsed || c.Type != RedeemTypeBalance {
+				return nil, ErrInvoiceRedeemNotEligible
+			}
+			if c.Value <= 0 {
+				return nil, ErrInvoiceRedeemNotEligible
+			}
+			totalAmount += c.Value
+		}
+	}
+
+	// 在事务内重新计算 claimed 集合（订单 + 兑换码）
+	claimedOrders, claimedCodes, err := s.claimedSourceIDsForUserInTx(ctx, tx, input.UserID)
 	if err != nil {
 		return nil, err
 	}
 	for _, oid := range input.PaymentOrderIDs {
-		if _, taken := claimed[oid]; taken {
+		if _, taken := claimedOrders[oid]; taken {
 			return nil, ErrInvoiceOrderAlreadyClaimed
+		}
+	}
+	for _, cid := range input.RedeemCodeIDs {
+		if _, taken := claimedCodes[cid]; taken {
+			return nil, ErrInvoiceRedeemAlreadyClaimed
 		}
 	}
 
 	builder := tx.InvoiceRequest.Create().
 		SetUserID(input.UserID).
 		SetPaymentOrderIds(input.PaymentOrderIDs).
+		SetRedeemCodeIds(input.RedeemCodeIDs).
 		SetAmount(totalAmount).
 		SetInvoiceType(input.InvoiceType).
 		SetTitle(input.Title).
@@ -348,7 +468,15 @@ func (s *InvoiceService) CreateRequest(ctx context.Context, input CreateInvoiceR
 
 // claimedOrderIDsForUserInTx 与 claimedOrderIDsForUser 同语义，但使用调用者提供的事务，
 // 让锁视图保持一致。
+//
+// Deprecated: 改用 claimedSourceIDsForUserInTx，新版同时返回兑换码占用集合。
 func (s *InvoiceService) claimedOrderIDsForUserInTx(ctx context.Context, tx *dbent.Tx, userID int64) (map[int64]struct{}, error) {
+	orders, _, err := s.claimedSourceIDsForUserInTx(ctx, tx, userID)
+	return orders, err
+}
+
+// claimedSourceIDsForUserInTx 与 claimedSourceIDsForUser 同语义，但使用调用者提供的事务。
+func (s *InvoiceService) claimedSourceIDsForUserInTx(ctx context.Context, tx *dbent.Tx, userID int64) (map[int64]struct{}, map[int64]struct{}, error) {
 	reqs, err := tx.InvoiceRequest.Query().
 		Where(
 			invoicerequest.UserIDEQ(userID),
@@ -360,15 +488,19 @@ func (s *InvoiceService) claimedOrderIDsForUserInTx(ctx context.Context, tx *dbe
 		).
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("query active invoice requests in tx: %w", err)
+		return nil, nil, fmt.Errorf("query active invoice requests in tx: %w", err)
 	}
-	claimed := make(map[int64]struct{})
+	claimedOrders := make(map[int64]struct{})
+	claimedCodes := make(map[int64]struct{})
 	for _, r := range reqs {
 		for _, oid := range r.PaymentOrderIds {
-			claimed[oid] = struct{}{}
+			claimedOrders[oid] = struct{}{}
+		}
+		for _, cid := range r.RedeemCodeIds {
+			claimedCodes[cid] = struct{}{}
 		}
 	}
-	return claimed, nil
+	return claimedOrders, claimedCodes, nil
 }
 
 func (s *InvoiceService) validateCreateInput(input *CreateInvoiceRequestInput) error {
@@ -403,27 +535,48 @@ func (s *InvoiceService) validateCreateInput(input *CreateInvoiceRequestInput) e
 			return ErrInvoiceEmailInvalid
 		}
 	}
-	if len(input.PaymentOrderIDs) == 0 {
-		return ErrInvoiceOrdersEmpty
+	if len(input.PaymentOrderIDs)+len(input.RedeemCodeIDs) == 0 {
+		return ErrInvoiceSourcesEmpty
 	}
 	if len(input.PaymentOrderIDs) > invoiceMaxOrdersPerReq {
 		return infraerrors.BadRequest("INVOICE_TOO_MANY_ORDERS", fmt.Sprintf("at most %d orders per request", invoiceMaxOrdersPerReq))
 	}
-	// 去重 + 校验正数
-	seen := make(map[int64]struct{}, len(input.PaymentOrderIDs))
-	deduped := make([]int64, 0, len(input.PaymentOrderIDs))
-	for _, id := range input.PaymentOrderIDs {
+	if len(input.RedeemCodeIDs) > invoiceMaxOrdersPerReq {
+		return infraerrors.BadRequest("INVOICE_TOO_MANY_REDEEMS", fmt.Sprintf("at most %d redeem codes per request", invoiceMaxOrdersPerReq))
+	}
+	// 订单 ID 去重 + 校验正数
+	if dedup, err := dedupePositiveIDs(input.PaymentOrderIDs); err != nil {
+		return ErrInvoiceOrdersInvalid
+	} else {
+		input.PaymentOrderIDs = dedup
+	}
+	// 兑换码 ID 去重 + 校验正数
+	if dedup, err := dedupePositiveIDs(input.RedeemCodeIDs); err != nil {
+		return ErrInvoiceRedeemInvalid
+	} else {
+		input.RedeemCodeIDs = dedup
+	}
+	return nil
+}
+
+// dedupePositiveIDs 去重并校验所有 ID 都是正整数。
+func dedupePositiveIDs(ids []int64) ([]int64, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
 		if id <= 0 {
-			return ErrInvoiceOrdersInvalid
+			return nil, errors.New("non-positive id")
 		}
 		if _, ok := seen[id]; ok {
 			continue
 		}
 		seen[id] = struct{}{}
-		deduped = append(deduped, id)
+		out = append(out, id)
 	}
-	input.PaymentOrderIDs = deduped
-	return nil
+	return out, nil
 }
 
 // ListUserRequests 用户分页查询自己的申请
@@ -657,6 +810,31 @@ func (s *InvoiceService) AdminIssue(
 				return nil, infraerrors.Conflict(
 					"INVOICE_ORDERS_STATE_CHANGED",
 					"one or more referenced orders are no longer in COMPLETED state",
+				)
+			}
+		}
+	}
+
+	// 锁定关联兑换码行 + 复核：必须仍是 type=balance 的已使用兑换码。
+	// 兑换码理论上不会从已使用变回未使用，但同 schema 设计："用户余额回滚为兑换
+	// 码扣减" 类操作（通过负值 balance 兑换码实现）会让原码出现争议；这里维持
+	// 严格校验避免发票指向已被人工"撤回"的兑换码。
+	if len(r.RedeemCodeIds) > 0 {
+		codes, err := s.lockRedeemCodesByIDs(ctx, tx, r.RedeemCodeIds)
+		if err != nil {
+			return nil, fmt.Errorf("lock redeem codes for issue: %w", err)
+		}
+		if len(codes) != len(r.RedeemCodeIds) {
+			return nil, infraerrors.Conflict(
+				"INVOICE_REDEEM_STATE_CHANGED",
+				"one or more referenced redeem codes are no longer eligible",
+			)
+		}
+		for _, c := range codes {
+			if c.Status != StatusUsed || c.Type != RedeemTypeBalance {
+				return nil, infraerrors.Conflict(
+					"INVOICE_REDEEM_STATE_CHANGED",
+					"one or more referenced redeem codes are no longer eligible",
 				)
 			}
 		}

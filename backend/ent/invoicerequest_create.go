@@ -63,6 +63,12 @@ func (_c *InvoiceRequestCreate) SetPaymentOrderIds(v []int64) *InvoiceRequestCre
 	return _c
 }
 
+// SetRedeemCodeIds sets the "redeem_code_ids" field.
+func (_c *InvoiceRequestCreate) SetRedeemCodeIds(v []int64) *InvoiceRequestCreate {
+	_c.mutation.SetRedeemCodeIds(v)
+	return _c
+}
+
 // SetAmount sets the "amount" field.
 func (_c *InvoiceRequestCreate) SetAmount(v float64) *InvoiceRequestCreate {
 	_c.mutation.SetAmount(v)
@@ -263,6 +269,10 @@ func (_c *InvoiceRequestCreate) defaults() {
 		v := invoicerequest.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.RedeemCodeIds(); !ok {
+		v := invoicerequest.DefaultRedeemCodeIds
+		_c.mutation.SetRedeemCodeIds(v)
+	}
 	if _, ok := _c.mutation.InvoiceType(); !ok {
 		v := invoicerequest.DefaultInvoiceType
 		_c.mutation.SetInvoiceType(v)
@@ -286,6 +296,9 @@ func (_c *InvoiceRequestCreate) check() error {
 	}
 	if _, ok := _c.mutation.PaymentOrderIds(); !ok {
 		return &ValidationError{Name: "payment_order_ids", err: errors.New(`ent: missing required field "InvoiceRequest.payment_order_ids"`)}
+	}
+	if _, ok := _c.mutation.RedeemCodeIds(); !ok {
+		return &ValidationError{Name: "redeem_code_ids", err: errors.New(`ent: missing required field "InvoiceRequest.redeem_code_ids"`)}
 	}
 	if _, ok := _c.mutation.Amount(); !ok {
 		return &ValidationError{Name: "amount", err: errors.New(`ent: missing required field "InvoiceRequest.amount"`)}
@@ -375,6 +388,10 @@ func (_c *InvoiceRequestCreate) createSpec() (*InvoiceRequest, *sqlgraph.CreateS
 	if value, ok := _c.mutation.PaymentOrderIds(); ok {
 		_spec.SetField(invoicerequest.FieldPaymentOrderIds, field.TypeJSON, value)
 		_node.PaymentOrderIds = value
+	}
+	if value, ok := _c.mutation.RedeemCodeIds(); ok {
+		_spec.SetField(invoicerequest.FieldRedeemCodeIds, field.TypeJSON, value)
+		_node.RedeemCodeIds = value
 	}
 	if value, ok := _c.mutation.Amount(); ok {
 		_spec.SetField(invoicerequest.FieldAmount, field.TypeFloat64, value)
@@ -526,6 +543,18 @@ func (u *InvoiceRequestUpsert) SetPaymentOrderIds(v []int64) *InvoiceRequestUpse
 // UpdatePaymentOrderIds sets the "payment_order_ids" field to the value that was provided on create.
 func (u *InvoiceRequestUpsert) UpdatePaymentOrderIds() *InvoiceRequestUpsert {
 	u.SetExcluded(invoicerequest.FieldPaymentOrderIds)
+	return u
+}
+
+// SetRedeemCodeIds sets the "redeem_code_ids" field.
+func (u *InvoiceRequestUpsert) SetRedeemCodeIds(v []int64) *InvoiceRequestUpsert {
+	u.Set(invoicerequest.FieldRedeemCodeIds, v)
+	return u
+}
+
+// UpdateRedeemCodeIds sets the "redeem_code_ids" field to the value that was provided on create.
+func (u *InvoiceRequestUpsert) UpdateRedeemCodeIds() *InvoiceRequestUpsert {
+	u.SetExcluded(invoicerequest.FieldRedeemCodeIds)
 	return u
 }
 
@@ -817,6 +846,20 @@ func (u *InvoiceRequestUpsertOne) SetPaymentOrderIds(v []int64) *InvoiceRequestU
 func (u *InvoiceRequestUpsertOne) UpdatePaymentOrderIds() *InvoiceRequestUpsertOne {
 	return u.Update(func(s *InvoiceRequestUpsert) {
 		s.UpdatePaymentOrderIds()
+	})
+}
+
+// SetRedeemCodeIds sets the "redeem_code_ids" field.
+func (u *InvoiceRequestUpsertOne) SetRedeemCodeIds(v []int64) *InvoiceRequestUpsertOne {
+	return u.Update(func(s *InvoiceRequestUpsert) {
+		s.SetRedeemCodeIds(v)
+	})
+}
+
+// UpdateRedeemCodeIds sets the "redeem_code_ids" field to the value that was provided on create.
+func (u *InvoiceRequestUpsertOne) UpdateRedeemCodeIds() *InvoiceRequestUpsertOne {
+	return u.Update(func(s *InvoiceRequestUpsert) {
+		s.UpdateRedeemCodeIds()
 	})
 }
 
@@ -1308,6 +1351,20 @@ func (u *InvoiceRequestUpsertBulk) SetPaymentOrderIds(v []int64) *InvoiceRequest
 func (u *InvoiceRequestUpsertBulk) UpdatePaymentOrderIds() *InvoiceRequestUpsertBulk {
 	return u.Update(func(s *InvoiceRequestUpsert) {
 		s.UpdatePaymentOrderIds()
+	})
+}
+
+// SetRedeemCodeIds sets the "redeem_code_ids" field.
+func (u *InvoiceRequestUpsertBulk) SetRedeemCodeIds(v []int64) *InvoiceRequestUpsertBulk {
+	return u.Update(func(s *InvoiceRequestUpsert) {
+		s.SetRedeemCodeIds(v)
+	})
+}
+
+// UpdateRedeemCodeIds sets the "redeem_code_ids" field to the value that was provided on create.
+func (u *InvoiceRequestUpsertBulk) UpdateRedeemCodeIds() *InvoiceRequestUpsertBulk {
+	return u.Update(func(s *InvoiceRequestUpsert) {
+		s.UpdateRedeemCodeIds()
 	})
 }
 

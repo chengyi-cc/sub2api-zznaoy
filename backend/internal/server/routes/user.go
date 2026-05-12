@@ -125,7 +125,8 @@ func RegisterUserRoutes(
 		invoice := authenticated.Group("/invoice")
 		invoice.Use(invoiceFeatureGuard(settingService))
 		{
-			invoice.GET("/eligible-orders", h.Invoice.ListEligibleOrders)
+			invoice.GET("/eligible-orders", h.Invoice.ListEligibleOrders)   // Deprecated（保留以兼容旧前端缓存）
+			invoice.GET("/eligible-sources", h.Invoice.ListEligibleSources) // 新增：含订单+兑换码
 			invoice.POST("/requests", h.Invoice.Create)
 			invoice.GET("/requests", h.Invoice.List)
 			invoice.GET("/requests/:id", h.Invoice.Get)

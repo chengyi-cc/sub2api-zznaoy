@@ -25,7 +25,8 @@ func NewInvoiceHandler(invoiceService *service.InvoiceService) *InvoiceHandler {
 
 // createInvoiceRequestPayload 用户提交发票申请的请求体
 type createInvoiceRequestPayload struct {
-	PaymentOrderIDs []int64 `json:"payment_order_ids" binding:"required"`
+	PaymentOrderIDs []int64 `json:"payment_order_ids"`
+	RedeemCodeIDs   []int64 `json:"redeem_code_ids"`
 	InvoiceType     string  `json:"invoice_type" binding:"required"`
 	Title           string  `json:"title" binding:"required"`
 	TaxNo           string  `json:"tax_no"`
@@ -34,6 +35,8 @@ type createInvoiceRequestPayload struct {
 }
 
 // ListEligibleOrders GET /api/v1/invoice/eligible-orders
+//
+// Deprecated: 仅返回订单的旧接口，新前端应使用 ListEligibleSources。
 func (h *InvoiceHandler) ListEligibleOrders(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
@@ -46,6 +49,22 @@ func (h *InvoiceHandler) ListEligibleOrders(c *gin.Context) {
 		return
 	}
 	response.Success(c, orders)
+}
+
+// ListEligibleSources GET /api/v1/invoice/eligible-sources
+// 同时返回可开票订单 + 余额兑换码。
+func (h *InvoiceHandler) ListEligibleSources(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	sources, err := h.invoiceService.ListEligibleSources(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, sources)
 }
 
 // Create POST /api/v1/invoice/requests
@@ -63,6 +82,7 @@ func (h *InvoiceHandler) Create(c *gin.Context) {
 	created, err := h.invoiceService.CreateRequest(c.Request.Context(), service.CreateInvoiceRequestInput{
 		UserID:          subject.UserID,
 		PaymentOrderIDs: body.PaymentOrderIDs,
+		RedeemCodeIDs:   body.RedeemCodeIDs,
 		InvoiceType:     body.InvoiceType,
 		Title:           body.Title,
 		TaxNo:           body.TaxNo,

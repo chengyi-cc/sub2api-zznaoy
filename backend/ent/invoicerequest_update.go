@@ -62,6 +62,18 @@ func (_u *InvoiceRequestUpdate) AppendPaymentOrderIds(v []int64) *InvoiceRequest
 	return _u
 }
 
+// SetRedeemCodeIds sets the "redeem_code_ids" field.
+func (_u *InvoiceRequestUpdate) SetRedeemCodeIds(v []int64) *InvoiceRequestUpdate {
+	_u.mutation.SetRedeemCodeIds(v)
+	return _u
+}
+
+// AppendRedeemCodeIds appends value to the "redeem_code_ids" field.
+func (_u *InvoiceRequestUpdate) AppendRedeemCodeIds(v []int64) *InvoiceRequestUpdate {
+	_u.mutation.AppendRedeemCodeIds(v)
+	return _u
+}
+
 // SetAmount sets the "amount" field.
 func (_u *InvoiceRequestUpdate) SetAmount(v float64) *InvoiceRequestUpdate {
 	_u.mutation.ResetAmount()
@@ -410,6 +422,14 @@ func (_u *InvoiceRequestUpdate) sqlSave(ctx context.Context) (_node int, err err
 			sqljson.Append(u, invoicerequest.FieldPaymentOrderIds, value)
 		})
 	}
+	if value, ok := _u.mutation.RedeemCodeIds(); ok {
+		_spec.SetField(invoicerequest.FieldRedeemCodeIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedRedeemCodeIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, invoicerequest.FieldRedeemCodeIds, value)
+		})
+	}
 	if value, ok := _u.mutation.Amount(); ok {
 		_spec.SetField(invoicerequest.FieldAmount, field.TypeFloat64, value)
 	}
@@ -554,6 +574,18 @@ func (_u *InvoiceRequestUpdateOne) SetPaymentOrderIds(v []int64) *InvoiceRequest
 // AppendPaymentOrderIds appends value to the "payment_order_ids" field.
 func (_u *InvoiceRequestUpdateOne) AppendPaymentOrderIds(v []int64) *InvoiceRequestUpdateOne {
 	_u.mutation.AppendPaymentOrderIds(v)
+	return _u
+}
+
+// SetRedeemCodeIds sets the "redeem_code_ids" field.
+func (_u *InvoiceRequestUpdateOne) SetRedeemCodeIds(v []int64) *InvoiceRequestUpdateOne {
+	_u.mutation.SetRedeemCodeIds(v)
+	return _u
+}
+
+// AppendRedeemCodeIds appends value to the "redeem_code_ids" field.
+func (_u *InvoiceRequestUpdateOne) AppendRedeemCodeIds(v []int64) *InvoiceRequestUpdateOne {
+	_u.mutation.AppendRedeemCodeIds(v)
 	return _u
 }
 
@@ -933,6 +965,14 @@ func (_u *InvoiceRequestUpdateOne) sqlSave(ctx context.Context) (_node *InvoiceR
 	if value, ok := _u.mutation.AppendedPaymentOrderIds(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, invoicerequest.FieldPaymentOrderIds, value)
+		})
+	}
+	if value, ok := _u.mutation.RedeemCodeIds(); ok {
+		_spec.SetField(invoicerequest.FieldRedeemCodeIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedRedeemCodeIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, invoicerequest.FieldRedeemCodeIds, value)
 		})
 	}
 	if value, ok := _u.mutation.Amount(); ok {

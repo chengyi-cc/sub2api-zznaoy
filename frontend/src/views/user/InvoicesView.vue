@@ -74,7 +74,7 @@
                 <span class="mx-2">·</span>
                 <span>{{ t('invoice.amount') }}: ¥{{ item.amount.toFixed(2) }}</span>
                 <span class="mx-2">·</span>
-                <span>{{ item.payment_order_ids.length }} {{ t('invoice.orders') }}</span>
+                <span>{{ sourceCountLabel(item) }}</span>
                 <span class="mx-2">·</span>
                 <span>{{ formatDateTime(item.created_at) }}</span>
               </div>
@@ -140,41 +140,95 @@
           >
             {{ t('common.loading') }}
           </div>
-          <div
-            v-else-if="eligibleOrders.length === 0"
-            class="mt-2 rounded-md border border-gray-200 p-4 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400"
-          >
-            {{ t('invoice.noEligible') }}
-          </div>
-          <div
-            v-else
-            class="mt-2 max-h-56 overflow-y-auto rounded-md border border-gray-200 dark:border-dark-700"
-          >
-            <label
-              v-for="o in eligibleOrders"
-              :key="o.order_id"
-              class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
-            >
-              <input
-                type="checkbox"
-                :value="o.order_id"
-                v-model="form.payment_order_ids"
-                class="h-4 w-4"
-              />
-              <div class="flex-1 text-sm">
-                <div class="font-medium text-gray-900 dark:text-white">
-                  ¥{{ o.amount.toFixed(2) }}
-                  <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                    #{{ o.order_id }} · {{ o.out_trade_no }}
-                  </span>
-                </div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ formatDateTime(o.completed_at) }}
-                </div>
+          <template v-else>
+            <!-- Orders block -->
+            <div class="mt-2">
+              <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {{ t('invoice.sourceOrders') }}
+                <span v-if="eligibleOrders.length > 0" class="ml-1 text-gray-400">({{ eligibleOrders.length }})</span>
               </div>
-            </label>
-          </div>
-          <div v-if="form.payment_order_ids.length > 0" class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              <div
+                v-if="eligibleOrders.length === 0"
+                class="rounded-md border border-gray-200 p-3 text-center text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400"
+              >
+                {{ t('invoice.noEligibleOrders') }}
+              </div>
+              <div
+                v-else
+                class="max-h-40 overflow-y-auto rounded-md border border-gray-200 dark:border-dark-700"
+              >
+                <label
+                  v-for="o in eligibleOrders"
+                  :key="o.order_id"
+                  class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
+                >
+                  <input
+                    type="checkbox"
+                    :value="o.order_id"
+                    v-model="form.payment_order_ids"
+                    class="h-4 w-4"
+                  />
+                  <div class="flex-1 text-sm">
+                    <div class="font-medium text-gray-900 dark:text-white">
+                      ¥{{ o.amount.toFixed(2) }}
+                      <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                        #{{ o.order_id }} · {{ o.out_trade_no }}
+                      </span>
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ formatDateTime(o.completed_at) }}
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Redeem codes block -->
+            <div class="mt-3">
+              <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {{ t('invoice.sourceRedeemCodes') }}
+                <span v-if="eligibleRedeemCodes.length > 0" class="ml-1 text-gray-400">({{ eligibleRedeemCodes.length }})</span>
+              </div>
+              <div
+                v-if="eligibleRedeemCodes.length === 0"
+                class="rounded-md border border-gray-200 p-3 text-center text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400"
+              >
+                {{ t('invoice.noEligibleRedeemCodes') }}
+              </div>
+              <div
+                v-else
+                class="max-h-40 overflow-y-auto rounded-md border border-gray-200 dark:border-dark-700"
+              >
+                <label
+                  v-for="c in eligibleRedeemCodes"
+                  :key="c.redeem_code_id"
+                  class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
+                >
+                  <input
+                    type="checkbox"
+                    :value="c.redeem_code_id"
+                    v-model="form.redeem_code_ids"
+                    class="h-4 w-4"
+                  />
+                  <div class="flex-1 text-sm">
+                    <div class="font-medium text-gray-900 dark:text-white">
+                      ¥{{ c.value.toFixed(2) }}
+                      <span class="ml-2 font-mono text-xs text-gray-500 dark:text-gray-400">
+                        {{ formatRedeemCode(c.code) }}
+                      </span>
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ formatDateTime(c.used_at) }}
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </template>
+          <div
+            v-if="form.payment_order_ids.length + form.redeem_code_ids.length > 0"
+            class="mt-2 text-sm text-gray-600 dark:text-gray-300"
+          >
             {{ t('invoice.totalAmount') }}:
             <span class="font-semibold">¥{{ totalAmount.toFixed(2) }}</span>
           </div>
@@ -275,7 +329,8 @@ import {
   invoiceAPI,
   type InvoiceRequest,
   type InvoiceStatus,
-  type EligibleOrder
+  type EligibleOrder,
+  type EligibleRedeemCode
 } from '@/api/invoice'
 
 const { t } = useI18n()
@@ -290,9 +345,11 @@ const showCreate = ref(false)
 const submitting = ref(false)
 const submitError = ref('')
 const eligibleOrders = ref<EligibleOrder[]>([])
+const eligibleRedeemCodes = ref<EligibleRedeemCode[]>([])
 const loadingEligible = ref(false)
 const form = reactive({
   payment_order_ids: [] as number[],
+  redeem_code_ids: [] as number[],
   invoice_type: 'personal' as 'personal' | 'company',
   title: '',
   tax_no: '',
@@ -301,18 +358,41 @@ const form = reactive({
 })
 
 const totalAmount = computed(() => {
-  const ids = new Set(form.payment_order_ids)
-  return eligibleOrders.value
-    .filter(o => ids.has(o.order_id))
+  const orderIds = new Set(form.payment_order_ids)
+  const codeIds = new Set(form.redeem_code_ids)
+  const orderSum = eligibleOrders.value
+    .filter(o => orderIds.has(o.order_id))
     .reduce((sum, o) => sum + o.amount, 0)
+  const codeSum = eligibleRedeemCodes.value
+    .filter(c => codeIds.has(c.redeem_code_id))
+    .reduce((sum, c) => sum + c.value, 0)
+  return orderSum + codeSum
 })
 
 const canSubmit = computed(() => {
-  if (form.payment_order_ids.length === 0) return false
+  if (form.payment_order_ids.length + form.redeem_code_ids.length === 0) return false
   if (!form.title.trim()) return false
   if (form.invoice_type === 'company' && !form.tax_no.trim()) return false
   return true
 })
+
+// formatRedeemCode 显示兑换码的前 4 位和后 4 位（隐私友好，但仍可辨识）
+function formatRedeemCode(code: string): string {
+  if (!code) return ''
+  const trimmed = code.trim()
+  if (trimmed.length <= 8) return trimmed
+  return `${trimmed.slice(0, 4)}…${trimmed.slice(-4)}`
+}
+
+// sourceCountLabel 在列表中描述发票来源数量（订单 + 兑换码）
+function sourceCountLabel(item: InvoiceRequest): string {
+  const orders = item.payment_order_ids?.length ?? 0
+  const codes = item.redeem_code_ids?.length ?? 0
+  const parts: string[] = []
+  if (orders > 0) parts.push(`${orders} ${t('invoice.orders')}`)
+  if (codes > 0) parts.push(`${codes} ${t('invoice.redeemCodes')}`)
+  return parts.length > 0 ? parts.join(' + ') : `0 ${t('invoice.orders')}`
+}
 
 function statusBadgeClass(status: string): string {
   switch (status) {
@@ -363,6 +443,7 @@ async function openCreateModal() {
   showCreate.value = true
   submitError.value = ''
   form.payment_order_ids = []
+  form.redeem_code_ids = []
   form.invoice_type = 'personal'
   form.title = ''
   form.tax_no = ''
@@ -370,9 +451,12 @@ async function openCreateModal() {
   form.remark = ''
   loadingEligible.value = true
   try {
-    eligibleOrders.value = await invoiceAPI.listEligibleOrders()
+    const sources = await invoiceAPI.listEligibleSources()
+    eligibleOrders.value = sources.orders || []
+    eligibleRedeemCodes.value = sources.redeem_codes || []
   } catch (e: any) {
     eligibleOrders.value = []
+    eligibleRedeemCodes.value = []
     submitError.value = e?.message || String(e)
   } finally {
     loadingEligible.value = false
@@ -388,7 +472,8 @@ async function handleSubmit() {
   submitError.value = ''
   try {
     await invoiceAPI.createInvoiceRequest({
-      payment_order_ids: form.payment_order_ids,
+      payment_order_ids: form.payment_order_ids.length > 0 ? form.payment_order_ids : undefined,
+      redeem_code_ids: form.redeem_code_ids.length > 0 ? form.redeem_code_ids : undefined,
       invoice_type: form.invoice_type,
       title: form.title.trim(),
       tax_no: form.invoice_type === 'company' ? form.tax_no.trim() : undefined,

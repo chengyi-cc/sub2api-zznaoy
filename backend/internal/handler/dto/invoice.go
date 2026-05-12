@@ -8,19 +8,20 @@ import (
 
 // InvoiceRequest 发票申请 DTO（用户/管理员通用响应）
 type InvoiceRequest struct {
-	ID              int64     `json:"id"`
-	UserID          int64     `json:"user_id"`
-	PaymentOrderIDs []int64   `json:"payment_order_ids"`
-	Amount          float64   `json:"amount"`
-	InvoiceType     string    `json:"invoice_type"`
-	Title           string    `json:"title"`
-	TaxNo           string    `json:"tax_no,omitempty"`
-	RecipientEmail  string    `json:"recipient_email,omitempty"`
-	Remark          string    `json:"remark,omitempty"`
-	Status          string    `json:"status"`
-	RejectReason    string    `json:"reject_reason,omitempty"`
-	InvoiceNo       string    `json:"invoice_no,omitempty"`
-	HasFile         bool      `json:"has_file"`
+	ID              int64      `json:"id"`
+	UserID          int64      `json:"user_id"`
+	PaymentOrderIDs []int64    `json:"payment_order_ids"`
+	RedeemCodeIDs   []int64    `json:"redeem_code_ids"`
+	Amount          float64    `json:"amount"`
+	InvoiceType     string     `json:"invoice_type"`
+	Title           string     `json:"title"`
+	TaxNo           string     `json:"tax_no,omitempty"`
+	RecipientEmail  string     `json:"recipient_email,omitempty"`
+	Remark          string     `json:"remark,omitempty"`
+	Status          string     `json:"status"`
+	RejectReason    string     `json:"reject_reason,omitempty"`
+	InvoiceNo       string     `json:"invoice_no,omitempty"`
+	HasFile         bool       `json:"has_file"`
 	IssuedAt        *time.Time `json:"issued_at,omitempty"`
 	ProcessedBy     int64      `json:"processed_by,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
@@ -36,6 +37,7 @@ func InvoiceRequestFromEnt(r *dbent.InvoiceRequest) *InvoiceRequest {
 		ID:              r.ID,
 		UserID:          r.UserID,
 		PaymentOrderIDs: append([]int64(nil), r.PaymentOrderIds...),
+		RedeemCodeIDs:   append([]int64(nil), r.RedeemCodeIds...),
 		Amount:          r.Amount,
 		InvoiceType:     r.InvoiceType,
 		Title:           r.Title,

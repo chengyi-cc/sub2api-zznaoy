@@ -44,7 +44,13 @@ func (InvoiceRequest) Fields() []ent.Field {
 		field.JSON("payment_order_ids", []int64{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
-		// 开票总金额（= 所有关联订单 amount 之和，冗余存储用于审核与一致性校验）
+		// 关联的兑换码 IDs（JSONB 数组；仅 type=balance 的已使用兑换码可以开票，
+		// 与 payment_order_ids 可混合同一张发票）
+		field.JSON("redeem_code_ids", []int64{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Default([]int64{}),
+
+		// 开票总金额（= 所有关联订单 amount + 兑换码 value 之和，冗余存储用于审核与一致性校验）
 		field.Float("amount").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
 
