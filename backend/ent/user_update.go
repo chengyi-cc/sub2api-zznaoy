@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/invoicerequest"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
@@ -590,6 +591,21 @@ func (_u *UserUpdate) AddPendingAuthSessions(v ...*PendingAuthSession) *UserUpda
 	return _u.AddPendingAuthSessionIDs(ids...)
 }
 
+// AddInvoiceRequestIDs adds the "invoice_requests" edge to the InvoiceRequest entity by IDs.
+func (_u *UserUpdate) AddInvoiceRequestIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddInvoiceRequestIDs(ids...)
+	return _u
+}
+
+// AddInvoiceRequests adds the "invoice_requests" edges to the InvoiceRequest entity.
+func (_u *UserUpdate) AddInvoiceRequests(v ...*InvoiceRequest) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddInvoiceRequestIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdate) Mutation() *UserMutation {
 	return _u.mutation
@@ -845,6 +861,27 @@ func (_u *UserUpdate) RemovePendingAuthSessions(v ...*PendingAuthSession) *UserU
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePendingAuthSessionIDs(ids...)
+}
+
+// ClearInvoiceRequests clears all "invoice_requests" edges to the InvoiceRequest entity.
+func (_u *UserUpdate) ClearInvoiceRequests() *UserUpdate {
+	_u.mutation.ClearInvoiceRequests()
+	return _u
+}
+
+// RemoveInvoiceRequestIDs removes the "invoice_requests" edge to InvoiceRequest entities by IDs.
+func (_u *UserUpdate) RemoveInvoiceRequestIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveInvoiceRequestIDs(ids...)
+	return _u
+}
+
+// RemoveInvoiceRequests removes "invoice_requests" edges to InvoiceRequest entities.
+func (_u *UserUpdate) RemoveInvoiceRequests(v ...*InvoiceRequest) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveInvoiceRequestIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1587,6 +1624,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.InvoiceRequestsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.InvoiceRequestsTable,
+			Columns: []string{user.InvoiceRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(invoicerequest.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedInvoiceRequestsIDs(); len(nodes) > 0 && !_u.mutation.InvoiceRequestsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.InvoiceRequestsTable,
+			Columns: []string{user.InvoiceRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(invoicerequest.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.InvoiceRequestsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.InvoiceRequestsTable,
+			Columns: []string{user.InvoiceRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(invoicerequest.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
@@ -2158,6 +2240,21 @@ func (_u *UserUpdateOne) AddPendingAuthSessions(v ...*PendingAuthSession) *UserU
 	return _u.AddPendingAuthSessionIDs(ids...)
 }
 
+// AddInvoiceRequestIDs adds the "invoice_requests" edge to the InvoiceRequest entity by IDs.
+func (_u *UserUpdateOne) AddInvoiceRequestIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddInvoiceRequestIDs(ids...)
+	return _u
+}
+
+// AddInvoiceRequests adds the "invoice_requests" edges to the InvoiceRequest entity.
+func (_u *UserUpdateOne) AddInvoiceRequests(v ...*InvoiceRequest) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddInvoiceRequestIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdateOne) Mutation() *UserMutation {
 	return _u.mutation
@@ -2413,6 +2510,27 @@ func (_u *UserUpdateOne) RemovePendingAuthSessions(v ...*PendingAuthSession) *Us
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePendingAuthSessionIDs(ids...)
+}
+
+// ClearInvoiceRequests clears all "invoice_requests" edges to the InvoiceRequest entity.
+func (_u *UserUpdateOne) ClearInvoiceRequests() *UserUpdateOne {
+	_u.mutation.ClearInvoiceRequests()
+	return _u
+}
+
+// RemoveInvoiceRequestIDs removes the "invoice_requests" edge to InvoiceRequest entities by IDs.
+func (_u *UserUpdateOne) RemoveInvoiceRequestIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveInvoiceRequestIDs(ids...)
+	return _u
+}
+
+// RemoveInvoiceRequests removes "invoice_requests" edges to InvoiceRequest entities.
+func (_u *UserUpdateOne) RemoveInvoiceRequests(v ...*InvoiceRequest) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveInvoiceRequestIDs(ids...)
 }
 
 // Where appends a list predicates to the UserUpdate builder.
@@ -3178,6 +3296,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(pendingauthsession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.InvoiceRequestsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.InvoiceRequestsTable,
+			Columns: []string{user.InvoiceRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(invoicerequest.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedInvoiceRequestsIDs(); len(nodes) > 0 && !_u.mutation.InvoiceRequestsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.InvoiceRequestsTable,
+			Columns: []string{user.InvoiceRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(invoicerequest.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.InvoiceRequestsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.InvoiceRequestsTable,
+			Columns: []string{user.InvoiceRequestsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(invoicerequest.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

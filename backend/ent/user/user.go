@@ -85,6 +85,8 @@ const (
 	EdgeAuthIdentities = "auth_identities"
 	// EdgePendingAuthSessions holds the string denoting the pending_auth_sessions edge name in mutations.
 	EdgePendingAuthSessions = "pending_auth_sessions"
+	// EdgeInvoiceRequests holds the string denoting the invoice_requests edge name in mutations.
+	EdgeInvoiceRequests = "invoice_requests"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
 	// Table holds the table name of the user in the database.
@@ -171,6 +173,13 @@ const (
 	PendingAuthSessionsInverseTable = "pending_auth_sessions"
 	// PendingAuthSessionsColumn is the table column denoting the pending_auth_sessions relation/edge.
 	PendingAuthSessionsColumn = "target_user_id"
+	// InvoiceRequestsTable is the table that holds the invoice_requests relation/edge.
+	InvoiceRequestsTable = "invoice_requests"
+	// InvoiceRequestsInverseTable is the table name for the InvoiceRequest entity.
+	// It exists in this package in order to avoid circular dependency with the "invoicerequest" package.
+	InvoiceRequestsInverseTable = "invoice_requests"
+	// InvoiceRequestsColumn is the table column denoting the invoice_requests relation/edge.
+	InvoiceRequestsColumn = "user_id"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -569,6 +578,20 @@ func ByPendingAuthSessions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOpti
 	}
 }
 
+// ByInvoiceRequestsCount orders the results by invoice_requests count.
+func ByInvoiceRequestsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newInvoiceRequestsStep(), opts...)
+	}
+}
+
+// ByInvoiceRequests orders the results by invoice_requests terms.
+func ByInvoiceRequests(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newInvoiceRequestsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -664,6 +687,13 @@ func newPendingAuthSessionsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PendingAuthSessionsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PendingAuthSessionsTable, PendingAuthSessionsColumn),
+	)
+}
+func newInvoiceRequestsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(InvoiceRequestsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, InvoiceRequestsTable, InvoiceRequestsColumn),
 	)
 }
 func newUserAllowedGroupsStep() *sqlgraph.Step {
