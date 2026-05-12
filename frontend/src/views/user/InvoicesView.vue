@@ -1,107 +1,140 @@
 <template>
   <AppLayout>
     <div class="space-y-4">
-      <!-- Header card -->
-      <div class="card p-4">
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="flex-1 min-w-[200px]">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('invoice.title') }}
-            </h2>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('invoice.description') }}
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            <select
-              v-model="statusFilter"
-              class="input h-9 w-36 text-sm"
-              @change="reload"
-            >
-              <option value="">{{ t('invoice.allStatus') }}</option>
-              <option value="pending">{{ t('invoice.status.pending') }}</option>
-              <option value="approved">{{ t('invoice.status.approved') }}</option>
-              <option value="rejected">{{ t('invoice.status.rejected') }}</option>
-              <option value="issued">{{ t('invoice.status.issued') }}</option>
-            </select>
-            <button class="btn btn-secondary" @click="reload" :disabled="loading">
-              {{ t('common.refresh') }}
-            </button>
-            <button class="btn btn-primary" @click="openCreateModal">
-              {{ t('invoice.newRequest') }}
-            </button>
-          </div>
-        </div>
+      <!-- Page header -->
+      <div>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+          {{ t('invoice.title') }}
+        </h2>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('invoice.description') }}
+        </p>
       </div>
 
-      <!-- List -->
-      <div class="card overflow-hidden">
-        <div v-if="loading" class="p-8 text-center text-gray-500 dark:text-gray-400">
-          {{ t('common.loading') }}
-        </div>
-        <div
-          v-else-if="items.length === 0"
-          class="p-12 text-center text-gray-500 dark:text-gray-400"
+      <!-- Toolbar: 主操作（申请开票）放最左，筛选/刷新放右侧 -->
+      <div class="flex flex-wrap items-center gap-3">
+        <button class="btn btn-primary" @click="openCreateModal">
+          + {{ t('invoice.newRequest') }}
+        </button>
+        <select
+          v-model="statusFilter"
+          class="input h-9 w-40 text-sm"
+          @change="reload"
         >
-          {{ t('invoice.empty') }}
-        </div>
-        <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
-          <div
-            v-for="item in items"
-            :key="item.id"
-            class="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-dark-800/50"
-          >
-            <div class="flex-1 min-w-[220px]">
-              <div class="flex items-center gap-2">
-                <span class="font-medium text-gray-900 dark:text-white">
-                  {{ item.title }}
-                </span>
-                <span
-                  class="rounded px-2 py-0.5 text-xs font-medium"
-                  :class="invoiceTypeBadgeClass(item.invoice_type)"
+          <option value="">{{ t('invoice.allStatus') }}</option>
+          <option value="pending">{{ t('invoice.status.pending') }}</option>
+          <option value="approved">{{ t('invoice.status.approved') }}</option>
+          <option value="rejected">{{ t('invoice.status.rejected') }}</option>
+          <option value="issued">{{ t('invoice.status.issued') }}</option>
+        </select>
+        <div class="flex-1"></div>
+        <button
+          class="btn btn-secondary"
+          @click="reload"
+          :disabled="loading"
+          :title="t('common.refresh')"
+        >
+          {{ t('common.refresh') }}
+        </button>
+      </div>
+
+      <!-- Table -->
+      <div class="card overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="bg-gray-50 dark:bg-dark-800/40">
+              <tr class="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <th class="px-4 py-3 font-medium">{{ t('invoice.colId') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('invoice.colTitle') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('invoice.invoiceType') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('invoice.amount') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('invoice.colSources') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('invoice.status.label') }}</th>
+                <th class="px-4 py-3 font-medium">{{ t('invoice.createdAt') }}</th>
+                <th class="px-4 py-3 text-right font-medium">{{ t('invoice.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-if="loading">
+                <td colspan="8" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                  {{ t('common.loading') }}
+                </td>
+              </tr>
+              <tr v-else-if="items.length === 0">
+                <td colspan="8" class="px-4 py-12 text-center text-gray-500 dark:text-gray-400">
+                  {{ t('invoice.empty') }}
+                </td>
+              </tr>
+              <template v-else>
+                <tr
+                  v-for="item in items"
+                  :key="item.id"
+                  class="hover:bg-gray-50 dark:hover:bg-dark-800/50"
                 >
-                  {{ t(`invoice.type.${item.invoice_type}`) }}
-                </span>
-                <span
-                  class="rounded px-2 py-0.5 text-xs font-medium"
-                  :class="statusBadgeClass(item.status)"
-                >
-                  {{ t(`invoice.status.${item.status}`) }}
-                </span>
-              </div>
-              <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                <span>#{{ item.id }}</span>
-                <span class="mx-2">·</span>
-                <span>{{ t('invoice.amount') }}: ¥{{ item.amount.toFixed(2) }}</span>
-                <span class="mx-2">·</span>
-                <span>{{ sourceCountLabel(item) }}</span>
-                <span class="mx-2">·</span>
-                <span>{{ formatDateTime(item.created_at) }}</span>
-              </div>
-              <div
-                v-if="item.status === 'rejected' && item.reject_reason"
-                class="mt-1 text-xs text-red-600 dark:text-red-400"
-              >
-                {{ t('invoice.rejectReason') }}: {{ item.reject_reason }}
-              </div>
-              <div
-                v-if="item.status === 'issued' && item.invoice_no"
-                class="mt-1 text-xs text-emerald-600 dark:text-emerald-400"
-              >
-                {{ t('invoice.invoiceNo') }}: {{ item.invoice_no }}
-              </div>
-            </div>
-            <div class="flex items-center gap-2">
-              <button
-                v-if="item.status === 'issued' && item.has_file"
-                class="btn btn-primary btn-sm"
-                @click="handleDownload(item)"
-                :disabled="downloadingId === item.id"
-              >
-                {{ downloadingId === item.id ? t('common.processing') : t('invoice.download') }}
-              </button>
-            </div>
-          </div>
+                  <td class="px-4 py-3 text-gray-500 dark:text-gray-400">#{{ item.id }}</td>
+                  <td class="px-4 py-3">
+                    <div class="font-medium text-gray-900 dark:text-white">
+                      {{ item.title }}
+                    </div>
+                    <div
+                      v-if="item.tax_no"
+                      class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+                    >
+                      {{ t('invoice.taxNo') }}: {{ item.tax_no }}
+                    </div>
+                    <div
+                      v-if="item.status === 'issued' && item.invoice_no"
+                      class="mt-0.5 text-xs text-emerald-600 dark:text-emerald-400"
+                    >
+                      {{ t('invoice.invoiceNo') }}: {{ item.invoice_no }}
+                    </div>
+                    <div
+                      v-if="item.status === 'rejected' && item.reject_reason"
+                      class="mt-0.5 text-xs text-red-600 dark:text-red-400"
+                    >
+                      {{ t('invoice.rejectReason') }}: {{ item.reject_reason }}
+                    </div>
+                  </td>
+                  <td class="px-4 py-3">
+                    <span
+                      class="rounded px-2 py-0.5 text-xs font-medium"
+                      :class="invoiceTypeBadgeClass(item.invoice_type)"
+                    >
+                      {{ t(`invoice.type.${item.invoice_type}`) }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                    ¥{{ item.amount.toFixed(2) }}
+                  </td>
+                  <td class="px-4 py-3 text-gray-600 dark:text-gray-400">
+                    {{ sourceCountLabel(item) }}
+                  </td>
+                  <td class="px-4 py-3">
+                    <span
+                      class="rounded px-2 py-0.5 text-xs font-medium"
+                      :class="statusBadgeClass(item.status)"
+                    >
+                      {{ t(`invoice.status.${item.status}`) }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatDateTime(item.created_at) }}
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <button
+                      v-if="item.status === 'issued' && item.has_file"
+                      class="btn btn-primary btn-sm"
+                      @click="handleDownload(item)"
+                      :disabled="downloadingId === item.id"
+                    >
+                      {{ downloadingId === item.id ? t('common.processing') : t('invoice.download') }}
+                    </button>
+                    <span v-else class="text-xs text-gray-400">—</span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
         </div>
       </div>
 

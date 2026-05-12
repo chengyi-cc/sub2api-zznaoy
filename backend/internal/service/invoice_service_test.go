@@ -536,3 +536,75 @@ func TestInvoiceService_CreateRequest_RejectsEmptySources(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrInvoiceSourcesEmpty)
 }
+
+// AdminIssue 复核期间，若兑换码 used_by 在 approved → issue 之间被改成别人，
+// 必须中止开票（防止把发票开给当前申请人但凭证已不在他名下）。
+func TestInvoiceService_AdminIssue_BlocksOnRedeemCodeOwnershipChange(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
+	codeID := seedUsedBalanceRedeemCode(t, client, user.ID, "BAL-OWN-CHANGE-AAA", 80)
+
+	created, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:        user.ID,
+		RedeemCodeIDs: []int64{codeID},
+		InvoiceType:   domain.InvoiceTypePersonal,
+		Title:         "John",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.AdminApprove(context.Background(), created.ID, 999)
+	require.NoError(t, err)
+
+	// Simulate ownership rewrite (data fix / manual intervention) between approve and issue.
+	other, err := client.User.Create().
+		SetEmail("rewriter@example.com").
+		SetPasswordHash("hash").
+		SetRole(RoleUser).
+		SetStatus(StatusActive).
+		Save(context.Background())
+	require.NoError(t, err)
+	_, err = client.RedeemCode.UpdateOneID(codeID).
+		SetUsedBy(other.ID).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	_, err = svc.AdminIssue(
+		context.Background(), created.ID, 999, "INV-OWN-001",
+		bytes.NewReader([]byte("%PDF-1.4 dummy")), int64(len("%PDF-1.4 dummy")),
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "INVOICE_REDEEM_STATE_CHANGED")
+
+	// Invoice request should remain in approved state, not issued.
+	reloaded, err := svc.AdminGet(context.Background(), created.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.InvoiceStatusApproved, reloaded.Status)
+}
+
+// 与 ownership 变更对称的场景：value 在 approved 期间被人工改成 0（或负数）。
+func TestInvoiceService_AdminIssue_BlocksOnRedeemCodeValueZeroed(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
+	codeID := seedUsedBalanceRedeemCode(t, client, user.ID, "BAL-ZERO-CHANGE-A", 80)
+
+	created, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:        user.ID,
+		RedeemCodeIDs: []int64{codeID},
+		InvoiceType:   domain.InvoiceTypePersonal,
+		Title:         "John",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.AdminApprove(context.Background(), created.ID, 999)
+	require.NoError(t, err)
+
+	_, err = client.RedeemCode.UpdateOneID(codeID).SetValue(0).Save(context.Background())
+	require.NoError(t, err)
+
+	_, err = svc.AdminIssue(
+		context.Background(), created.ID, 999, "INV-ZERO-001",
+		bytes.NewReader([]byte("%PDF-1.4 dummy")), int64(len("%PDF-1.4 dummy")),
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "INVOICE_REDEEM_STATE_CHANGED")
+}

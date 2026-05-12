@@ -837,6 +837,15 @@ func (s *InvoiceService) AdminIssue(
 					"one or more referenced redeem codes are no longer eligible",
 				)
 			}
+			// 与 CreateRequest 的入口校验保持对等：开票期间也必须仍然是
+			// 当前申请人名下的非零正值兑换码。这避免了"申请时合规但持有时
+			// 间内被人工改归属/value 改为 0"的边界情况。
+			if c.UsedBy == nil || *c.UsedBy != r.UserID || c.Value <= 0 {
+				return nil, infraerrors.Conflict(
+					"INVOICE_REDEEM_STATE_CHANGED",
+					"one or more referenced redeem codes are no longer eligible",
+				)
+			}
 		}
 	}
 
