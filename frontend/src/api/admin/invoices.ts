@@ -25,6 +25,44 @@ export async function adminGetInvoiceRequest(id: number): Promise<InvoiceRequest
   return data
 }
 
+export interface InvoiceDetailOrder {
+  order_id: number
+  out_trade_no: string
+  amount: number
+  status: string
+  order_type: string
+  payment_type: string
+  completed_at: string
+  eligible: boolean
+}
+
+export interface InvoiceDetailRedeem {
+  redeem_code_id: number
+  code: string
+  value: number
+  status: string
+  type: string
+  used_by: number
+  used_at: string
+  eligible: boolean
+}
+
+export interface InvoiceRequestDetail {
+  request: InvoiceRequest
+  user_email: string
+  user_name: string
+  orders: InvoiceDetailOrder[]
+  redeem_codes: InvoiceDetailRedeem[]
+  computed_sum: number
+  amount_match: boolean
+  all_eligible: boolean
+}
+
+export async function adminGetInvoiceDetail(id: number): Promise<InvoiceRequestDetail> {
+  const { data } = await apiClient.get<InvoiceRequestDetail>(`${BASE}/requests/${id}/detail`)
+  return data
+}
+
 export async function adminApproveInvoiceRequest(id: number): Promise<InvoiceRequest> {
   const { data } = await apiClient.post<InvoiceRequest>(`${BASE}/requests/${id}/approve`)
   return data
@@ -72,6 +110,7 @@ export async function adminDownloadInvoice(id: number, filename = 'invoice.pdf')
 export const adminInvoiceAPI = {
   list: adminListInvoiceRequests,
   get: adminGetInvoiceRequest,
+  detail: adminGetInvoiceDetail,
   approve: adminApproveInvoiceRequest,
   reject: adminRejectInvoiceRequest,
   issue: adminIssueInvoiceRequest,

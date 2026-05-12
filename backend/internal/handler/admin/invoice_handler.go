@@ -61,6 +61,34 @@ func (h *InvoiceHandler) Get(c *gin.Context) {
 	response.Success(c, dto.InvoiceRequestFromEnt(r))
 }
 
+// Detail GET /api/v1/admin/invoice/requests/:id/detail
+// 审核详情：含关联订单 / 兑换码当前状态、申请人邮箱、金额一致性校验。
+func (h *InvoiceHandler) Detail(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid id")
+		return
+	}
+	d, err := h.invoiceService.AdminGetDetail(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	// 直接返回 service.InvoiceRequestDetail（已有 JSON 标签），
+	// 但 Request 字段是 ent.InvoiceRequest 含敏感字段（如内部文件路径），
+	// 替换成与列表一致的 DTO 视图。
+	response.Success(c, gin.H{
+		"request":      dto.InvoiceRequestFromEnt(d.Request),
+		"user_email":   d.UserEmail,
+		"user_name":    d.UserName,
+		"orders":       d.Orders,
+		"redeem_codes": d.RedeemCodes,
+		"computed_sum": d.ComputedSum,
+		"amount_match": d.AmountMatch,
+		"all_eligible": d.AllEligible,
+	})
+}
+
 // Approve POST /api/v1/admin/invoice/requests/:id/approve
 func (h *InvoiceHandler) Approve(c *gin.Context) {
 	adminID, ok := h.getAdminID(c)

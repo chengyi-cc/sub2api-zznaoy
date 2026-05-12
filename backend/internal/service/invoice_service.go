@@ -709,6 +709,176 @@ func (s *InvoiceService) AdminGet(ctx context.Context, requestID int64) (*dbent.
 	return r, nil
 }
 
+// InvoiceRequestDetail 管理员审核详情视图：在发票申请记录外
+// 还包含关联订单 / 兑换码的当前状态 + 申请人邮箱，便于人工对账。
+type InvoiceRequestDetail struct {
+	Request      *dbent.InvoiceRequest `json:"request"`
+	UserEmail    string                `json:"user_email"`
+	UserName     string                `json:"user_name"`
+	Orders       []InvoiceDetailOrder  `json:"orders"`
+	RedeemCodes  []InvoiceDetailRedeem `json:"redeem_codes"`
+	ComputedSum  float64               `json:"computed_sum"`  // 当前数据库中订单 + 兑换码合计，可与 request.amount 对照
+	AmountMatch  bool                  `json:"amount_match"`  // ComputedSum == request.amount 时为 true
+	AllEligible  bool                  `json:"all_eligible"`  // 所有订单 COMPLETED 且兑换码合规
+}
+
+// InvoiceDetailOrder 详情中的订单视图，含订单**当前**状态而不是申请时快照。
+type InvoiceDetailOrder struct {
+	OrderID     int64     `json:"order_id"`
+	OutTradeNo  string    `json:"out_trade_no"`
+	Amount      float64   `json:"amount"`
+	Status      string    `json:"status"`       // 当前状态：COMPLETED / REFUNDED / ...
+	OrderType   string    `json:"order_type"`
+	PaymentType string    `json:"payment_type"`
+	CompletedAt time.Time `json:"completed_at"`
+	Eligible    bool      `json:"eligible"`     // status == COMPLETED
+}
+
+// InvoiceDetailRedeem 详情中的兑换码视图，含**当前**状态。
+type InvoiceDetailRedeem struct {
+	RedeemCodeID int64     `json:"redeem_code_id"`
+	Code         string    `json:"code"`
+	Value        float64   `json:"value"`
+	Status       string    `json:"status"`         // 当前状态：used / unused / ...
+	Type         string    `json:"type"`           // 当前类型
+	UsedBy       int64     `json:"used_by"`        // 当前 used_by（0 = 未使用或已转给他人）
+	UsedAt       time.Time `json:"used_at"`
+	Eligible     bool      `json:"eligible"`       // status=used && type=balance && used_by==当前申请人 && value>0
+}
+
+// AdminGetDetail 返回审核所需的完整明细。
+func (s *InvoiceService) AdminGetDetail(ctx context.Context, requestID int64) (*InvoiceRequestDetail, error) {
+	r, err := s.AdminGet(ctx, requestID)
+	if err != nil {
+		return nil, err
+	}
+
+	detail := &InvoiceRequestDetail{
+		Request:     r,
+		Orders:      []InvoiceDetailOrder{},
+		RedeemCodes: []InvoiceDetailRedeem{},
+		AllEligible: true,
+	}
+
+	// 申请人信息
+	if user, err := s.userRepo.GetByID(ctx, r.UserID); err == nil && user != nil {
+		detail.UserEmail = user.Email
+		detail.UserName = user.Username
+	}
+
+	// 订单当前状态
+	var computedSum float64
+	if len(r.PaymentOrderIds) > 0 {
+		orders, err := s.entClient.PaymentOrder.Query().
+			Where(paymentorder.IDIn(r.PaymentOrderIds...)).
+			All(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("query orders for detail: %w", err)
+		}
+		// 用 map 查找以保留 r.PaymentOrderIds 的顺序
+		byID := make(map[int64]*dbent.PaymentOrder, len(orders))
+		for _, o := range orders {
+			byID[o.ID] = o
+		}
+		for _, oid := range r.PaymentOrderIds {
+			o, ok := byID[oid]
+			if !ok {
+				detail.AllEligible = false
+				detail.Orders = append(detail.Orders, InvoiceDetailOrder{
+					OrderID:  oid,
+					Status:   "NOT_FOUND",
+					Eligible: false,
+				})
+				continue
+			}
+			var completedAt time.Time
+			if o.CompletedAt != nil {
+				completedAt = *o.CompletedAt
+			}
+			eligible := o.Status == OrderStatusCompleted
+			if !eligible {
+				detail.AllEligible = false
+			}
+			computedSum += o.Amount
+			detail.Orders = append(detail.Orders, InvoiceDetailOrder{
+				OrderID:     o.ID,
+				OutTradeNo:  o.OutTradeNo,
+				Amount:      o.Amount,
+				Status:      o.Status,
+				OrderType:   o.OrderType,
+				PaymentType: o.PaymentType,
+				CompletedAt: completedAt,
+				Eligible:    eligible,
+			})
+		}
+	}
+
+	// 兑换码当前状态
+	if len(r.RedeemCodeIds) > 0 {
+		codes, err := s.entClient.RedeemCode.Query().
+			Where(redeemcode.IDIn(r.RedeemCodeIds...)).
+			All(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("query redeem codes for detail: %w", err)
+		}
+		byID := make(map[int64]*dbent.RedeemCode, len(codes))
+		for _, c := range codes {
+			byID[c.ID] = c
+		}
+		for _, cid := range r.RedeemCodeIds {
+			c, ok := byID[cid]
+			if !ok {
+				detail.AllEligible = false
+				detail.RedeemCodes = append(detail.RedeemCodes, InvoiceDetailRedeem{
+					RedeemCodeID: cid,
+					Status:       "NOT_FOUND",
+					Eligible:     false,
+				})
+				continue
+			}
+			var usedBy int64
+			if c.UsedBy != nil {
+				usedBy = *c.UsedBy
+			}
+			var usedAt time.Time
+			if c.UsedAt != nil {
+				usedAt = *c.UsedAt
+			}
+			eligible := c.Status == StatusUsed &&
+				c.Type == RedeemTypeBalance &&
+				usedBy == r.UserID &&
+				c.Value > 0
+			if !eligible {
+				detail.AllEligible = false
+			}
+			computedSum += c.Value
+			detail.RedeemCodes = append(detail.RedeemCodes, InvoiceDetailRedeem{
+				RedeemCodeID: c.ID,
+				Code:         c.Code,
+				Value:        c.Value,
+				Status:       c.Status,
+				Type:         c.Type,
+				UsedBy:       usedBy,
+				UsedAt:       usedAt,
+				Eligible:     eligible,
+			})
+		}
+	}
+
+	detail.ComputedSum = computedSum
+	// 浮点容差对比：1 分以内视为相等（PG decimal(20,2) 在 Go 端是 float64，可能有微小误差）
+	detail.AmountMatch = abs(computedSum-r.Amount) < 0.01
+
+	return detail, nil
+}
+
+func abs(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
+}
+
 // AdminApprove 审核通过：pending -> approved
 func (s *InvoiceService) AdminApprove(ctx context.Context, requestID, adminID int64) (*dbent.InvoiceRequest, error) {
 	r, err := s.AdminGet(ctx, requestID)
