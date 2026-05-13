@@ -27,19 +27,20 @@ var ErrImageJobNotFound = errors.New("image job not found")
 
 // ImageJobMeta 落盘到 meta.json 的任务元信息。
 type ImageJobMeta struct {
-	JobID        string         `json:"job_id"`
-	Status       ImageJobStatus `json:"status"`
-	Endpoint     string         `json:"endpoint"`
-	ContentType  string         `json:"content_type"`
-	Model        string         `json:"model"`
-	APIKeyID     int64          `json:"api_key_id"`
-	UserID       int64          `json:"user_id"`
-	CreatedAt    int64          `json:"created_at"`
-	StartedAt    int64          `json:"started_at,omitempty"`
-	CompletedAt  int64          `json:"completed_at,omitempty"`
-	HTTPStatus   int            `json:"http_status,omitempty"`
-	ErrorType    string         `json:"error_type,omitempty"`
-	ErrorMessage string         `json:"error_message,omitempty"`
+	JobID             string         `json:"job_id"`
+	Status            ImageJobStatus `json:"status"`
+	Endpoint          string         `json:"endpoint"`
+	ContentType       string         `json:"content_type"`
+	Model             string         `json:"model"`
+	APIKeyID          int64          `json:"api_key_id"`
+	UserID            int64          `json:"user_id"`
+	CreatedAt         int64          `json:"created_at"`
+	StartedAt         int64          `json:"started_at,omitempty"`
+	CompletedAt       int64          `json:"completed_at,omitempty"`
+	HTTPStatus        int            `json:"http_status,omitempty"`
+	ErrorType         string         `json:"error_type,omitempty"`
+	ErrorMessage      string         `json:"error_message,omitempty"`
+	RunTimeoutSeconds int            `json:"run_timeout_seconds,omitempty"`
 }
 
 // imageJobIDPattern 限制 job_id 形状为 "job_<32 hex>"，与 generateImageJobID 保持一致。

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +25,8 @@ import (
 type imageJobsState struct {
 	Store         *service.ImageJobStore
 	TTL           time.Duration
-	RunTimeout    time.Duration
+	RunTimeout    time.Duration // 客户端不传 ?timeout_seconds 时的默认值
+	MaxRunTimeout time.Duration // ?timeout_seconds 允许的上限
 	MaxTotalBytes int64
 	Interval      time.Duration
 }
@@ -52,11 +54,18 @@ func (h *OpenAIGatewayHandler) ensureImageJobsState() (*imageJobsState, error) {
 		Store:         store,
 		TTL:           time.Duration(cfg.TTLSeconds) * time.Second,
 		RunTimeout:    time.Duration(cfg.RunTimeoutSeconds) * time.Second,
+		MaxRunTimeout: time.Duration(cfg.MaxRunTimeoutSeconds) * time.Second,
 		MaxTotalBytes: int64(cfg.MaxTotalDiskMB) << 20,
 		Interval:      time.Duration(cfg.CleanupIntervalSeconds) * time.Second,
 	}
 	if state.RunTimeout <= 0 {
 		state.RunTimeout = 5 * time.Minute
+	}
+	if state.MaxRunTimeout <= 0 {
+		state.MaxRunTimeout = 10 * time.Minute
+	}
+	if state.MaxRunTimeout < state.RunTimeout {
+		state.MaxRunTimeout = state.RunTimeout
 	}
 	if state.Interval <= 0 {
 		state.Interval = 2 * time.Minute
@@ -77,7 +86,7 @@ func (h *OpenAIGatewayHandler) StartImageJobsCleaner(ctx context.Context) {
 		TTL:             state.TTL,
 		MaxTotalBytes:   state.MaxTotalBytes,
 		Interval:        state.Interval,
-		ZombieThreshold: state.RunTimeout + 2*time.Minute,
+		ZombieThreshold: state.MaxRunTimeout + 2*time.Minute,
 	})
 }
 
@@ -138,6 +147,25 @@ func (h *OpenAIGatewayHandler) SubmitImageJob(endpoint string) gin.HandlerFunc {
 			return
 		}
 
+		// 解析可选的 ?timeout_seconds=N：不传 → 用全局默认 state.RunTimeout；
+		// 传 → 在 [1, MaxRunTimeout] 内校验，超过上限直接 400 不静默 clamp。
+		runTimeout := state.RunTimeout
+		if raw := strings.TrimSpace(c.Query("timeout_seconds")); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n <= 0 {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error",
+					"timeout_seconds must be a positive integer")
+				return
+			}
+			maxSec := int(state.MaxRunTimeout / time.Second)
+			if n > maxSec {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error",
+					fmt.Sprintf("timeout_seconds exceeds maximum (%ds)", maxSec))
+				return
+			}
+			runTimeout = time.Duration(n) * time.Second
+		}
+
 		contentType := c.GetHeader("Content-Type")
 
 		jobID, err := generateImageJobID()
@@ -146,6 +174,7 @@ func (h *OpenAIGatewayHandler) SubmitImageJob(endpoint string) gin.HandlerFunc {
 			return
 		}
 		meta := service.NewImageJobMeta(jobID, endpoint, contentType, parsed.Model, apiKey.ID, subject.UserID)
+		meta.RunTimeoutSeconds = int(runTimeout / time.Second)
 		if err := state.Store.Create(meta, body); err != nil {
 			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to persist image job")
 			return
@@ -312,7 +341,12 @@ func (h *OpenAIGatewayHandler) runImageJob(jobID string, runCtx imageJobRunConte
 		return
 	}
 
-	jobCtx, cancel := context.WithTimeout(context.Background(), state.RunTimeout)
+	// 单任务超时：优先用提交期写入 meta 的值（来自 ?timeout_seconds），缺省则用全局默认。
+	runTimeout := state.RunTimeout
+	if metaSnapshot, err := state.Store.LoadMeta(jobID); err == nil && metaSnapshot.RunTimeoutSeconds > 0 {
+		runTimeout = time.Duration(metaSnapshot.RunTimeoutSeconds) * time.Second
+	}
+	jobCtx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 
 	recorder := newImageJobRecorder()

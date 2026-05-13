@@ -616,8 +616,12 @@ type ImageJobsConfig struct {
 	RootDir string `mapstructure:"root_dir"`
 	// TTLSeconds: 任务结果保留时长（秒），超过即被清理（默认 600 = 10 分钟）
 	TTLSeconds int `mapstructure:"ttl_seconds"`
-	// RunTimeoutSeconds: 单个任务的执行总超时（秒），超过则任务标记 failed（默认 300）
+	// RunTimeoutSeconds: 单个任务的执行总超时（秒），超过则任务标记 failed（默认 300）。
+	// 也是客户端不传 ?timeout_seconds 时的兜底值。
 	RunTimeoutSeconds int `mapstructure:"run_timeout_seconds"`
+	// MaxRunTimeoutSeconds: 客户端可通过 ?timeout_seconds 主动调高的上限（秒，默认 600）。
+	// 超过此值的请求会被 400 拒绝，不会被静默 clamp。
+	MaxRunTimeoutSeconds int `mapstructure:"max_run_timeout_seconds"`
 	// MaxTotalDiskMB: 任务目录总磁盘占用上限（MiB），超出按 created_at 由旧到新强删（默认 1024 = 1 GiB）
 	MaxTotalDiskMB int `mapstructure:"max_total_disk_mb"`
 	// CleanupIntervalSeconds: 清理 ticker 间隔（秒，默认 120）
@@ -1741,6 +1745,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_jobs.root_dir", "")
 	viper.SetDefault("gateway.image_jobs.ttl_seconds", 600)
 	viper.SetDefault("gateway.image_jobs.run_timeout_seconds", 300)
+	viper.SetDefault("gateway.image_jobs.max_run_timeout_seconds", 600)
 	viper.SetDefault("gateway.image_jobs.max_total_disk_mb", 1024)
 	viper.SetDefault("gateway.image_jobs.cleanup_interval_seconds", 120)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
@@ -2384,6 +2389,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.ImageJobs.RunTimeoutSeconds <= 0 || c.Gateway.ImageJobs.RunTimeoutSeconds > 3600 {
 		return fmt.Errorf("gateway.image_jobs.run_timeout_seconds must be between 1 and 3600")
+	}
+	if c.Gateway.ImageJobs.MaxRunTimeoutSeconds <= 0 || c.Gateway.ImageJobs.MaxRunTimeoutSeconds > 3600 {
+		return fmt.Errorf("gateway.image_jobs.max_run_timeout_seconds must be between 1 and 3600")
+	}
+	if c.Gateway.ImageJobs.MaxRunTimeoutSeconds < c.Gateway.ImageJobs.RunTimeoutSeconds {
+		return fmt.Errorf("gateway.image_jobs.max_run_timeout_seconds must be >= run_timeout_seconds")
 	}
 	if c.Gateway.ImageJobs.MaxTotalDiskMB < 0 {
 		return fmt.Errorf("gateway.image_jobs.max_total_disk_mb must be non-negative")
