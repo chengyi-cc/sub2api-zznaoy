@@ -112,6 +112,44 @@ func RegisterGatewayRoutes(
 			}
 			h.OpenAIGateway.Images(c)
 		})
+		// 异步图片任务（/v1/jobs/...）：客户端先 POST 提交、再 GET 轮询，
+		// 用于绕过 Cloudflare 等反向代理对单个 HTTP 长连接的硬超时（100s）。
+		gateway.POST("/jobs/images/generations", func(c *gin.Context) {
+			if getGroupPlatform(c) != service.PlatformOpenAI {
+				c.JSON(http.StatusNotFound, gin.H{
+					"error": gin.H{
+						"type":    "not_found_error",
+						"message": "Image jobs API is not supported for this platform",
+					},
+				})
+				return
+			}
+			h.OpenAIGateway.SubmitImageJob("/v1/images/generations")(c)
+		})
+		gateway.POST("/jobs/images/edits", func(c *gin.Context) {
+			if getGroupPlatform(c) != service.PlatformOpenAI {
+				c.JSON(http.StatusNotFound, gin.H{
+					"error": gin.H{
+						"type":    "not_found_error",
+						"message": "Image jobs API is not supported for this platform",
+					},
+				})
+				return
+			}
+			h.OpenAIGateway.SubmitImageJob("/v1/images/edits")(c)
+		})
+		gateway.GET("/jobs/:job_id", func(c *gin.Context) {
+			if getGroupPlatform(c) != service.PlatformOpenAI {
+				c.JSON(http.StatusNotFound, gin.H{
+					"error": gin.H{
+						"type":    "not_found_error",
+						"message": "Image jobs API is not supported for this platform",
+					},
+				})
+				return
+			}
+			h.OpenAIGateway.GetImageJob(c)
+		})
 	}
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）

@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -37,6 +38,8 @@ type OpenAIGatewayHandler struct {
 	imageLimiter             *imageConcurrencyLimiter
 	maxAccountSwitches       int
 	cfg                      *config.Config
+	imageJobsStateMu         sync.Mutex
+	imageJobsState           *imageJobsState
 }
 
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
@@ -65,7 +68,7 @@ func NewOpenAIGatewayHandler(
 			maxAccountSwitches = cfg.Gateway.MaxAccountSwitches
 		}
 	}
-	return &OpenAIGatewayHandler{
+	h := &OpenAIGatewayHandler{
 		gatewayService:           gatewayService,
 		billingCacheService:      billingCacheService,
 		apiKeyService:            apiKeyService,
@@ -77,6 +80,9 @@ func NewOpenAIGatewayHandler(
 		maxAccountSwitches:       maxAccountSwitches,
 		cfg:                      cfg,
 	}
+	// 异步图片任务：仅在配置开启时启动后台 cleaner（绑进程生命周期）。
+	h.StartImageJobsCleaner(context.Background())
+	return h
 }
 
 // Responses handles OpenAI Responses API endpoint

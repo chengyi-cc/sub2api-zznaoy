@@ -608,6 +608,24 @@ const (
 	ImageConcurrencyOverflowModeWait   = "wait"
 )
 
+// ImageJobsConfig 异步图片任务配置
+// 用于通过 /v1/jobs/images/* 接口提交长耗时生图请求并轮询结果，
+// 避免反向代理（如 Cloudflare 100 秒）将单个长连接腰斩。
+type ImageJobsConfig struct {
+	// Enabled: 是否启用异步图片任务接口（默认关闭以保持兼容）
+	Enabled bool `mapstructure:"enabled"`
+	// RootDir: 任务结果落盘目录（为空时使用 ${DATA_DIR}/jobs/images 或 ./data/jobs/images）
+	RootDir string `mapstructure:"root_dir"`
+	// TTLSeconds: 任务结果保留时长（秒），超过即被清理（默认 600 = 10 分钟）
+	TTLSeconds int `mapstructure:"ttl_seconds"`
+	// RunTimeoutSeconds: 单个任务的执行总超时（秒），超过则任务标记 failed（默认 300）
+	RunTimeoutSeconds int `mapstructure:"run_timeout_seconds"`
+	// MaxTotalDiskMB: 任务目录总磁盘占用上限（MiB），超出按 created_at 由旧到新强删（默认 1024 = 1 GiB）
+	MaxTotalDiskMB int `mapstructure:"max_total_disk_mb"`
+	// CleanupIntervalSeconds: 清理 ticker 间隔（秒，默认 120）
+	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
+}
+
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
@@ -642,6 +660,8 @@ type GatewayConfig struct {
 	OpenAIWS GatewayOpenAIWSConfig `mapstructure:"openai_ws"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	// ImageJobs: 异步图片任务接口配置（/v1/jobs/images/*）
+	ImageJobs ImageJobsConfig `mapstructure:"image_jobs"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -1720,6 +1740,12 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
 	viper.SetDefault("gateway.image_concurrency.wait_timeout_seconds", 30)
 	viper.SetDefault("gateway.image_concurrency.max_waiting_requests", 100)
+	viper.SetDefault("gateway.image_jobs.enabled", false)
+	viper.SetDefault("gateway.image_jobs.root_dir", "")
+	viper.SetDefault("gateway.image_jobs.ttl_seconds", 600)
+	viper.SetDefault("gateway.image_jobs.run_timeout_seconds", 300)
+	viper.SetDefault("gateway.image_jobs.max_total_disk_mb", 1024)
+	viper.SetDefault("gateway.image_jobs.cleanup_interval_seconds", 120)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
@@ -2355,6 +2381,20 @@ func (c *Config) Validate() error {
 	if c.Gateway.ImageStreamKeepaliveInterval != 0 &&
 		(c.Gateway.ImageStreamKeepaliveInterval < 5 || c.Gateway.ImageStreamKeepaliveInterval > 60) {
 		return fmt.Errorf("gateway.image_stream_keepalive_interval must be 0 or between 5-60 seconds")
+	}
+	if c.Gateway.ImageJobs.Enabled {
+		if c.Gateway.ImageJobs.TTLSeconds <= 0 || c.Gateway.ImageJobs.TTLSeconds > 86400 {
+			return fmt.Errorf("gateway.image_jobs.ttl_seconds must be between 1 and 86400")
+		}
+		if c.Gateway.ImageJobs.RunTimeoutSeconds <= 0 || c.Gateway.ImageJobs.RunTimeoutSeconds > 3600 {
+			return fmt.Errorf("gateway.image_jobs.run_timeout_seconds must be between 1 and 3600")
+		}
+		if c.Gateway.ImageJobs.MaxTotalDiskMB < 0 {
+			return fmt.Errorf("gateway.image_jobs.max_total_disk_mb must be non-negative")
+		}
+		if c.Gateway.ImageJobs.CleanupIntervalSeconds <= 0 || c.Gateway.ImageJobs.CleanupIntervalSeconds > 3600 {
+			return fmt.Errorf("gateway.image_jobs.cleanup_interval_seconds must be between 1 and 3600")
+		}
 	}
 	// 兼容旧键 sticky_previous_response_ttl_seconds
 	if c.Gateway.OpenAIWS.StickyResponseIDTTLSeconds <= 0 && c.Gateway.OpenAIWS.StickyPreviousResponseTTLSeconds > 0 {
