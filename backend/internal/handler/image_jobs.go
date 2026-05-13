@@ -29,15 +29,7 @@ type imageJobsState struct {
 	Interval      time.Duration
 }
 
-// imageJobsEnabled 简化检查。
-func (h *OpenAIGatewayHandler) imageJobsEnabled() bool {
-	return h.cfg != nil && h.cfg.Gateway.ImageJobs.Enabled
-}
-
 func (h *OpenAIGatewayHandler) ensureImageJobsState() (*imageJobsState, error) {
-	if !h.imageJobsEnabled() {
-		return nil, fmt.Errorf("image jobs feature is disabled")
-	}
 	h.imageJobsStateMu.Lock()
 	defer h.imageJobsStateMu.Unlock()
 	if h.imageJobsState != nil {
@@ -73,11 +65,8 @@ func (h *OpenAIGatewayHandler) ensureImageJobsState() (*imageJobsState, error) {
 	return state, nil
 }
 
-// StartImageJobsCleaner 由 main.go 启动一次，传入根 ctx。功能未启用则 no-op。
+// StartImageJobsCleaner 由构造函数启动一次，传入根 ctx，绑进程生命周期。
 func (h *OpenAIGatewayHandler) StartImageJobsCleaner(ctx context.Context) {
-	if !h.imageJobsEnabled() {
-		return
-	}
 	state, err := h.ensureImageJobsState()
 	if err != nil {
 		logger.LegacyPrintf("handler.image_jobs", "image jobs cleaner init failed: %v", err)
@@ -96,10 +85,6 @@ func (h *OpenAIGatewayHandler) StartImageJobsCleaner(ctx context.Context) {
 // endpoint 必须是 service.openAIImagesGenerationsEndpoint 或 service.openAIImagesEditsEndpoint。
 func (h *OpenAIGatewayHandler) SubmitImageJob(endpoint string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !h.imageJobsEnabled() {
-			h.errorResponse(c, http.StatusNotFound, "not_found_error", "Image jobs feature is disabled")
-			return
-		}
 		state, err := h.ensureImageJobsState()
 		if err != nil {
 			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Image jobs storage unavailable")
@@ -207,10 +192,6 @@ type imageJobRunContext struct {
 
 // GetImageJob 处理 GET /v1/jobs/:job_id。
 func (h *OpenAIGatewayHandler) GetImageJob(c *gin.Context) {
-	if !h.imageJobsEnabled() {
-		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Image jobs feature is disabled")
-		return
-	}
 	state, err := h.ensureImageJobsState()
 	if err != nil {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Image jobs storage unavailable")

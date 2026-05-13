@@ -609,11 +609,9 @@ const (
 )
 
 // ImageJobsConfig 异步图片任务配置
-// 用于通过 /v1/jobs/images/* 接口提交长耗时生图请求并轮询结果，
-// 避免反向代理（如 Cloudflare 100 秒）将单个长连接腰斩。
+// /v1/jobs/images/* 接口的运行参数。是否对某把 API key 开放由分组的
+// AllowImageGeneration 决定，与同步生图共用同一个开关。
 type ImageJobsConfig struct {
-	// Enabled: 是否启用异步图片任务接口（默认关闭以保持兼容）
-	Enabled bool `mapstructure:"enabled"`
 	// RootDir: 任务结果落盘目录（为空时使用 ${DATA_DIR}/jobs/images 或 ./data/jobs/images）
 	RootDir string `mapstructure:"root_dir"`
 	// TTLSeconds: 任务结果保留时长（秒），超过即被清理（默认 600 = 10 分钟）
@@ -1740,7 +1738,6 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
 	viper.SetDefault("gateway.image_concurrency.wait_timeout_seconds", 30)
 	viper.SetDefault("gateway.image_concurrency.max_waiting_requests", 100)
-	viper.SetDefault("gateway.image_jobs.enabled", false)
 	viper.SetDefault("gateway.image_jobs.root_dir", "")
 	viper.SetDefault("gateway.image_jobs.ttl_seconds", 600)
 	viper.SetDefault("gateway.image_jobs.run_timeout_seconds", 300)
@@ -2382,19 +2379,17 @@ func (c *Config) Validate() error {
 		(c.Gateway.ImageStreamKeepaliveInterval < 5 || c.Gateway.ImageStreamKeepaliveInterval > 60) {
 		return fmt.Errorf("gateway.image_stream_keepalive_interval must be 0 or between 5-60 seconds")
 	}
-	if c.Gateway.ImageJobs.Enabled {
-		if c.Gateway.ImageJobs.TTLSeconds <= 0 || c.Gateway.ImageJobs.TTLSeconds > 86400 {
-			return fmt.Errorf("gateway.image_jobs.ttl_seconds must be between 1 and 86400")
-		}
-		if c.Gateway.ImageJobs.RunTimeoutSeconds <= 0 || c.Gateway.ImageJobs.RunTimeoutSeconds > 3600 {
-			return fmt.Errorf("gateway.image_jobs.run_timeout_seconds must be between 1 and 3600")
-		}
-		if c.Gateway.ImageJobs.MaxTotalDiskMB < 0 {
-			return fmt.Errorf("gateway.image_jobs.max_total_disk_mb must be non-negative")
-		}
-		if c.Gateway.ImageJobs.CleanupIntervalSeconds <= 0 || c.Gateway.ImageJobs.CleanupIntervalSeconds > 3600 {
-			return fmt.Errorf("gateway.image_jobs.cleanup_interval_seconds must be between 1 and 3600")
-		}
+	if c.Gateway.ImageJobs.TTLSeconds <= 0 || c.Gateway.ImageJobs.TTLSeconds > 86400 {
+		return fmt.Errorf("gateway.image_jobs.ttl_seconds must be between 1 and 86400")
+	}
+	if c.Gateway.ImageJobs.RunTimeoutSeconds <= 0 || c.Gateway.ImageJobs.RunTimeoutSeconds > 3600 {
+		return fmt.Errorf("gateway.image_jobs.run_timeout_seconds must be between 1 and 3600")
+	}
+	if c.Gateway.ImageJobs.MaxTotalDiskMB < 0 {
+		return fmt.Errorf("gateway.image_jobs.max_total_disk_mb must be non-negative")
+	}
+	if c.Gateway.ImageJobs.CleanupIntervalSeconds <= 0 || c.Gateway.ImageJobs.CleanupIntervalSeconds > 3600 {
+		return fmt.Errorf("gateway.image_jobs.cleanup_interval_seconds must be between 1 and 3600")
 	}
 	// 兼容旧键 sticky_previous_response_ttl_seconds
 	if c.Gateway.OpenAIWS.StickyResponseIDTTLSeconds <= 0 && c.Gateway.OpenAIWS.StickyPreviousResponseTTLSeconds > 0 {
