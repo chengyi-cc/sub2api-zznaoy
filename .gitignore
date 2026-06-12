@@ -34,6 +34,11 @@ backend/.gocache/
 node_modules/
 frontend/node_modules/
 frontend/dist/
+# 本项目使用 pnpm，禁止提交 npm/yarn 锁文件（避免依赖版本漂移）
+package-lock.json
+frontend/package-lock.json
+yarn.lock
+frontend/yarn.lock
 *.local
 *.tsbuildinfo
 vite.config.d.ts
