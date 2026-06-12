@@ -62,7 +62,7 @@ POST /v1/jobs/images/edits?timeout_seconds=540
 }
 ```
 
-失败：
+失败（含超时）：HTTP 状态码仍是 **200**，业务结果在 body 里：
 
 ```json
 {
@@ -75,6 +75,10 @@ POST /v1/jobs/images/edits?timeout_seconds=540
 }
 ```
 
+> **超时的具体表现**：单任务跑超 `timeout_seconds`（默认 300，传参可到 600）后，goroutine 取消上游请求并把任务标 `failed`。下次 GET 拿到的就是上面这个结构，`http_status` 通常是 5xx（502/504），`error.type` 一般是 `upstream_error`。**不会** 返回 HTTP 400/504 给轮询请求 —— 轮询本身永远是 200，超时不算"轮询失败"，算"任务失败"。
+>
+> 一旦拿到 `failed`（无论是超时还是其他原因），服务端立即删除该任务，再 GET 同一个 `job_id` 会返回 `404 not_found_error`。
+
 不存在或不属于当前 key：`404 not_found_error`。
 
 ## 行为约定
@@ -82,7 +86,7 @@ POST /v1/jobs/images/edits?timeout_seconds=540
 - **结果一次性**：GET 拿到 `succeeded` / `failed` 后服务端立即删除该任务，不能重复 GET。
 - **TTL 默认 10 分钟**：超时未取的任务会被自动清理，再 GET 是 404。
 - **计费规则与同步接口一致**：上游成功出图就计费；客户端"不来取" / "断开"不影响扣费。失败不计费。
-- **总超时默认 5 分钟**：单个任务上游超过 5 分钟未完成会被标 `failed`。如需更长可通过 `?timeout_seconds=N` 指定，上限 10 分钟。
+- **总超时默认 5 分钟**：单个任务上游超过 5 分钟未完成会被标 `failed`，下次 GET 返回 HTTP 200 + `status:"failed"`（详见上面"失败（含超时）"）。如需更长可通过 `?timeout_seconds=N` 指定，上限 10 分钟。超时不计费。
 
 ## curl 示例
 
