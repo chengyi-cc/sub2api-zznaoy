@@ -87,6 +87,8 @@ const (
 	EdgePendingAuthSessions = "pending_auth_sessions"
 	// EdgeInvoiceRequests holds the string denoting the invoice_requests edge name in mutations.
 	EdgeInvoiceRequests = "invoice_requests"
+	// EdgePlatformQuotas holds the string denoting the platform_quotas edge name in mutations.
+	EdgePlatformQuotas = "platform_quotas"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
 	// Table holds the table name of the user in the database.
@@ -180,6 +182,13 @@ const (
 	InvoiceRequestsInverseTable = "invoice_requests"
 	// InvoiceRequestsColumn is the table column denoting the invoice_requests relation/edge.
 	InvoiceRequestsColumn = "user_id"
+	// PlatformQuotasTable is the table that holds the platform_quotas relation/edge.
+	PlatformQuotasTable = "user_platform_quotas"
+	// PlatformQuotasInverseTable is the table name for the UserPlatformQuota entity.
+	// It exists in this package in order to avoid circular dependency with the "userplatformquota" package.
+	PlatformQuotasInverseTable = "user_platform_quotas"
+	// PlatformQuotasColumn is the table column denoting the platform_quotas relation/edge.
+	PlatformQuotasColumn = "user_id"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -591,6 +600,19 @@ func ByInvoiceRequests(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newInvoiceRequestsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+// ByPlatformQuotasCount orders the results by platform_quotas count.
+func ByPlatformQuotasCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newPlatformQuotasStep(), opts...)
+	}
+}
+
+// ByPlatformQuotas orders the results by platform_quotas terms.
+func ByPlatformQuotas(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newPlatformQuotasStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
@@ -694,6 +716,13 @@ func newInvoiceRequestsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(InvoiceRequestsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, InvoiceRequestsTable, InvoiceRequestsColumn),
+	)
+}
+func newPlatformQuotasStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(PlatformQuotasInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, PlatformQuotasTable, PlatformQuotasColumn),
 	)
 }
 func newUserAllowedGroupsStep() *sqlgraph.Step {
