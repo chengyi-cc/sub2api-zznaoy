@@ -46,6 +46,18 @@ func (h *InvoiceHandler) List(c *gin.Context) {
 	response.Paginated(c, dto.InvoiceRequestListFromEnt(items), int64(total), page, pageSize)
 }
 
+// Export GET /api/v1/admin/invoice/requests/export
+// 返回所有 status=approved（已通过待开票）的发票申请扁平视图，供前端一键导出 Excel。
+// 不分页；附带申请人注册邮箱。
+func (h *InvoiceHandler) Export(c *gin.Context) {
+	rows, err := h.invoiceService.AdminListForExport(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"items": rows})
+}
+
 // Get GET /api/v1/admin/invoice/requests/:id
 func (h *InvoiceHandler) Get(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)

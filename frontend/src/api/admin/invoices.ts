@@ -25,6 +25,23 @@ export async function adminGetInvoiceRequest(id: number): Promise<InvoiceRequest
   return data
 }
 
+// 导出「已通过待开票」用的扁平行（对应后端 service.InvoiceExportRow）
+export interface InvoiceExportRow {
+  id: number
+  user_id: number
+  title: string
+  tax_no: string
+  amount: number
+  user_email: string
+  recipient_email: string
+}
+
+// 拉取所有 status=approved（已通过待开票）的发票申请，供前端生成 Excel
+export async function adminExportApprovedInvoices(): Promise<InvoiceExportRow[]> {
+  const { data } = await apiClient.get<{ items: InvoiceExportRow[] }>(`${BASE}/requests/export`)
+  return data.items || []
+}
+
 export interface InvoiceDetailOrder {
   order_id: number
   out_trade_no: string
@@ -120,6 +137,7 @@ export async function adminDownloadInvoice(id: number, filename = 'invoice.pdf')
 export const adminInvoiceAPI = {
   list: adminListInvoiceRequests,
   get: adminGetInvoiceRequest,
+  exportApproved: adminExportApprovedInvoices,
   detail: adminGetInvoiceDetail,
   approve: adminApproveInvoiceRequest,
   reject: adminRejectInvoiceRequest,

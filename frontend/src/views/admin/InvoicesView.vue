@@ -29,6 +29,9 @@
           <button class="btn btn-secondary" @click="reload" :disabled="loading">
             {{ t('common.refresh') }}
           </button>
+          <button class="btn btn-primary" @click="exportApproved" :disabled="exporting">
+            {{ exporting ? t('invoice.exporting') : t('invoice.exportApproved') }}
+          </button>
         </div>
       </div>
 
@@ -173,8 +176,17 @@
 
         <!-- Invoice header info -->
         <div class="rounded-md border border-gray-200 p-4 dark:border-dark-700">
-          <div class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            {{ t('invoice.detailHeaderSection') }}
+          <div class="flex items-center justify-between">
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {{ t('invoice.detailHeaderSection') }}
+            </div>
+            <button
+              class="btn btn-secondary btn-sm"
+              :title="t('invoice.copyInfoHint')"
+              @click="copyInvoiceInfo(detail.request)"
+            >
+              {{ copied ? t('invoice.copySuccess') : t('invoice.copyInfo') }}
+            </button>
           </div>
           <div class="mt-2 grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-2">
             <div>
@@ -388,6 +400,7 @@
               class="input mt-1 w-full"
               :placeholder="t('invoice.invoiceNoPlaceholder')"
               maxlength="100"
+              @input="onInvoiceNoInput"
             />
           </div>
           <div>
@@ -513,6 +526,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { formatDateTime } from '@/utils/format'
@@ -527,6 +542,8 @@ const statusFilter = ref<InvoiceStatus | ''>('')
 const keyword = ref('')
 const pagination = reactive({ total: 0, page: 1, page_size: 20, pages: 1 })
 const downloadingId = ref<number | null>(null)
+const exporting = ref(false)
+const copied = ref(false)
 
 // Detail dialog state
 const detailTarget = ref<InvoiceRequest | null>(null)
@@ -546,6 +563,8 @@ const issueForm = reactive<{ invoiceNo: string; file: File | null }>({
   invoiceNo: '',
   file: null
 })
+// 用户是否手动编辑过发票号：true 时不再用 PDF 文件名自动覆盖
+const invoiceNoTouched = ref(false)
 const issueError = ref('')
 
 const canIssue = computed(() => !!issueForm.file && issueForm.invoiceNo.trim().length > 0)
@@ -602,6 +621,7 @@ async function openDetail(item: InvoiceRequest) {
   rejectError.value = ''
   issueForm.invoiceNo = ''
   issueForm.file = null
+  invoiceNoTouched.value = false
   issueError.value = ''
   try {
     detail.value = await adminInvoiceAPI.detail(item.id)
@@ -660,6 +680,19 @@ async function confirmReject() {
 function onIssueFileChange(e: Event) {
   const input = e.target as HTMLInputElement
   issueForm.file = input.files && input.files.length > 0 ? input.files[0] : null
+  // 自动用 PDF 文件名（去掉 .pdf 扩展名）填充发票号；
+  // 仅当用户尚未手动编辑过发票号框时才覆盖，避免冲掉手填值。
+  if (issueForm.file && !invoiceNoTouched.value) {
+    const name = issueForm.file.name.replace(/\.pdf$/i, '').trim()
+    if (name) {
+      issueForm.invoiceNo = name
+    }
+  }
+}
+
+// 发票号输入框被手动编辑时打标记，停止文件名自动填充
+function onInvoiceNoInput() {
+  invoiceNoTouched.value = true
 }
 
 async function confirmIssue() {
@@ -691,6 +724,73 @@ async function download(item: InvoiceRequest) {
     console.error('admin download failed', e)
   } finally {
     downloadingId.value = null
+  }
+}
+
+// 复制开票信息：抬头 ⇥ 识别号 ⇥ 金额（Tab 分隔），粘贴到 Excel 正好落 3 格。
+async function copyInvoiceInfo(r: InvoiceRequest) {
+  const cells = [r.title || '', r.tax_no || '', r.amount.toFixed(2)]
+  const text = cells.join('\t')
+  try {
+    await navigator.clipboard.writeText(text)
+    copied.value = true
+    setTimeout(() => {
+      copied.value = false
+    }, 1500)
+  } catch (e: any) {
+    console.error('copy invoice info failed', e)
+  }
+}
+
+// 导出「已通过待开票」为 Excel：序号 / 公司名称·个人抬头 / 纳税人识别号 / 金额 / 用户邮箱 / 接收邮箱
+async function exportApproved() {
+  exporting.value = true
+  try {
+    const rows = await adminInvoiceAPI.exportApproved()
+    if (rows.length === 0) {
+      window.alert(t('invoice.exportEmpty'))
+      return
+    }
+    const headers = [
+      t('invoice.exportColSeq'),
+      t('invoice.exportColTitle'),
+      t('invoice.exportColTaxNo'),
+      t('invoice.exportColAmount'),
+      t('invoice.exportColUserEmail'),
+      t('invoice.exportColRecipientEmail')
+    ]
+    const data = rows.map((r, idx) => [
+      idx + 1,
+      r.title,
+      r.tax_no,
+      r.amount,
+      r.user_email,
+      // 接收邮箱未填时回退注册邮箱（与开票通知实际去向一致）
+      r.recipient_email || r.user_email
+    ])
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data])
+    ws['!cols'] = [
+      { wch: 6 },
+      { wch: 32 },
+      { wch: 24 },
+      { wch: 12 },
+      { wch: 28 },
+      { wch: 28 }
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, t('invoice.exportSheetName'))
+    const today = new Date().toISOString().slice(0, 10)
+    saveAs(
+      new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }),
+      `${t('invoice.exportFilePrefix')}_${today}.xlsx`
+    )
+  } catch (e: any) {
+    console.error('export approved invoices failed', e)
+    window.alert(t('invoice.exportFailed'))
+  } finally {
+    exporting.value = false
   }
 }
 

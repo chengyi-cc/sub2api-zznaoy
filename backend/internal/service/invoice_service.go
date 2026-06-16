@@ -28,6 +28,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/invoicerequest"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -695,6 +696,72 @@ func (s *InvoiceService) AdminList(ctx context.Context, p AdminListInvoiceParams
 		return nil, 0, fmt.Errorf("query invoice requests: %w", err)
 	}
 	return items, total, nil
+}
+
+// InvoiceExportRow 导出「已通过待开票」用的扁平行视图。
+// 仅含导出 Excel 所需字段，附带申请人注册邮箱（user_email）。
+type InvoiceExportRow struct {
+	ID             int64   `json:"id"`
+	UserID         int64   `json:"user_id"`
+	Title          string  `json:"title"`           // 公司名称 / 个人抬头
+	TaxNo          string  `json:"tax_no"`          // 纳税人识别号（个人抬头可能为空）
+	Amount         float64 `json:"amount"`          // 金额
+	UserEmail      string  `json:"user_email"`      // 申请人注册邮箱
+	RecipientEmail string  `json:"recipient_email"` // 接收发票邮箱（未填时为空，前端回退注册邮箱）
+}
+
+// AdminListForExport 返回所有 status=approved（已通过待开票）的发票申请，
+// 用于一键导出 Excel。不分页；批量补齐申请人注册邮箱。
+func (s *InvoiceService) AdminListForExport(ctx context.Context) ([]InvoiceExportRow, error) {
+	reqs, err := s.entClient.InvoiceRequest.Query().
+		Where(invoicerequest.StatusEQ(domain.InvoiceStatusApproved)).
+		Order(dbent.Asc(invoicerequest.FieldCreatedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query approved invoice requests for export: %w", err)
+	}
+
+	// 批量取申请人注册邮箱：去重 user_id 后一次性查询。
+	emailByUserID := make(map[int64]string, len(reqs))
+	if len(reqs) > 0 {
+		idSet := make(map[int64]struct{}, len(reqs))
+		ids := make([]int64, 0, len(reqs))
+		for _, r := range reqs {
+			if _, ok := idSet[r.UserID]; !ok {
+				idSet[r.UserID] = struct{}{}
+				ids = append(ids, r.UserID)
+			}
+		}
+		users, err := s.entClient.User.Query().
+			Where(user.IDIn(ids...)).
+			Select(user.FieldID, user.FieldEmail).
+			All(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("batch query user emails for export: %w", err)
+		}
+		for _, u := range users {
+			emailByUserID[u.ID] = u.Email
+		}
+	}
+
+	rows := make([]InvoiceExportRow, 0, len(reqs))
+	for _, r := range reqs {
+		row := InvoiceExportRow{
+			ID:        r.ID,
+			UserID:    r.UserID,
+			Title:     r.Title,
+			Amount:    r.Amount,
+			UserEmail: emailByUserID[r.UserID],
+		}
+		if r.TaxNo != nil {
+			row.TaxNo = *r.TaxNo
+		}
+		if r.RecipientEmail != nil {
+			row.RecipientEmail = *r.RecipientEmail
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
 }
 
 // AdminGet 管理员读取单条
