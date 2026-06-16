@@ -95,6 +95,17 @@ export async function adminApproveInvoiceRequest(id: number): Promise<InvoiceReq
   return data
 }
 
+export interface BatchApproveResult {
+  succeeded_ids: number[]
+  failed: { id: number; reason: string }[]
+}
+
+// 批量审核通过；单条失败不影响其它条目
+export async function adminBatchApproveInvoices(ids: number[]): Promise<BatchApproveResult> {
+  const { data } = await apiClient.post<BatchApproveResult>(`${BASE}/requests/batch-approve`, { ids })
+  return data
+}
+
 export async function adminRejectInvoiceRequest(
   id: number,
   reason: string
@@ -140,6 +151,7 @@ export const adminInvoiceAPI = {
   exportApproved: adminExportApprovedInvoices,
   detail: adminGetInvoiceDetail,
   approve: adminApproveInvoiceRequest,
+  batchApprove: adminBatchApproveInvoices,
   reject: adminRejectInvoiceRequest,
   issue: adminIssueInvoiceRequest,
   download: adminDownloadInvoice

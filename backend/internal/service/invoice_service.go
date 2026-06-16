@@ -710,6 +710,34 @@ type InvoiceExportRow struct {
 	RecipientEmail string  `json:"recipient_email"` // 接收发票邮箱（未填时为空，前端回退注册邮箱）
 }
 
+// BatchUserEmails 按 user_id 批量查询注册邮箱（去重后一次查询），返回 id->email。
+// 供列表 / 导出补充申请人邮箱用。
+func (s *InvoiceService) BatchUserEmails(ctx context.Context, userIDs []int64) (map[int64]string, error) {
+	emailByUserID := make(map[int64]string, len(userIDs))
+	if len(userIDs) == 0 {
+		return emailByUserID, nil
+	}
+	idSet := make(map[int64]struct{}, len(userIDs))
+	ids := make([]int64, 0, len(userIDs))
+	for _, uid := range userIDs {
+		if _, ok := idSet[uid]; !ok {
+			idSet[uid] = struct{}{}
+			ids = append(ids, uid)
+		}
+	}
+	users, err := s.entClient.User.Query().
+		Where(user.IDIn(ids...)).
+		Select(user.FieldID, user.FieldEmail).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("batch query user emails: %w", err)
+	}
+	for _, u := range users {
+		emailByUserID[u.ID] = u.Email
+	}
+	return emailByUserID, nil
+}
+
 // AdminListForExport 返回所有 status=approved（已通过待开票）的发票申请，
 // 用于一键导出 Excel。不分页；批量补齐申请人注册邮箱。
 func (s *InvoiceService) AdminListForExport(ctx context.Context) ([]InvoiceExportRow, error) {
@@ -721,27 +749,14 @@ func (s *InvoiceService) AdminListForExport(ctx context.Context) ([]InvoiceExpor
 		return nil, fmt.Errorf("query approved invoice requests for export: %w", err)
 	}
 
-	// 批量取申请人注册邮箱：去重 user_id 后一次性查询。
-	emailByUserID := make(map[int64]string, len(reqs))
-	if len(reqs) > 0 {
-		idSet := make(map[int64]struct{}, len(reqs))
-		ids := make([]int64, 0, len(reqs))
-		for _, r := range reqs {
-			if _, ok := idSet[r.UserID]; !ok {
-				idSet[r.UserID] = struct{}{}
-				ids = append(ids, r.UserID)
-			}
-		}
-		users, err := s.entClient.User.Query().
-			Where(user.IDIn(ids...)).
-			Select(user.FieldID, user.FieldEmail).
-			All(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("batch query user emails for export: %w", err)
-		}
-		for _, u := range users {
-			emailByUserID[u.ID] = u.Email
-		}
+	// 批量取申请人注册邮箱。
+	userIDs := make([]int64, 0, len(reqs))
+	for _, r := range reqs {
+		userIDs = append(userIDs, r.UserID)
+	}
+	emailByUserID, err := s.BatchUserEmails(ctx, userIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	rows := make([]InvoiceExportRow, 0, len(reqs))
@@ -1006,6 +1021,47 @@ func (s *InvoiceService) AdminApprove(ctx context.Context, requestID, adminID in
 	}
 	s.sendStatusEmailAsync(updated, domain.InvoiceStatusApproved, "")
 	return updated, nil
+}
+
+// BatchApproveResult 批量通过的逐条结果。
+type BatchApproveResult struct {
+	SucceededIDs []int64                  `json:"succeeded_ids"`
+	Failed       []BatchApproveFailedItem `json:"failed"`
+}
+
+// BatchApproveFailedItem 单条失败项。
+type BatchApproveFailedItem struct {
+	ID     int64  `json:"id"`
+	Reason string `json:"reason"`
+}
+
+// AdminBatchApprove 批量审核通过：对每个 id 复用 AdminApprove（含状态校验 + 发邮件）。
+// 单条失败不影响其它条目；返回成功与失败明细，由前端汇总提示。
+// 入参 ids 会去重（同一 id 只处理一次），避免重复 id 导致第二遍误报失败。
+func (s *InvoiceService) AdminBatchApprove(ctx context.Context, ids []int64, adminID int64) *BatchApproveResult {
+	result := &BatchApproveResult{
+		SucceededIDs: make([]int64, 0, len(ids)),
+		Failed:       make([]BatchApproveFailedItem, 0),
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		if _, err := s.AdminApprove(ctx, id, adminID); err != nil {
+			result.Failed = append(result.Failed, BatchApproveFailedItem{
+				ID:     id,
+				Reason: err.Error(),
+			})
+			continue
+		}
+		result.SucceededIDs = append(result.SucceededIDs, id)
+	}
+	return result
 }
 
 // AdminReject 审核驳回：pending -> rejected

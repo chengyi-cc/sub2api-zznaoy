@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -43,7 +44,20 @@ func (h *InvoiceHandler) List(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Paginated(c, dto.InvoiceRequestListFromEnt(items), int64(total), page, pageSize)
+	dtos := dto.InvoiceRequestListFromEnt(items)
+	// 批量补充申请人注册邮箱，方便管理员在列表直接判断
+	if len(dtos) > 0 {
+		userIDs := make([]int64, 0, len(dtos))
+		for _, d := range dtos {
+			userIDs = append(userIDs, d.UserID)
+		}
+		if emails, err := h.invoiceService.BatchUserEmails(c.Request.Context(), userIDs); err == nil {
+			for _, d := range dtos {
+				d.UserEmail = emails[d.UserID]
+			}
+		}
+	}
+	response.Paginated(c, dtos, int64(total), page, pageSize)
 }
 
 // Export GET /api/v1/admin/invoice/requests/export
@@ -119,6 +133,37 @@ func (h *InvoiceHandler) Approve(c *gin.Context) {
 		return
 	}
 	response.Success(c, dto.InvoiceRequestFromEnt(updated))
+}
+
+type batchApproveInvoicePayload struct {
+	IDs []int64 `json:"ids" binding:"required"`
+}
+
+// BatchApprove POST /api/v1/admin/invoice/requests/batch-approve
+// body: { "ids": [1,2,3] }
+// 批量审核通过；单条失败不影响其它条目，返回成功/失败明细。
+func (h *InvoiceHandler) BatchApprove(c *gin.Context) {
+	adminID, ok := h.getAdminID(c)
+	if !ok {
+		return
+	}
+	var body batchApproveInvoicePayload
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(body.IDs) == 0 {
+		response.BadRequest(c, "ids is required")
+		return
+	}
+	// 单次批量上限保护：避免一次传入极大量 id 触发大量 DB 更新与邮件发送
+	const maxBatchApprove = 200
+	if len(body.IDs) > maxBatchApprove {
+		response.BadRequest(c, fmt.Sprintf("too many ids (max %d per request)", maxBatchApprove))
+		return
+	}
+	result := h.invoiceService.AdminBatchApprove(c.Request.Context(), body.IDs, adminID)
+	response.Success(c, result)
 }
 
 type rejectInvoicePayload struct {

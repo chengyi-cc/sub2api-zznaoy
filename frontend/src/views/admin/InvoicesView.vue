@@ -12,7 +12,7 @@
           <select
             v-model="statusFilter"
             class="input h-9 w-36 text-sm"
-            @change="reload"
+            @change="reload()"
           >
             <option value="">{{ t('invoice.allStatus') }}</option>
             <option value="pending">{{ t('invoice.status.pending') }}</option>
@@ -24,15 +24,47 @@
             v-model="keyword"
             class="input h-9 w-56 text-sm"
             :placeholder="t('invoice.adminSearchPlaceholder')"
-            @keyup.enter="reload"
+            @keyup.enter="reload()"
           />
-          <button class="btn btn-secondary" @click="reload" :disabled="loading">
+          <button class="btn btn-secondary" @click="reload()" :disabled="loading">
             {{ t('common.refresh') }}
           </button>
           <button class="btn btn-primary" @click="exportApproved" :disabled="exporting">
             {{ exporting ? t('invoice.exporting') : t('invoice.exportApproved') }}
           </button>
         </div>
+      </div>
+
+      <!-- Toolbar: 待审核批量通过 -->
+      <div
+        v-if="isPendingMode && selectedCount > 0"
+        class="card flex items-center gap-3 p-3"
+      >
+        <span class="text-sm text-gray-600 dark:text-gray-300">
+          {{ t('invoice.selectedCount', { n: selectedCount }) }}
+        </span>
+        <button class="btn btn-primary btn-sm" :disabled="batchApproving" @click="batchApprove">
+          {{ batchApproving ? t('common.processing') : t('invoice.batchApprove', { n: selectedCount }) }}
+        </button>
+      </div>
+
+      <!-- Toolbar: 待开票批量上传 PDF -->
+      <div v-if="isApprovedMode" class="card flex flex-wrap items-center gap-3 p-3">
+        <button class="btn btn-secondary btn-sm" @click="triggerBatchUpload">
+          {{ t('invoice.batchUpload') }}
+        </button>
+        <input
+          ref="batchUploadInput"
+          type="file"
+          accept="application/pdf,.pdf"
+          multiple
+          class="hidden"
+          @change="onBatchUploadChange"
+        />
+        <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.batchUploadHint') }}</span>
+        <span v-if="batchUploadSummary" class="text-xs font-medium text-blue-600 dark:text-blue-400">
+          {{ batchUploadSummary }}
+        </span>
       </div>
 
       <!-- Table -->
@@ -49,11 +81,20 @@
         <table v-else class="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-700">
           <thead class="bg-gray-50 dark:bg-dark-800/40">
             <tr class="text-left text-xs uppercase text-gray-500 dark:text-gray-400">
+              <th v-if="isPendingMode" class="px-3 py-2">
+                <input
+                  type="checkbox"
+                  :checked="allPendingSelected"
+                  @change="toggleSelectAll"
+                />
+              </th>
               <th class="px-4 py-2">ID</th>
               <th class="px-4 py-2">{{ t('invoice.adminUserId') }}</th>
               <th class="px-4 py-2">{{ t('invoice.titleField') }}</th>
+              <th class="px-4 py-2">{{ t('invoice.userEmailCol') }}</th>
               <th class="px-4 py-2">{{ t('invoice.invoiceType') }}</th>
               <th class="px-4 py-2">{{ t('invoice.amount') }}</th>
+              <th class="px-4 py-2">{{ t('invoice.sourceCountCol') }}</th>
               <th class="px-4 py-2">{{ t('invoice.status.label') }}</th>
               <th class="px-4 py-2">{{ t('invoice.createdAt') }}</th>
               <th class="px-4 py-2 text-right">{{ t('invoice.actions') }}</th>
@@ -65,6 +106,14 @@
               :key="item.id"
               class="hover:bg-gray-50 dark:hover:bg-dark-800/50"
             >
+              <td v-if="isPendingMode" class="px-3 py-2">
+                <input
+                  v-if="item.status === 'pending'"
+                  type="checkbox"
+                  :checked="selectedIds.has(item.id)"
+                  @change="toggleSelect(item.id)"
+                />
+              </td>
               <td class="px-4 py-2 text-gray-500 dark:text-gray-400">#{{ item.id }}</td>
               <td class="px-4 py-2">{{ item.user_id }}</td>
               <td class="px-4 py-2">
@@ -76,9 +125,15 @@
                   {{ t('invoice.invoiceNo') }}: {{ item.invoice_no }}
                 </div>
               </td>
+              <td class="px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
+                {{ item.user_email || '—' }}
+              </td>
               <td class="px-4 py-2">{{ t(`invoice.type.${item.invoice_type}`) }}</td>
               <td class="px-4 py-2 font-medium text-gray-900 dark:text-white">
                 ¥{{ item.amount.toFixed(2) }}
+              </td>
+              <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ sourceCount(item) }}
               </td>
               <td class="px-4 py-2">
                 <span
@@ -91,10 +146,71 @@
               <td class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
                 {{ formatDateTime(item.created_at) }}
               </td>
-              <td class="px-4 py-2 text-right">
-                <button class="btn btn-secondary btn-sm" @click="openDetail(item)">
-                  {{ t('invoice.viewDetail') }}
-                </button>
+              <td class="px-4 py-2">
+                <div class="flex flex-wrap items-center justify-end gap-2">
+                  <!-- pending: 行内通过 / 驳回 / 详情 -->
+                  <template v-if="item.status === 'pending'">
+                    <button
+                      class="btn btn-primary btn-sm"
+                      :disabled="rowActionId === item.id"
+                      @click="approveRow(item)"
+                    >
+                      {{ rowActionId === item.id ? t('common.processing') : t('invoice.approve') }}
+                    </button>
+                    <button class="btn btn-danger btn-sm" @click="openRejectDialog(item)">
+                      {{ t('invoice.reject') }}
+                    </button>
+                    <button class="btn btn-secondary btn-sm" @click="openDetail(item)">
+                      {{ t('invoice.viewDetail') }}
+                    </button>
+                  </template>
+
+                  <!-- approved: 行内传 PDF + 开具 -->
+                  <template v-else-if="item.status === 'approved'">
+                    <div class="flex flex-col items-end gap-1">
+                      <label class="cursor-pointer text-xs text-blue-600 hover:underline dark:text-blue-400">
+                        {{ rowIssue[item.id]?.file ? rowIssue[item.id]?.invoiceNo : t('invoice.chooseFile') }}
+                        <input
+                          type="file"
+                          accept="application/pdf,.pdf"
+                          class="hidden"
+                          @change="(e) => onRowFileChange(e, item)"
+                        />
+                      </label>
+                      <span
+                        v-if="rowIssue[item.id]?.amountMismatch"
+                        class="text-xs font-medium text-red-600 dark:text-red-400"
+                      >
+                        ⚠ {{ t('invoice.amountMismatchTag', { parsed: rowIssue[item.id]?.parsedAmount }) }}
+                      </span>
+                    </div>
+                    <button
+                      class="btn btn-primary btn-sm"
+                      :disabled="!rowIssue[item.id]?.file || rowIssuingId === item.id"
+                      @click="issueRow(item)"
+                    >
+                      {{ rowIssuingId === item.id ? t('common.processing') : t('invoice.issue') }}
+                    </button>
+                    <button class="btn btn-secondary btn-sm" @click="openDetail(item)">
+                      {{ t('invoice.viewDetail') }}
+                    </button>
+                  </template>
+
+                  <!-- issued / rejected: 详情 + 下载 -->
+                  <template v-else>
+                    <button
+                      v-if="item.status === 'issued' && item.has_file"
+                      class="btn btn-secondary btn-sm"
+                      :disabled="downloadingId === item.id"
+                      @click="download(item)"
+                    >
+                      {{ downloadingId === item.id ? t('common.processing') : t('invoice.download') }}
+                    </button>
+                    <button class="btn btn-secondary btn-sm" @click="openDetail(item)">
+                      {{ t('invoice.viewDetail') }}
+                    </button>
+                  </template>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -520,6 +636,45 @@
         </div>
       </template>
     </BaseDialog>
+
+    <!-- 行内驳回弹窗（与详情驳回共用逻辑） -->
+    <BaseDialog
+      :show="!!rejectDialogTarget"
+      :title="t('invoice.rejectTitle')"
+      @close="closeRejectDialog"
+    >
+      <div v-if="rejectDialogTarget" class="space-y-3">
+        <div class="text-sm text-gray-600 dark:text-gray-300">
+          {{ t('invoice.rejectConfirm', { id: rejectDialogTarget.id }) }}
+        </div>
+        <div>
+          <label class="input-label">{{ t('invoice.rejectReason') }}</label>
+          <textarea
+            v-model="rejectDialogReason"
+            rows="3"
+            class="input mt-1 w-full"
+            :placeholder="t('invoice.rejectReasonPlaceholder')"
+          />
+        </div>
+        <div v-if="rejectDialogError" class="text-sm text-red-600 dark:text-red-400">
+          {{ rejectDialogError }}
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-secondary" @click="closeRejectDialog">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            class="btn btn-danger"
+            :disabled="rejectDialogLoading || !rejectDialogReason.trim()"
+            @click="confirmRejectDialog"
+          >
+            {{ rejectDialogLoading ? t('common.processing') : t('invoice.confirmReject') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -544,6 +699,31 @@ const pagination = reactive({ total: 0, page: 1, page_size: 20, pages: 1 })
 const downloadingId = ref<number | null>(null)
 const exporting = ref(false)
 const copied = ref(false)
+
+// 待审核：勾选批量通过
+const selectedIds = ref<Set<number>>(new Set())
+const batchApproving = ref(false)
+
+// 行内审核操作（通过/驳回）：记录正在处理的行 id
+const rowActionId = ref<number | null>(null)
+
+// 行内驳回弹窗（行内 + 详情共用）
+const rejectDialogTarget = ref<InvoiceRequest | null>(null)
+const rejectDialogReason = ref('')
+const rejectDialogError = ref('')
+const rejectDialogLoading = ref(false)
+
+// 待开票：每行待开具的 PDF 文件 + 状态（文件名/金额校验/匹配状态）
+interface RowIssueState {
+  file: File | null
+  invoiceNo: string // 文件名去 .pdf
+  parsedAmount: number | null // 从文件名解析的金额
+  amountMismatch: boolean // 解析金额与申请金额不一致
+}
+const rowIssue = reactive<Record<number, RowIssueState>>({})
+const rowIssuingId = ref<number | null>(null)
+const batchUploadInput = ref<HTMLInputElement | null>(null)
+const batchUploadSummary = ref('')
 
 // Detail dialog state
 const detailTarget = ref<InvoiceRequest | null>(null)
@@ -584,7 +764,55 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-async function reload() {
+// 当前是否处于「待审核」/「待开票」工作模式（由状态筛选决定行内操作）
+const isPendingMode = computed(() => statusFilter.value === 'pending')
+const isApprovedMode = computed(() => statusFilter.value === 'approved')
+
+// 当前页可勾选（pending）的行
+const pendingItems = computed(() => items.value.filter((i) => i.status === 'pending'))
+const allPendingSelected = computed(
+  () => pendingItems.value.length > 0 && pendingItems.value.every((i) => selectedIds.value.has(i.id))
+)
+const selectedCount = computed(() => selectedIds.value.size)
+
+// 来源数（订单 + 兑换码），从列表已有数组直接取
+function sourceCount(item: InvoiceRequest): number {
+  return (item.payment_order_ids?.length || 0) + (item.redeem_code_ids?.length || 0)
+}
+
+function toggleSelect(id: number) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedIds.value = next
+}
+
+function toggleSelectAll() {
+  const next = new Set(selectedIds.value)
+  if (allPendingSelected.value) {
+    pendingItems.value.forEach((i) => next.delete(i.id))
+  } else {
+    pendingItems.value.forEach((i) => next.add(i.id))
+  }
+  selectedIds.value = next
+}
+
+// 解析 PDF 文件名：^金额[-]公司_时间戳.pdf -> { amount, company, invoiceNo(去.pdf) }
+// 金额与公司之间的 - 可有可无。
+function parseInvoiceFileName(name: string): { amount: number | null; company: string; invoiceNo: string } {
+  const invoiceNo = name.replace(/\.pdf$/i, '').trim()
+  const m = invoiceNo.match(/^(\d+(?:\.\d+)?)-?(.+?)_\d+$/)
+  if (!m) {
+    return { amount: null, company: '', invoiceNo }
+  }
+  return { amount: parseFloat(m[1]), company: m[2].trim(), invoiceNo }
+}
+
+// reload 重新拉取列表。
+// keepRowIssue=true 时保留各行暂存的待开票 PDF 文件槽（用于「逐行开具」后刷新列表，
+// 避免清空其它行已匹配/已选的文件）；默认（换页/筛选/手动刷新）清空，避免指向旧数据。
+async function reload(opts?: { keepRowIssue?: boolean }) {
+  const keepRowIssue = opts?.keepRowIssue === true
   loading.value = true
   try {
     const resp = await adminInvoiceAPI.list({
@@ -596,6 +824,17 @@ async function reload() {
     items.value = resp.items
     pagination.total = resp.total
     pagination.pages = resp.pages
+    selectedIds.value = new Set()
+    if (!keepRowIssue) {
+      Object.keys(rowIssue).forEach((k) => delete rowIssue[Number(k)])
+      batchUploadSummary.value = ''
+    } else {
+      // 保留文件槽，但清掉已不在当前列表（如已开具离开 approved）的残留项
+      const liveIds = new Set(items.value.map((i) => i.id))
+      Object.keys(rowIssue).forEach((k) => {
+        if (!liveIds.has(Number(k))) delete rowIssue[Number(k)]
+      })
+    }
   } catch (e: any) {
     items.value = []
     console.error('admin invoice list failed', e)
@@ -607,6 +846,167 @@ async function reload() {
 function changePage(n: number) {
   pagination.page = n
   reload()
+}
+
+// 行内通过（pending -> approved）
+async function approveRow(item: InvoiceRequest) {
+  rowActionId.value = item.id
+  try {
+    await adminInvoiceAPI.approve(item.id)
+    await reload()
+  } catch (e: any) {
+    window.alert(e?.message || String(e))
+  } finally {
+    rowActionId.value = null
+  }
+}
+
+// 批量通过勾选行
+async function batchApprove() {
+  const ids = Array.from(selectedIds.value)
+  if (ids.length === 0) return
+  batchApproving.value = true
+  try {
+    const res = await adminInvoiceAPI.batchApprove(ids)
+    const okN = res.succeeded_ids.length
+    const failN = res.failed.length
+    if (failN === 0) {
+      window.alert(t('invoice.batchApproveDone', { ok: okN }))
+    } else {
+      window.alert(t('invoice.batchApprovePartial', { ok: okN, fail: failN }))
+    }
+    await reload()
+  } catch (e: any) {
+    window.alert(e?.message || String(e))
+  } finally {
+    batchApproving.value = false
+  }
+}
+
+// 打开驳回弹窗（行内或详情触发）
+function openRejectDialog(item: InvoiceRequest) {
+  rejectDialogTarget.value = item
+  rejectDialogReason.value = ''
+  rejectDialogError.value = ''
+}
+
+function closeRejectDialog() {
+  rejectDialogTarget.value = null
+}
+
+async function confirmRejectDialog() {
+  const target = rejectDialogTarget.value
+  if (!target) return
+  const reason = rejectDialogReason.value.trim()
+  if (!reason) {
+    rejectDialogError.value = t('invoice.rejectReasonRequired')
+    return
+  }
+  rejectDialogLoading.value = true
+  rejectDialogError.value = ''
+  try {
+    await adminInvoiceAPI.reject(target.id, reason)
+    rejectDialogTarget.value = null
+    // 详情弹窗开着的话同步刷新
+    if (detailTarget.value && detailTarget.value.id === target.id) {
+      await refreshDetail()
+    }
+    await reload()
+  } catch (e: any) {
+    rejectDialogError.value = e?.message || String(e)
+  } finally {
+    rejectDialogLoading.value = false
+  }
+}
+
+// 为某行设置待开具的 PDF 文件，并按文件名解析金额做一致性校验
+function setRowFile(item: InvoiceRequest, file: File | null) {
+  if (!file) {
+    delete rowIssue[item.id]
+    return
+  }
+  const parsed = parseInvoiceFileName(file.name)
+  rowIssue[item.id] = {
+    file,
+    invoiceNo: parsed.invoiceNo,
+    parsedAmount: parsed.amount,
+    amountMismatch: parsed.amount !== null && Math.abs(parsed.amount - item.amount) >= 0.01
+  }
+}
+
+// 行内文件选择
+function onRowFileChange(e: Event, item: InvoiceRequest) {
+  const input = e.target as HTMLInputElement
+  setRowFile(item, input.files && input.files.length > 0 ? input.files[0] : null)
+}
+
+// 行内开具：approved -> issued，发票号 = 文件名去 .pdf
+async function issueRow(item: InvoiceRequest) {
+  const st = rowIssue[item.id]
+  if (!st || !st.file) return
+  if (st.amountMismatch) {
+    if (!window.confirm(t('invoice.amountMismatchConfirm', { parsed: st.parsedAmount, amount: item.amount.toFixed(2) }))) {
+      return
+    }
+  }
+  rowIssuingId.value = item.id
+  try {
+    await adminInvoiceAPI.issue(item.id, st.invoiceNo, st.file)
+    delete rowIssue[item.id]
+    // 保留其它行已匹配的文件槽，避免逐行开具时被清空
+    await reload({ keepRowIssue: true })
+  } catch (e: any) {
+    window.alert(e?.message || String(e))
+  } finally {
+    rowIssuingId.value = null
+  }
+}
+
+// 批量选择 PDF：按「金额相等 + 公司名互相包含」匹配到 approved 行
+function triggerBatchUpload() {
+  batchUploadInput.value?.click()
+}
+
+function onBatchUploadChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = input.files ? Array.from(input.files) : []
+  input.value = '' // 允许重复选同一批
+  if (files.length === 0) return
+
+  const approvedRows = items.value.filter((i) => i.status === 'approved')
+  // 已被本批某个 PDF 占用的行，不再参与后续匹配，避免一行被多个文件覆盖
+  const usedRowIds = new Set<number>()
+  let matched = 0
+  let unmatched = 0
+  for (const file of files) {
+    const parsed = parseInvoiceFileName(file.name)
+    const available = approvedRows.filter((r) => !usedRowIds.has(r.id))
+    // 候选：金额相等
+    let candidates = available.filter(
+      (r) => parsed.amount !== null && Math.abs(parsed.amount - r.amount) < 0.01
+    )
+    // 多个同金额时，再用公司名互相包含缩小
+    if (candidates.length > 1 && parsed.company) {
+      const narrowed = candidates.filter(
+        (r) => r.title.includes(parsed.company) || parsed.company.includes(r.title)
+      )
+      if (narrowed.length >= 1) candidates = narrowed
+    }
+    // 没金额匹配时退化为纯公司名匹配
+    if (candidates.length === 0 && parsed.company) {
+      candidates = available.filter(
+        (r) => r.title.includes(parsed.company) || parsed.company.includes(r.title)
+      )
+    }
+    if (candidates.length === 1) {
+      setRowFile(candidates[0], file)
+      usedRowIds.add(candidates[0].id)
+      matched++
+    } else {
+      unmatched++
+    }
+  }
+  batchUploadSummary.value = t('invoice.batchUploadSummary', { matched, unmatched })
 }
 
 async function openDetail(item: InvoiceRequest) {
@@ -794,5 +1194,5 @@ async function exportApproved() {
   }
 }
 
-onMounted(reload)
+onMounted(() => reload())
 </script>

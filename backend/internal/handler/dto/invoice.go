@@ -26,6 +26,9 @@ type InvoiceRequest struct {
 	ProcessedBy     int64      `json:"processed_by,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
+
+	// UserEmail 申请人注册邮箱（仅列表/管理端补充，方便审核判断；ent 记录本身不含）
+	UserEmail string `json:"user_email,omitempty"`
 }
 
 // InvoiceRequestFromEnt 将 ent.InvoiceRequest 转为 DTO

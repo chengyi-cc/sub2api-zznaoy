@@ -675,6 +675,7 @@ func registerInvoiceAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		invoice.GET("/requests", h.Admin.Invoice.List)
 		invoice.GET("/requests/export", h.Admin.Invoice.Export)
+		invoice.POST("/requests/batch-approve", h.Admin.Invoice.BatchApprove)
 		invoice.GET("/requests/:id", h.Admin.Invoice.Get)
 		invoice.GET("/requests/:id/detail", h.Admin.Invoice.Detail)
 		invoice.POST("/requests/:id/approve", h.Admin.Invoice.Approve)

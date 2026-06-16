@@ -47,6 +47,8 @@ export interface InvoiceRequest {
   processed_by?: number
   created_at: string
   updated_at: string
+  // 申请人注册邮箱（管理端列表补充，用户端不返回）
+  user_email?: string
 }
 
 export interface CreateInvoiceRequestPayload {
