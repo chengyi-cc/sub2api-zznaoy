@@ -686,10 +686,13 @@ import { saveAs } from 'file-saver'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { formatDateTime } from '@/utils/format'
+import { extractApiErrorMessage } from '@/utils/apiError'
+import { useAppStore } from '@/stores/app'
 import { adminInvoiceAPI, type InvoiceRequestDetail } from '@/api/admin/invoices'
 import type { InvoiceRequest, InvoiceStatus } from '@/api/invoice'
 
 const { t } = useI18n()
+const appStore = useAppStore()
 
 const items = ref<InvoiceRequest[]>([])
 const loading = ref(false)
@@ -1122,6 +1125,7 @@ async function download(item: InvoiceRequest) {
     await adminInvoiceAPI.download(item.id, filename)
   } catch (e: any) {
     console.error('admin download failed', e)
+    appStore.showError(extractApiErrorMessage(e, t('common.error')))
   } finally {
     downloadingId.value = null
   }

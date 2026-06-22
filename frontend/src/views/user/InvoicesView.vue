@@ -375,6 +375,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { formatDateTime } from '@/utils/format'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import {
   invoiceAPI,
   type InvoiceRequest,
@@ -556,6 +557,7 @@ async function handleDownload(item: InvoiceRequest) {
     await invoiceAPI.downloadInvoice(item.id, filename)
   } catch (e: any) {
     console.error('download failed', e)
+    appStore.showError(extractApiErrorMessage(e, t('common.error')))
   } finally {
     downloadingId.value = null
   }
