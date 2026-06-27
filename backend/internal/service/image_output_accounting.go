@@ -3,10 +3,13 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"regexp"
 	"strings"
 
 	"github.com/tidwall/gjson"
 )
+
+var chatCompletionImageDataURLPattern = regexp.MustCompile(`data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+`)
 
 type openAIImageOutputCounter struct {
 	seen         map[string]struct{}
@@ -60,6 +63,7 @@ func (c *openAIImageOutputCounter) AddJSONResponse(body []byte) {
 	c.addDataArray(gjson.GetBytes(body, "data"))
 	c.addOutputArray(gjson.GetBytes(body, "output"))
 	c.addOutputArray(gjson.GetBytes(body, "response.output"))
+	c.addChatCompletionChoices(gjson.GetBytes(body, "choices"))
 }
 
 func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
@@ -68,6 +72,7 @@ func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
 	}
 	root := gjson.ParseBytes(data)
 	c.addDataArray(root.Get("data"))
+	c.addChatCompletionChoices(root.Get("choices"))
 	eventType := strings.TrimSpace(root.Get("type").String())
 	switch eventType {
 	case "response.output_item.done":
@@ -122,6 +127,35 @@ func (c *openAIImageOutputCounter) addOutputArray(output gjson.Result) {
 		c.addImageOutputItem(item)
 		return true
 	})
+}
+
+func (c *openAIImageOutputCounter) addChatCompletionChoices(choices gjson.Result) {
+	if !choices.IsArray() {
+		return
+	}
+	choices.ForEach(func(_, choice gjson.Result) bool {
+		c.addMarkdownImageDataURLs(choice.Get("message.content").String())
+		c.addMarkdownImageDataURLs(choice.Get("delta.content").String())
+		return true
+	})
+}
+
+func (c *openAIImageOutputCounter) addMarkdownImageDataURLs(content string) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	for _, dataURL := range chatCompletionImageDataURLPattern.FindAllString(content, -1) {
+		key := hashOpenAIImageOutputResult(dataURL)
+		if key == "" {
+			continue
+		}
+		if _, exists := c.seen[key]; exists {
+			continue
+		}
+		c.seen[key] = struct{}{}
+		c.seenOrder = append(c.seenOrder, key)
+		c.count++
+	}
 }
 
 func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
