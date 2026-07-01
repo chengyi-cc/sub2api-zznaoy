@@ -1264,7 +1264,7 @@ func (s *InvoiceService) savePDF(src io.Reader, declaredSize int64) (string, str
 	if err != nil {
 		return "", "", fmt.Errorf("create invoice file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// 限制读取上限，避免客户端撒谎的 Content-Length
 	limit := declaredSize

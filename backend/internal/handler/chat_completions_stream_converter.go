@@ -49,7 +49,7 @@ func (conv *sseResponseConverter) Write(data []byte) (int, error) {
 		return conv.ResponseWriter.Write(data)
 	}
 	log.Printf("[SSE-CONV] incoming write len=%d data=%s", len(data), truncate(string(data), 300))
-	conv.lineBuf.Write(data)
+	_, _ = conv.lineBuf.Write(data)
 	if err := conv.processLines(); err != nil {
 		log.Printf("[SSE-CONV] processLines error: %v", err)
 		return 0, err
@@ -61,7 +61,7 @@ func (conv *sseResponseConverter) WriteString(s string) (int, error) {
 	if conv.shouldPassthrough() {
 		return conv.ResponseWriter.WriteString(s)
 	}
-	conv.lineBuf.WriteString(s)
+	_, _ = conv.lineBuf.WriteString(s)
 	if err := conv.processLines(); err != nil {
 		return 0, err
 	}
@@ -189,9 +189,9 @@ func (conv *sseResponseConverter) makeChunk(delta map[string]any, finishReason *
 
 func (conv *sseResponseConverter) writeChunkBytes(b []byte) error {
 	var buf bytes.Buffer
-	buf.WriteString("data: ")
-	buf.Write(b)
-	buf.WriteString("\n\n")
+	_, _ = buf.WriteString("data: ")
+	_, _ = buf.Write(b)
+	_, _ = buf.WriteString("\n\n")
 	log.Printf("[SSE-CONV] outgoing chunk=%s", truncate(buf.String(), 300))
 	if _, err := conv.ResponseWriter.Write(buf.Bytes()); err != nil {
 		return err
@@ -331,7 +331,7 @@ func (conv *anthropicSSEConverter) Write(data []byte) (int, error) {
 		return conv.ResponseWriter.Write(data)
 	}
 	log.Printf("[ANTHROPIC-CONV] incoming write len=%d data=%s", len(data), truncate(string(data), 300))
-	conv.lineBuf.Write(data)
+	_, _ = conv.lineBuf.Write(data)
 	if err := conv.anthropicProcessLines(); err != nil {
 		return 0, err
 	}
@@ -342,7 +342,7 @@ func (conv *anthropicSSEConverter) WriteString(s string) (int, error) {
 	if conv.anthropicShouldPassthrough() {
 		return conv.ResponseWriter.WriteString(s)
 	}
-	conv.lineBuf.WriteString(s)
+	_, _ = conv.lineBuf.WriteString(s)
 	if err := conv.anthropicProcessLines(); err != nil {
 		return 0, err
 	}
@@ -464,9 +464,9 @@ func (conv *anthropicSSEConverter) anthropicMakeChunk(delta map[string]any, fini
 
 func (conv *anthropicSSEConverter) anthropicWriteChunkBytes(b []byte) error {
 	var buf bytes.Buffer
-	buf.WriteString("data: ")
-	buf.Write(b)
-	buf.WriteString("\n\n")
+	_, _ = buf.WriteString("data: ")
+	_, _ = buf.Write(b)
+	_, _ = buf.WriteString("\n\n")
 	log.Printf("[ANTHROPIC-CONV] outgoing chunk=%s", truncate(buf.String(), 300))
 	if _, err := conv.ResponseWriter.Write(buf.Bytes()); err != nil {
 		return err

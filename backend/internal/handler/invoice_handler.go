@@ -168,7 +168,7 @@ func streamInvoiceFile(c *gin.Context, absPath, filename string) {
 		response.InternalError(c, "open invoice file: "+err.Error())
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	stat, err := f.Stat()
 	if err != nil {
 		response.InternalError(c, "stat invoice file: "+err.Error())

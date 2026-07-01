@@ -226,7 +226,7 @@ func (h *InvoiceHandler) Issue(c *gin.Context) {
 		response.InternalError(c, "open uploaded file: "+err.Error())
 		return
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	updated, err := h.invoiceService.AdminIssue(c.Request.Context(), id, adminID, invoiceNo, src, fileHeader.Size)
 	if err != nil {
@@ -257,7 +257,7 @@ func (h *InvoiceHandler) Download(c *gin.Context) {
 		response.InternalError(c, "open invoice file: "+err.Error())
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	stat, err := f.Stat()
 	if err != nil {
 		response.InternalError(c, "stat invoice file: "+err.Error())
