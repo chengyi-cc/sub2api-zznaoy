@@ -325,14 +325,6 @@ func (s *InvoiceService) ListEligibleSources(ctx context.Context, userID int64) 
 	return out, nil
 }
 
-// claimedOrderIDsForUser 返回该用户名下所有处于 pending/approved/issued 状态的发票申请所引用的订单 ID 集合
-//
-// Deprecated: 兑换码引入后改用 claimedSourceIDsForUser。保留以避免破坏调用点。
-func (s *InvoiceService) claimedOrderIDsForUser(ctx context.Context, userID int64) (map[int64]struct{}, error) {
-	orders, _, err := s.claimedSourceIDsForUser(ctx, userID)
-	return orders, err
-}
-
 // claimedSourceIDsForUser 返回该用户的活动发票申请引用的订单 + 兑换码 ID 集合。
 func (s *InvoiceService) claimedSourceIDsForUser(ctx context.Context, userID int64) (map[int64]struct{}, map[int64]struct{}, error) {
 	reqs, err := s.entClient.InvoiceRequest.Query().
@@ -481,15 +473,6 @@ func (s *InvoiceService) CreateRequest(ctx context.Context, input CreateInvoiceR
 		return nil, fmt.Errorf("commit invoice tx: %w", err)
 	}
 	return created, nil
-}
-
-// claimedOrderIDsForUserInTx 与 claimedOrderIDsForUser 同语义，但使用调用者提供的事务，
-// 让锁视图保持一致。
-//
-// Deprecated: 改用 claimedSourceIDsForUserInTx，新版同时返回兑换码占用集合。
-func (s *InvoiceService) claimedOrderIDsForUserInTx(ctx context.Context, tx *dbent.Tx, userID int64) (map[int64]struct{}, error) {
-	orders, _, err := s.claimedSourceIDsForUserInTx(ctx, tx, userID)
-	return orders, err
 }
 
 // claimedSourceIDsForUserInTx 与 claimedSourceIDsForUser 同语义，但使用调用者提供的事务。
