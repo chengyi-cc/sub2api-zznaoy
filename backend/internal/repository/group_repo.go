@@ -156,6 +156,15 @@ func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group
 	if err != nil {
 		return nil, err
 	}
+	// force_openai_priority 是一列未纳入 ent schema 的软列，只能走原始 SQL 读取。
+	// 这里在完整版 GetByID 中加载，保持 GetByIDLite 纯 ORM、不触碰原始 SQL executor
+	// （热路径调用方不需要该标志，运行时真正消费它的 API Key 认证路径会单独加载）。
+	flags, err := loadGroupForceOpenAIPriorityMap(ctx, r.sql, []int64{out.ID})
+	if err != nil {
+		return nil, err
+	}
+	out.ForceOpenAIPriority = flags[out.ID]
+
 	counts, err := r.loadAccountCounts(ctx, []int64{out.ID})
 	if err == nil {
 		c := counts[out.ID]
@@ -167,20 +176,17 @@ func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group
 }
 
 func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
-	// AccountCount is intentionally not loaded here; use GetByID when needed.
+	// 轻量版：仅用 ent ORM 读取分组本体，刻意不加载 AccountCount，
+	// 也不加载 force_openai_priority 软列（两者都需额外查询）。
+	// 需要这些字段时请改用 GetByID。热路径调用方（路由解析、降级链探测等）
+	// 只需要分组本体，据此避免任何原始 SQL executor 调用。
 	m, err := r.client.Group.Query().
 		Where(group.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 	}
-	out := groupEntityToService(m)
-	flags, err := loadGroupForceOpenAIPriorityMap(ctx, r.sql, []int64{out.ID})
-	if err != nil {
-		return nil, err
-	}
-	out.ForceOpenAIPriority = flags[out.ID]
-	return out, nil
+	return groupEntityToService(m), nil
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
