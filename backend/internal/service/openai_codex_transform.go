@@ -223,7 +223,9 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 		}
 	}
 
-	// 提取 input 中 role:"system" 消息至 instructions（OAuth 上游不支持 system role）。
+	// ChatGPT internal Codex endpoint does not accept role:"system".
+	// Keep the guidance in input as developer for Responses JSON mode, and
+	// also mirror it into instructions because Codex OAuth requires it.
 	if extractSystemMessagesFromInput(reqBody) {
 		result.Modified = true
 	}
@@ -765,6 +767,20 @@ func ensureOpenAIResponsesImageGenerationTool(reqBody map[string]any) bool {
 	return true
 }
 
+func ensureOpenAIResponsesImageGenerationToolChoiceAuto(reqBody map[string]any) bool {
+	if len(reqBody) == 0 || !hasOpenAIImageGenerationTool(reqBody) {
+		return false
+	}
+	if isCodexSparkModel(firstNonEmptyString(reqBody["model"])) {
+		return false
+	}
+	if _, ok := reqBody["tool_choice"]; ok {
+		return false
+	}
+	reqBody["tool_choice"] = "auto"
+	return true
+}
+
 func applyCodexImageGenerationBridgeInstructions(reqBody map[string]any) bool {
 	if len(reqBody) == 0 || !hasOpenAIImageGenerationTool(reqBody) {
 		return false
@@ -959,10 +975,10 @@ func extractTextFromContent(content any) string {
 	}
 }
 
-// extractSystemMessagesFromInput scans the input array for items with role=="system",
-// removes them, and merges their content into reqBody["instructions"].
-// If instructions is already non-empty, extracted content is prepended with "\n\n".
-// Returns true if any system messages were extracted.
+// extractSystemMessagesFromInput scans input for role=="system", maps those
+// items to developer, and mirrors their text into reqBody["instructions"].
+// It preserves the input items so Responses JSON mode can still see JSON
+// instructions in input messages.
 func extractSystemMessagesFromInput(reqBody map[string]any) bool {
 	input, ok := reqBody["input"].([]any)
 	if !ok || len(input) == 0 {
@@ -970,25 +986,24 @@ func extractSystemMessagesFromInput(reqBody map[string]any) bool {
 	}
 
 	var systemTexts []string
-	remaining := make([]any, 0, len(input))
-
+	modified := false
 	for _, item := range input {
 		m, ok := item.(map[string]any)
 		if !ok {
-			remaining = append(remaining, item)
 			continue
 		}
 		if role, _ := m["role"].(string); role != "system" {
-			remaining = append(remaining, item)
 			continue
 		}
+		m["role"] = "developer"
+		modified = true
 		if text := extractTextFromContent(m["content"]); text != "" {
 			systemTexts = append(systemTexts, text)
 		}
 	}
 
 	if len(systemTexts) == 0 {
-		return false
+		return modified
 	}
 
 	extracted := strings.Join(systemTexts, "\n\n")
@@ -997,7 +1012,6 @@ func extractSystemMessagesFromInput(reqBody map[string]any) bool {
 	} else {
 		reqBody["instructions"] = extracted
 	}
-	reqBody["input"] = remaining
 	return true
 }
 
@@ -1154,11 +1168,41 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		}
 		typ, _ := m["type"].(string)
 
-		// chatgpt.com codex backend (OAuth path) does not persist reasoning
-		// items because applyCodexOAuthTransform forces store=false. Any rs_*
-		// reference replayed in input is guaranteed to 404 upstream
-		// ("Item with id 'rs_...' not found"). Drop reasoning items entirely.
+		// chatgpt.com codex (OAuth path) runs with store=false (forced by
+		// applyCodexOAuthTransform). Replaying a reasoning item with its rs_*
+		// id but no encrypted_content 404s upstream ("Item with id 'rs_...'
+		// not found") — the 404 is triggered by the id lookup, not by the
+		// reasoning item itself. So strip the id (always, independent of
+		// PreserveReferences) yet keep the item: under store=false
+		// encrypted_content is the official channel for carrying reasoning
+		// context across turns, and dropping the whole item silently degrades
+		// multi-turn agent reasoning. Preserve encrypted_content/content/
+		// summary and every other field verbatim. Upstream additionally
+		// requires a summary field — a missing one is rejected with 400
+		// "Missing required parameter 'input[N].summary'" — so backfill an
+		// empty array when it is absent. Contracts verified end-to-end against
+		// chatgpt.com codex (gpt-5.5); see issue #1957.
+		// compaction_summary items (cmp_*) are the other encrypted_content
+		// carrier. Verified against the live backend: they require
+		// encrypted_content (a missing one is rejected with 400), and with it
+		// present the cmp_* id does not 404 whether kept or stripped. Being
+		// neither reasoning nor tool calls, they flow through the generic path
+		// below (id stripped when !PreserveReferences, encrypted_content
+		// preserved either way), which is safe and needs no special-casing.
 		if typ == "reasoning" {
+			newItem := make(map[string]any, len(m))
+			for key, value := range m {
+				if key == "id" {
+					// rs_* id replayed under store=false 404s; strip it.
+					continue
+				}
+				newItem[key] = value
+			}
+			if summary, ok := newItem["summary"]; !ok || summary == nil {
+				// Upstream requires a summary field; an empty array satisfies it.
+				newItem["summary"] = []any{}
+			}
+			filtered = append(filtered, newItem)
 			continue
 		}
 
