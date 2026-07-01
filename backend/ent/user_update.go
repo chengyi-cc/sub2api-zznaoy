@@ -606,6 +606,7 @@ func (_u *UserUpdate) AddInvoiceRequests(v ...*InvoiceRequest) *UserUpdate {
 	}
 	return _u.AddInvoiceRequestIDs(ids...)
 }
+
 // AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
 func (_u *UserUpdate) AddPlatformQuotaIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddPlatformQuotaIDs(ids...)
@@ -898,6 +899,7 @@ func (_u *UserUpdate) RemoveInvoiceRequests(v ...*InvoiceRequest) *UserUpdate {
 	}
 	return _u.RemoveInvoiceRequestIDs(ids...)
 }
+
 // ClearPlatformQuotas clears all "platform_quotas" edges to the UserPlatformQuota entity.
 func (_u *UserUpdate) ClearPlatformQuotas() *UserUpdate {
 	_u.mutation.ClearPlatformQuotas()
@@ -2334,6 +2336,7 @@ func (_u *UserUpdateOne) AddInvoiceRequests(v ...*InvoiceRequest) *UserUpdateOne
 	}
 	return _u.AddInvoiceRequestIDs(ids...)
 }
+
 // AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
 func (_u *UserUpdateOne) AddPlatformQuotaIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddPlatformQuotaIDs(ids...)
@@ -2626,6 +2629,7 @@ func (_u *UserUpdateOne) RemoveInvoiceRequests(v ...*InvoiceRequest) *UserUpdate
 	}
 	return _u.RemoveInvoiceRequestIDs(ids...)
 }
+
 // ClearPlatformQuotas clears all "platform_quotas" edges to the UserPlatformQuota entity.
 func (_u *UserUpdateOne) ClearPlatformQuotas() *UserUpdateOne {
 	_u.mutation.ClearPlatformQuotas()

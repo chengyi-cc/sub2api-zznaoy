@@ -498,6 +498,7 @@ func (_m *User) QueryPendingAuthSessions() *PendingAuthSessionQuery {
 func (_m *User) QueryInvoiceRequests() *InvoiceRequestQuery {
 	return NewUserClient(_m.config).QueryInvoiceRequests(_m)
 }
+
 // QueryPlatformQuotas queries the "platform_quotas" edge of the User entity.
 func (_m *User) QueryPlatformQuotas() *UserPlatformQuotaQuery {
 	return NewUserClient(_m.config).QueryPlatformQuotas(_m)

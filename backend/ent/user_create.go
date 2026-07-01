@@ -535,6 +535,7 @@ func (_c *UserCreate) AddInvoiceRequests(v ...*InvoiceRequest) *UserCreate {
 	}
 	return _c.AddInvoiceRequestIDs(ids...)
 }
+
 // AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
 func (_c *UserCreate) AddPlatformQuotaIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddPlatformQuotaIDs(ids...)

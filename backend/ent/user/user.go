@@ -600,6 +600,7 @@ func ByInvoiceRequests(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newInvoiceRequestsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
 // ByPlatformQuotasCount orders the results by platform_quotas count.
 func ByPlatformQuotasCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {

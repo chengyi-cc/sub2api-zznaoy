@@ -1626,6 +1626,7 @@ func HasInvoiceRequests() predicate.User {
 		sqlgraph.HasNeighbors(s, step)
 	})
 }
+
 // HasPlatformQuotas applies the HasEdge predicate on the "platform_quotas" edge.
 func HasPlatformQuotas() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -1648,6 +1649,7 @@ func HasInvoiceRequestsWith(preds ...predicate.InvoiceRequest) predicate.User {
 		})
 	})
 }
+
 // HasPlatformQuotasWith applies the HasEdge predicate on the "platform_quotas" edge with a given conditions (other predicates).
 func HasPlatformQuotasWith(preds ...predicate.UserPlatformQuota) predicate.User {
 	return predicate.User(func(s *sql.Selector) {

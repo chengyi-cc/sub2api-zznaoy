@@ -18,8 +18,8 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func newInvoiceServiceTestClient(t *testing.T) (*InvoiceService, *dbent.Client) {

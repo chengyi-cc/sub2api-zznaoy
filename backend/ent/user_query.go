@@ -375,6 +375,7 @@ func (_q *UserQuery) QueryInvoiceRequests() *InvoiceRequestQuery {
 	}
 	return query
 }
+
 // QueryPlatformQuotas chains the current query on the "platform_quotas" edge.
 func (_q *UserQuery) QueryPlatformQuotas() *UserPlatformQuotaQuery {
 	query := (&UserPlatformQuotaClient{config: _q.config}).Query()
@@ -774,6 +775,7 @@ func (_q *UserQuery) WithInvoiceRequests(opts ...func(*InvoiceRequestQuery)) *Us
 	_q.withInvoiceRequests = query
 	return _q
 }
+
 // WithPlatformQuotas tells the query-builder to eager-load the nodes that are connected to
 // the "platform_quotas" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *UserQuery) WithPlatformQuotas(opts ...func(*UserPlatformQuotaQuery)) *UserQuery {

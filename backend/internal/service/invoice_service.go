@@ -79,25 +79,25 @@ func (s *InvoiceService) lockRedeemCodesByIDs(ctx context.Context, tx *dbent.Tx,
 }
 
 var (
-	ErrInvoiceRequestNotFound    = infraerrors.NotFound("INVOICE_REQUEST_NOT_FOUND", "invoice request not found")
-	ErrInvoiceForbidden          = infraerrors.Forbidden("INVOICE_FORBIDDEN", "no permission for this invoice request")
-	ErrInvoiceOrdersEmpty         = infraerrors.BadRequest("INVOICE_ORDERS_EMPTY", "at least one payment order is required")
-	ErrInvoiceSourcesEmpty        = infraerrors.BadRequest("INVOICE_SOURCES_EMPTY", "at least one order or redeem code is required")
-	ErrInvoiceOrdersInvalid       = infraerrors.BadRequest("INVOICE_ORDERS_INVALID", "one or more payment orders are invalid or not yours")
-	ErrInvoiceOrderNotEligible    = infraerrors.BadRequest("INVOICE_ORDER_NOT_ELIGIBLE", "payment order is not eligible for invoice")
-	ErrInvoiceOrderAlreadyClaimed = infraerrors.Conflict("INVOICE_ORDER_ALREADY_CLAIMED", "payment order already has an active invoice request")
-	ErrInvoiceRedeemInvalid       = infraerrors.BadRequest("INVOICE_REDEEM_INVALID", "one or more redeem codes are invalid or not yours")
-	ErrInvoiceRedeemNotEligible   = infraerrors.BadRequest("INVOICE_REDEEM_NOT_ELIGIBLE", "redeem code is not eligible for invoice (only used balance codes can be invoiced)")
+	ErrInvoiceRequestNotFound      = infraerrors.NotFound("INVOICE_REQUEST_NOT_FOUND", "invoice request not found")
+	ErrInvoiceForbidden            = infraerrors.Forbidden("INVOICE_FORBIDDEN", "no permission for this invoice request")
+	ErrInvoiceOrdersEmpty          = infraerrors.BadRequest("INVOICE_ORDERS_EMPTY", "at least one payment order is required")
+	ErrInvoiceSourcesEmpty         = infraerrors.BadRequest("INVOICE_SOURCES_EMPTY", "at least one order or redeem code is required")
+	ErrInvoiceOrdersInvalid        = infraerrors.BadRequest("INVOICE_ORDERS_INVALID", "one or more payment orders are invalid or not yours")
+	ErrInvoiceOrderNotEligible     = infraerrors.BadRequest("INVOICE_ORDER_NOT_ELIGIBLE", "payment order is not eligible for invoice")
+	ErrInvoiceOrderAlreadyClaimed  = infraerrors.Conflict("INVOICE_ORDER_ALREADY_CLAIMED", "payment order already has an active invoice request")
+	ErrInvoiceRedeemInvalid        = infraerrors.BadRequest("INVOICE_REDEEM_INVALID", "one or more redeem codes are invalid or not yours")
+	ErrInvoiceRedeemNotEligible    = infraerrors.BadRequest("INVOICE_REDEEM_NOT_ELIGIBLE", "redeem code is not eligible for invoice (only used balance codes can be invoiced)")
 	ErrInvoiceRedeemAlreadyClaimed = infraerrors.Conflict("INVOICE_REDEEM_ALREADY_CLAIMED", "redeem code already has an active invoice request")
-	ErrInvoiceTaxNoRequired      = infraerrors.BadRequest("INVOICE_TAX_NO_REQUIRED", "tax_no is required for company invoice")
-	ErrInvoiceTitleRequired      = infraerrors.BadRequest("INVOICE_TITLE_REQUIRED", "title is required")
-	ErrInvoiceTypeInvalid        = infraerrors.BadRequest("INVOICE_TYPE_INVALID", "invoice_type must be personal or company")
-	ErrInvoiceEmailInvalid       = infraerrors.BadRequest("INVOICE_EMAIL_INVALID", "recipient_email is invalid")
-	ErrInvoiceInvalidStatus      = infraerrors.Conflict("INVOICE_INVALID_STATUS", "invoice request status does not allow this operation")
-	ErrInvoiceFileNotFound       = infraerrors.NotFound("INVOICE_FILE_NOT_FOUND", "invoice file not found")
-	ErrInvoiceFileInvalid        = infraerrors.BadRequest("INVOICE_FILE_INVALID", "invoice file is invalid (only PDF, max 10MB)")
-	ErrInvoiceNoRequired         = infraerrors.BadRequest("INVOICE_NO_REQUIRED", "invoice_no is required")
-	ErrInvoiceRejectReason       = infraerrors.BadRequest("INVOICE_REJECT_REASON_REQUIRED", "reject reason is required")
+	ErrInvoiceTaxNoRequired        = infraerrors.BadRequest("INVOICE_TAX_NO_REQUIRED", "tax_no is required for company invoice")
+	ErrInvoiceTitleRequired        = infraerrors.BadRequest("INVOICE_TITLE_REQUIRED", "title is required")
+	ErrInvoiceTypeInvalid          = infraerrors.BadRequest("INVOICE_TYPE_INVALID", "invoice_type must be personal or company")
+	ErrInvoiceEmailInvalid         = infraerrors.BadRequest("INVOICE_EMAIL_INVALID", "recipient_email is invalid")
+	ErrInvoiceInvalidStatus        = infraerrors.Conflict("INVOICE_INVALID_STATUS", "invoice request status does not allow this operation")
+	ErrInvoiceFileNotFound         = infraerrors.NotFound("INVOICE_FILE_NOT_FOUND", "invoice file not found")
+	ErrInvoiceFileInvalid          = infraerrors.BadRequest("INVOICE_FILE_INVALID", "invoice file is invalid (only PDF, max 10MB)")
+	ErrInvoiceNoRequired           = infraerrors.BadRequest("INVOICE_NO_REQUIRED", "invoice_no is required")
+	ErrInvoiceRejectReason         = infraerrors.BadRequest("INVOICE_REJECT_REASON_REQUIRED", "reject reason is required")
 )
 
 const (
@@ -810,12 +810,12 @@ type InvoiceRequestDetail struct {
 
 // InvoiceUserOverview 申请人发票相关的累计金额视图。
 type InvoiceUserOverview struct {
-	TotalRecharged       float64 `json:"total_recharged"`         // 用户总充值金额（user.total_recharged）
-	Balance              float64 `json:"balance"`                 // 用户当前余额（参考）
-	IssuedTotal          float64 `json:"issued_total"`            // 已开具发票总金额（包含本次若已 issued）
-	InFlightTotal        float64 `json:"in_flight_total"`         // 在途（pending + approved）发票总金额（包含本次若 pending/approved）
-	IssuedPlusInFlight   float64 `json:"issued_plus_in_flight"`   // 上面两个之和
-	ExceedsTotalRecharge bool    `json:"exceeds_total_recharge"`  // issued + in_flight > total_recharged 时为 true（超开警告）
+	TotalRecharged       float64 `json:"total_recharged"`        // 用户总充值金额（user.total_recharged）
+	Balance              float64 `json:"balance"`                // 用户当前余额（参考）
+	IssuedTotal          float64 `json:"issued_total"`           // 已开具发票总金额（包含本次若已 issued）
+	InFlightTotal        float64 `json:"in_flight_total"`        // 在途（pending + approved）发票总金额（包含本次若 pending/approved）
+	IssuedPlusInFlight   float64 `json:"issued_plus_in_flight"`  // 上面两个之和
+	ExceedsTotalRecharge bool    `json:"exceeds_total_recharge"` // issued + in_flight > total_recharged 时为 true（超开警告）
 }
 
 // InvoiceDetailOrder 详情中的订单视图，含订单**当前**状态而不是申请时快照。
@@ -823,11 +823,11 @@ type InvoiceDetailOrder struct {
 	OrderID     int64     `json:"order_id"`
 	OutTradeNo  string    `json:"out_trade_no"`
 	Amount      float64   `json:"amount"`
-	Status      string    `json:"status"`       // 当前状态：COMPLETED / REFUNDED / ...
+	Status      string    `json:"status"` // 当前状态：COMPLETED / REFUNDED / ...
 	OrderType   string    `json:"order_type"`
 	PaymentType string    `json:"payment_type"`
 	CompletedAt time.Time `json:"completed_at"`
-	Eligible    bool      `json:"eligible"`     // status == COMPLETED
+	Eligible    bool      `json:"eligible"` // status == COMPLETED
 }
 
 // InvoiceDetailRedeem 详情中的兑换码视图，含**当前**状态。
@@ -835,11 +835,11 @@ type InvoiceDetailRedeem struct {
 	RedeemCodeID int64     `json:"redeem_code_id"`
 	Code         string    `json:"code"`
 	Value        float64   `json:"value"`
-	Status       string    `json:"status"`         // 当前状态：used / unused / ...
-	Type         string    `json:"type"`           // 当前类型
-	UsedBy       int64     `json:"used_by"`        // 当前 used_by（0 = 未使用或已转给他人）
+	Status       string    `json:"status"`  // 当前状态：used / unused / ...
+	Type         string    `json:"type"`    // 当前类型
+	UsedBy       int64     `json:"used_by"` // 当前 used_by（0 = 未使用或已转给他人）
 	UsedAt       time.Time `json:"used_at"`
-	Eligible     bool      `json:"eligible"`       // status=used && type=balance && used_by==当前申请人 && value>0
+	Eligible     bool      `json:"eligible"` // status=used && type=balance && used_by==当前申请人 && value>0
 }
 
 // AdminGetDetail 返回审核所需的完整明细。
@@ -1355,11 +1355,11 @@ func (s *InvoiceService) buildStatusEmail(siteName, status, rejectReason string,
 	}
 
 	var b strings.Builder
-	b.WriteString("<div style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1f2937;\">")
+	_, _ = b.WriteString("<div style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1f2937;\">")
 	fmt.Fprintf(&b, "<h2 style=\"margin: 0 0 16px;\">%s</h2>", escapeHTML(siteName))
 	fmt.Fprintf(&b, "<p style=\"margin: 0 0 12px; font-size: 14px;\">%s</p>", escapeHTML(headline))
 
-	b.WriteString("<table style=\"width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 16px;\">")
+	_, _ = b.WriteString("<table style=\"width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 16px;\">")
 	fmt.Fprintf(&b, "<tr><td style=\"padding: 6px 0; color: #6b7280; width: 120px;\">申请编号</td><td>%d</td></tr>", requestID)
 	fmt.Fprintf(&b, "<tr><td style=\"padding: 6px 0; color: #6b7280;\">抬头</td><td>%s</td></tr>", escapeHTML(title))
 	fmt.Fprintf(&b, "<tr><td style=\"padding: 6px 0; color: #6b7280;\">金额</td><td>%.2f</td></tr>", amount)
@@ -1369,15 +1369,15 @@ func (s *InvoiceService) buildStatusEmail(siteName, status, rejectReason string,
 	if status == domain.InvoiceStatusRejected && rejectReason != "" {
 		fmt.Fprintf(&b, "<tr><td style=\"padding: 6px 0; color: #6b7280;\">驳回原因</td><td>%s</td></tr>", escapeHTML(rejectReason))
 	}
-	b.WriteString("</table>")
+	_, _ = b.WriteString("</table>")
 
 	if status == domain.InvoiceStatusIssued && s.frontendURL != "" {
 		url := strings.TrimRight(s.frontendURL, "/") + "/invoices"
 		fmt.Fprintf(&b, "<p style=\"margin-top: 24px;\"><a href=\"%s\" style=\"display: inline-block; padding: 10px 18px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;\">查看并下载发票</a></p>", escapeHTML(url))
 	}
 
-	b.WriteString("<p style=\"margin-top: 32px; color: #9ca3af; font-size: 12px;\">此邮件由系统自动发送，请勿直接回复。</p>")
-	b.WriteString("</div>")
+	_, _ = b.WriteString("<p style=\"margin-top: 32px; color: #9ca3af; font-size: 12px;\">此邮件由系统自动发送，请勿直接回复。</p>")
+	_, _ = b.WriteString("</div>")
 	return subject, b.String()
 }
 
@@ -1392,9 +1392,9 @@ func sanitizeFilename(s string) string {
 			r >= 'A' && r <= 'Z',
 			r >= '0' && r <= '9',
 			r == '-' || r == '_' || r == '.':
-			b.WriteRune(r)
+			_, _ = b.WriteRune(r)
 		default:
-			b.WriteRune('_')
+			_, _ = b.WriteRune('_')
 		}
 	}
 	out := b.String()
