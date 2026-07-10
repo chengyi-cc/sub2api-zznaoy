@@ -53,3 +53,17 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar invoice visibility', () => {
+  it('keeps the admin invoice entry visible when user invoicing is disabled', () => {
+    expect(componentSource).toContain(
+      "{ path: '/invoices', label: t('nav.invoices'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagInvoice }",
+    )
+    expect(componentSource).toContain(
+      "{ path: '/admin/invoices', label: t('nav.invoices'), icon: OrderListIcon, hideInSimpleMode: true }",
+    )
+    expect(componentSource).not.toContain(
+      "{ path: '/admin/invoices', label: t('nav.invoices'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagInvoice }",
+    )
+  })
+})

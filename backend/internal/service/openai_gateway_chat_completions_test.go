@@ -181,6 +181,87 @@ func TestForwardAsChatCompletions_APIKeyPropagatesPromptCacheKeyInResponsesBody(
 	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(99, "cache-key-123")), upstream.lastReq.Header.Get("session_id"))
 }
 
+func TestForwardAsChatCompletions_ForcedPriorityMatchesUpstreamAndBilling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("api_key", &APIKey{Group: &Group{Platform: PlatformOpenAI, ForceOpenAIPriority: true}})
+
+	upstreamBody := strings.Join([]string{
+		`data: {"type":"response.completed","response":{"id":"resp_priority","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_priority","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          2,
+		Name:        "openai-compatible",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-compatible"},
+		Extra:       map[string]any{"openai_responses_supported": true},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
+	require.NotNil(t, result.ServiceTier)
+	require.Equal(t, "priority", *result.ServiceTier)
+}
+
+func TestForwardAsChatCompletions_ForcedPriorityFilterMatchesUpstreamAndBilling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("api_key", &APIKey{Group: &Group{Platform: PlatformOpenAI, ForceOpenAIPriority: true}})
+
+	upstreamBody := strings.Join([]string{
+		`data: {"type":"response.completed","response":{"id":"resp_filtered","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_filtered","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
+	svc.cfg = &config.Config{}
+	svc.httpUpstream = upstream
+	account := &Account{
+		ID:          2,
+		Name:        "openai-compatible",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-compatible"},
+		Extra:       map[string]any{"openai_responses_supported": true},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
+	require.Nil(t, result.ServiceTier)
+}
+
 func TestForwardAsChatCompletions_OAuthDoesNotInjectDefaultInstructions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

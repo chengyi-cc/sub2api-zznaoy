@@ -44,7 +44,7 @@ export default {
           title: 'Invoice',
           description: 'Allow users to submit invoice requests for completed orders. Admins review and upload the invoice PDF. Disabled by default.',
           enabled: 'Enable Invoice',
-          enabledHint: 'When off, both user and admin "Invoice" menu entries are hidden and invoice APIs are rejected.',
+          enabledHint: 'When off, the user Invoice entry is hidden and user requests are rejected; admins can still view and process existing requests.',
           minAmount: 'Minimum invoice amount',
           minAmountHint: 'Requests with amount below this threshold are rejected. Set 0 to disable. Default 200.',
         },

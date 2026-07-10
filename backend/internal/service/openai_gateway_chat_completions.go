@@ -165,9 +165,6 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		}
 	}
 	responsesReq.Model = upstreamModel
-	if shouldForceOpenAIPriority(c) {
-		responsesReq.ServiceTier = "priority"
-	}
 
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
@@ -226,6 +223,15 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		}
 	}
 
+	// Apply the group-level override to the serialized body that will actually
+	// be sent upstream. Updating responsesReq alone is too late after marshal.
+	if shouldForceOpenAIPriority(c) {
+		responsesBody, err = sjson.SetBytes(responsesBody, "service_tier", "priority")
+		if err != nil {
+			return nil, fmt.Errorf("force OpenAI priority service tier: %w", err)
+		}
+	}
+
 	// 4b. Apply OpenAI fast policy (may filter service_tier or block the request).
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, responsesBody)
 	if policyErr != nil {
@@ -237,6 +243,8 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return nil, policyErr
 	}
 	responsesBody = updatedBody
+	// Billing must reflect the post-policy body received by the upstream.
+	responsesReq.ServiceTier = normalizedOpenAIServiceTierValue(gjson.GetBytes(responsesBody, "service_tier").String())
 
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
