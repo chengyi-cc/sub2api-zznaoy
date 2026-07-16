@@ -708,6 +708,8 @@ func TestAPIContracts(t *testing.T) {
 						"frontend_url": "",
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
+						"session_binding_enabled": true,
+						"audit_log_retention_days": 180,
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
@@ -1024,6 +1026,8 @@ func TestAPIContracts(t *testing.T) {
 						"invoice_min_amount": 200,
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
+						"session_binding_enabled": true,
+						"audit_log_retention_days": 180,
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
@@ -1557,6 +1561,9 @@ func (r *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount i
 
 func (r *stubUserRepo) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 func (r *stubUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (r *stubUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	return 0, nil
+}
 
 func (r *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	return false, errors.New("not implemented")
@@ -1729,6 +1736,14 @@ func (stubGroupRepo) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int
 
 func (stubGroupRepo) UpdateSortOrders(ctx context.Context, updates []service.GroupSortOrderUpdate) error {
 	return nil
+}
+
+func (stubGroupRepo) FindByDuplicateOperationID(ctx context.Context, operationID string) (*service.Group, error) {
+	return nil, nil
+}
+
+func (stubGroupRepo) CreateFromSource(ctx context.Context, group *service.Group, sourceGroupID int64) error {
+	return errors.New("not implemented")
 }
 
 type stubAccountRepo struct {
