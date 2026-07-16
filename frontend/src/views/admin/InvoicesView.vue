@@ -1146,7 +1146,26 @@ async function copyInvoiceInfo(r: InvoiceRequest) {
   }
 }
 
-// 导出「已通过待开票」为 Excel：序号 / 公司名称·个人抬头 / 纳税人识别号 / 金额 / 用户邮箱 / 接收邮箱
+function saveInvoiceWorkbook(
+  headers: string[],
+  data: Array<Array<string | number>>,
+  columnWidths: number[],
+  sheetName: string,
+  filename: string
+) {
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...data])
+  ws['!cols'] = columnWidths.map(wch => ({ wch }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, sheetName)
+  saveAs(
+    new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }),
+    filename
+  )
+}
+
+// 一次导出两份「已通过待开票」Excel：完整资料版 + 不含邮箱的开票清单。
 async function exportApproved() {
   exporting.value = true
   try {
@@ -1172,23 +1191,23 @@ async function exportApproved() {
       // 接收邮箱未填时回退注册邮箱（与开票通知实际去向一致）
       r.recipient_email || r.user_email
     ])
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...data])
-    ws['!cols'] = [
-      { wch: 6 },
-      { wch: 32 },
-      { wch: 24 },
-      { wch: 12 },
-      { wch: 28 },
-      { wch: 28 }
-    ]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, t('invoice.exportSheetName'))
     const today = new Date().toISOString().slice(0, 10)
-    saveAs(
-      new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      }),
+    const sheetName = t('invoice.exportSheetName')
+
+    saveInvoiceWorkbook(
+      headers,
+      data,
+      [6, 32, 24, 12, 28, 28],
+      sheetName,
       `${t('invoice.exportFilePrefix')}_${today}.xlsx`
+    )
+
+    saveInvoiceWorkbook(
+      headers.slice(0, 4),
+      data.map(row => row.slice(0, 4)),
+      [6, 32, 24, 12],
+      sheetName,
+      `${t('invoice.exportInvoiceListFilePrefix')}_${today}.xlsx`
     )
   } catch (e: any) {
     console.error('export approved invoices failed', e)
