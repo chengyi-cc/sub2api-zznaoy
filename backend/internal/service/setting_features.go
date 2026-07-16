@@ -86,6 +86,16 @@ func (s *SettingService) IsInvoiceEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsAffiliateAdminRechargeEnabled reports whether admin balance
+// deposits should participate in the affiliate rebate program.
+func (s *SettingService) IsAffiliateAdminRechargeEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateAdminRechargeEnabled)
+	if err != nil {
+		return AdminRechargeRebateEnabledDefault
+	}
+	return value == "true"
+}
+
 // GetInvoiceMinAmount 读取单次开票最低金额。
 // 返回 >= 0；0 表示不限制。解析失败/缺失回退到 InvoiceMinAmountDefault。
 func (s *SettingService) GetInvoiceMinAmount(ctx context.Context) float64 {

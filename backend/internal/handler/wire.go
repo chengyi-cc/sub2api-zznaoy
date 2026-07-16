@@ -42,7 +42,9 @@ func ProvideAdminHandlers(
 	affiliateHandler *admin.AffiliateHandler,
 	invoiceAdminHandler *admin.InvoiceHandler,
 	complianceHandler *admin.ComplianceHandler,
+	upstreamBillingProbe *service.UpstreamBillingProbeService,
 ) *AdminHandlers {
+	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,

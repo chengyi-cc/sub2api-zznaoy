@@ -154,6 +154,7 @@ type SystemSettings struct {
 	AffiliateRebateFreezeHours   int
 	AffiliateRebateDurationDays  int
 	AffiliateRebatePerInviteeCap float64
+	AdminRechargeRebateEnabled   bool
 	DefaultUserRPMLimit          int
 	DefaultSubscriptions         []DefaultSubscriptionSetting
 
@@ -220,6 +221,8 @@ type SystemSettings struct {
 	PaymentVisibleMethodWxpayEnabled  bool
 
 	// OpenAI 账号调度
+	OpenAILowUpstreamRatePriorityEnabled                   bool
+	OpenAIOAuthSchedulingRateMultiplier                    float64
 	OpenAIAdvancedSchedulerEnabled                         bool
 	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool
@@ -231,6 +234,7 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerWeightTTFT                      string
 	OpenAIAdvancedSchedulerWeightReset                     string
 	OpenAIAdvancedSchedulerWeightQuotaHeadroom             string
+	OpenAIAdvancedSchedulerWeightUpstreamCost              string
 	OpenAIAdvancedSchedulerWeightPreviousResponse          string
 	OpenAIAdvancedSchedulerWeightSessionSticky             string
 	OpenAIAdvancedSchedulerEffectiveLBTopK                 string
@@ -241,6 +245,7 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerEffectiveWeightTTFT             string
 	OpenAIAdvancedSchedulerEffectiveWeightReset            string
 	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string
+	OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost     string
 	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string
 	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string
 
