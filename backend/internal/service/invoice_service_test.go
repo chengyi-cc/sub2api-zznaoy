@@ -359,6 +359,39 @@ func TestInvoiceService_AdminIssue_AcceptsValidPDFHeader(t *testing.T) {
 	require.True(t, strings.HasSuffix(*issued.InvoiceFilePath, ".pdf"))
 }
 
+func TestInvoiceService_AdminIssue_EmailsPDFAttachment(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, orderIDs := seedUserAndCompletedOrders(t, client, 1, 100)
+	ctx := context.Background()
+
+	created, err := svc.CreateRequest(ctx, CreateInvoiceRequestInput{
+		UserID:          user.ID,
+		PaymentOrderIDs: orderIDs,
+		InvoiceType:     domain.InvoiceTypePersonal,
+		Title:           "John",
+		RecipientEmail:  "billing@example.com",
+	})
+	require.NoError(t, err)
+	_, err = svc.AdminApprove(ctx, created.ID, 999)
+	require.NoError(t, err)
+
+	smtpServer := startNotificationEmailTestSMTPServer(t)
+	emailRepo := newInvoiceTestSettingRepo(smtpServer.settings())
+	svc.emailService = NewEmailService(emailRepo, nil)
+
+	pdf := []byte("%PDF-1.7\nissued invoice attachment\n")
+	_, err = svc.AdminIssue(ctx, created.ID, 999, "INV/2026-100", bytes.NewReader(pdf), int64(len(pdf)))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return smtpServer.messageCount() == 1
+	}, 3*time.Second, 10*time.Millisecond)
+
+	htmlBody, filename, attachmentData := parseAttachmentEmail(t, smtpServer.lastMessage())
+	require.Contains(t, htmlBody, "PDF 发票已随邮件附件发送")
+	require.Equal(t, "invoice-INV_2026-100.pdf", filename)
+	require.Equal(t, pdf, attachmentData)
+}
+
 // ---- Redeem-code source paths ----
 
 // seedUsedBalanceRedeemCode 给 user 注入一条已使用的余额兑换码，返回它的 ID。

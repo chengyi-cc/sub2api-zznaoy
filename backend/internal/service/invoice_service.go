@@ -642,11 +642,11 @@ func (s *InvoiceService) openInvoiceFile(r *dbent.InvoiceRequest) (string, strin
 	if err != nil {
 		return "", "", err
 	}
-	name := "invoice.pdf"
-	if r.InvoiceNo != nil && strings.TrimSpace(*r.InvoiceNo) != "" {
-		name = fmt.Sprintf("invoice-%s.pdf", sanitizeFilename(*r.InvoiceNo))
+	invoiceNo := ""
+	if r.InvoiceNo != nil {
+		invoiceNo = *r.InvoiceNo
 	}
-	return abs, name, nil
+	return abs, invoiceFilename(invoiceNo), nil
 }
 
 // ---- Admin-side ----
@@ -1286,13 +1286,17 @@ func (s *InvoiceService) sendStatusEmailAsync(r *dbent.InvoiceRequest, newStatus
 	if r.InvoiceNo != nil {
 		invoiceNo = *r.InvoiceNo
 	}
+	invoiceFilePath := ""
+	if r.InvoiceFilePath != nil {
+		invoiceFilePath = strings.TrimSpace(*r.InvoiceFilePath)
+	}
 	var recipient string
 	if r.RecipientEmail != nil {
 		recipient = strings.TrimSpace(*r.RecipientEmail)
 	}
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 
 		// 解析收件地址
@@ -1313,14 +1317,36 @@ func (s *InvoiceService) sendStatusEmailAsync(r *dbent.InvoiceRequest, newStatus
 			}
 		}
 
-		subject, body := s.buildStatusEmail(siteName, newStatus, rejectReason, requestID, amount, title, invoiceNo)
-		if err := s.emailService.SendEmail(ctx, to, subject, body); err != nil {
+		var attachment *EmailAttachment
+		if newStatus == domain.InvoiceStatusIssued && invoiceFilePath != "" {
+			absPath, err := s.resolveInvoiceFile(invoiceFilePath)
+			if err != nil {
+				logger.LegacyPrintf("service.invoice", "resolve invoice attachment failed (request %d): %v", requestID, err)
+			} else if data, readErr := os.ReadFile(absPath); readErr != nil {
+				logger.LegacyPrintf("service.invoice", "read invoice attachment failed (request %d): %v", requestID, readErr)
+			} else {
+				attachment = &EmailAttachment{
+					Filename:    invoiceFilename(invoiceNo),
+					ContentType: invoicePDFContentType,
+					Data:        data,
+				}
+			}
+		}
+
+		subject, body := s.buildStatusEmail(siteName, newStatus, rejectReason, requestID, amount, title, invoiceNo, attachment != nil)
+		var err error
+		if attachment != nil {
+			err = s.emailService.SendEmailWithAttachment(ctx, to, subject, body, *attachment)
+		} else {
+			err = s.emailService.SendEmail(ctx, to, subject, body)
+		}
+		if err != nil {
 			logger.LegacyPrintf("service.invoice", "send invoice status email failed (request %d, status %s): %v", requestID, newStatus, err)
 		}
 	}()
 }
 
-func (s *InvoiceService) buildStatusEmail(siteName, status, rejectReason string, requestID int64, amount float64, title, invoiceNo string) (string, string) {
+func (s *InvoiceService) buildStatusEmail(siteName, status, rejectReason string, requestID int64, amount float64, title, invoiceNo string, attachmentIncluded bool) (string, string) {
 	var subject, headline string
 	switch status {
 	case domain.InvoiceStatusApproved:
@@ -1331,7 +1357,11 @@ func (s *InvoiceService) buildStatusEmail(siteName, status, rejectReason string,
 		headline = "很抱歉，您的发票申请被驳回。"
 	case domain.InvoiceStatusIssued:
 		subject = fmt.Sprintf("[%s] 您的发票已开具", siteName)
-		headline = "您的发票已开具完成，可登录后在「发票管理」中下载。"
+		if attachmentIncluded {
+			headline = "您的发票已开具完成，PDF 发票已随邮件附件发送。您也可以登录后在「发票管理」中下载。"
+		} else {
+			headline = "您的发票已开具完成，可登录后在「发票管理」中下载。"
+		}
 	default:
 		subject = fmt.Sprintf("[%s] 发票申请状态更新", siteName)
 		headline = "您的发票申请状态有更新。"
@@ -1385,6 +1415,13 @@ func sanitizeFilename(s string) string {
 		return "invoice"
 	}
 	return out
+}
+
+func invoiceFilename(invoiceNo string) string {
+	if strings.TrimSpace(invoiceNo) == "" {
+		return "invoice.pdf"
+	}
+	return fmt.Sprintf("invoice-%s.pdf", sanitizeFilename(invoiceNo))
 }
 
 func escapeHTML(s string) string {
