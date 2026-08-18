@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // imageJobsState 是 OpenAIGatewayHandler 的懒加载字段。
@@ -147,6 +148,13 @@ func (h *OpenAIGatewayHandler) SubmitImageJob(endpoint string) gin.HandlerFunc {
 			return
 		}
 
+		// Prompt 审计必须在返回 202 之前完成：runImageJob 在后台 goroutine 里
+		// 直接转发同一份 body，之后没有任何审计时机。与 image_task_handler /
+		// batch_image_handler 的 checkSecurityAuditBeforeSubmit 保持一致。
+		if !h.checkImageJobSecurityAuditBeforeSubmit(c, apiKey, subject, parsed) {
+			return
+		}
+
 		// 解析可选的 ?timeout_seconds=N：不传 → 用全局默认 state.RunTimeout；
 		// 传 → 在 [1, MaxRunTimeout] 内校验，超过上限直接 400 不静默 clamp。
 		runTimeout := state.RunTimeout
@@ -203,6 +211,41 @@ func (h *OpenAIGatewayHandler) SubmitImageJob(endpoint string) gin.HandlerFunc {
 			"created_at": meta.CreatedAt,
 		})
 	}
+}
+
+// checkImageJobSecurityAuditBeforeSubmit 在提交期跑 Prompt 审计，返回 false 表示
+// 已经写过错误响应、调用方应直接 return。
+//
+// 提交期是唯一的审计时机：SubmitImageJob 返回 202 后，runImageJob 在后台
+// goroutine 里用同一份 body 调 ForwardImages，届时 gin.Context 已失效，
+// 审计结果也没有回传给客户端的通道。
+func (h *OpenAIGatewayHandler) checkImageJobSecurityAuditBeforeSubmit(
+	c *gin.Context,
+	apiKey *service.APIKey,
+	subject middleware2.AuthSubject,
+	parsed *service.OpenAIImagesRequest,
+) bool {
+	if h == nil || parsed == nil {
+		return true
+	}
+	// ModerationBody 对纯二进制的 multipart 图片编辑请求可能为空：没有可审计的
+	// 文本就跳过，并标记已完成，避免下游再为同一请求重复审计。
+	moderationBody := parsed.ModerationBody()
+	if len(moderationBody) == 0 {
+		c.Set(securityAuditCompletedContextKey, true)
+		return true
+	}
+	reqLog := requestLogger(c, "handler.image_jobs.security_audit",
+		zap.Int64("user_id", subject.UserID),
+		zap.Int64("api_key_id", apiKey.ID),
+		zap.String("model", parsed.Model))
+	decision := h.checkSecurityAudit(c, reqLog, apiKey, subject,
+		service.ContentModerationProtocolOpenAIImages, parsed.Model, moderationBody)
+	if decision != nil && !decision.AllowNextStage {
+		h.openAISecurityAuditError(c, decision)
+		return false
+	}
+	return true
 }
 
 // imageJobRunContext 是从原始提交请求里捕获、传给 goroutine 的上下文快照。

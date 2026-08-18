@@ -225,7 +225,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getIntlLocale } from '@/i18n'
+import { getIntlLocaleFor } from '@/i18n/locale-format'
 import Icon from '@/components/icons/Icon.vue'
 import type { UserDashboardStats as UserStatsType } from '@/api/usage'
 import type { PlatformQuotaItem } from '@/types'
@@ -376,12 +376,12 @@ function formatResetTime(iso: string | null | undefined): string {
 }
 
 const formatBalance = (b: number) =>
-  new Intl.NumberFormat(getIntlLocale(locale.value), {
+  new Intl.NumberFormat(getIntlLocaleFor(locale.value), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(b)
 
-const formatNumber = (n: number) => n.toLocaleString(getIntlLocale(locale.value))
+const formatNumber = (n: number) => n.toLocaleString(getIntlLocaleFor(locale.value))
 const formatCost = (c: number) => c.toFixed(4)
 const formatTokens = (t: number) => {
   if (t >= 1_000_000) return `${(t / 1_000_000).toFixed(1)}M`

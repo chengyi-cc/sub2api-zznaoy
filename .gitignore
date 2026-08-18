@@ -128,6 +128,9 @@ CLAUDE.md
 scripts
 !backend/scripts/
 !backend/scripts/resolve-version.sh
+# 自有：同步上游后的一键验证脚本，需要跟仓库走
+!scripts/
+!scripts/verify-sync.sh
 .code-review-state
 #openspec/
 code-reviews/

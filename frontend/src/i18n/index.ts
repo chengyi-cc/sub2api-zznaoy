@@ -1,25 +1,25 @@
 import { createI18n } from 'vue-i18n'
 
-type LocaleCode = 'en' | 'ru' | 'zh'
+import {
+  DEFAULT_LOCALE,
+  getIntlLocaleFor,
+  getLocaleListSeparatorFor,
+  isLocaleCode,
+  type LocaleCode
+} from './locale-format'
 
 type LocaleMessages = Record<string, any>
 
 const LOCALE_KEY = 'sub2api_locale'
-const DEFAULT_LOCALE: LocaleCode = 'en'
-const INTL_LOCALE_MAP: Record<LocaleCode, string> = {
-  en: 'en-US',
-  ru: 'ru-RU',
-  zh: 'zh-CN'
-}
+
+// 纯 locale 映射与判定住在 ./locale-format（不 import vue-i18n），这样只需要
+// Intl 标签的组件不必被本文件顶层的 createI18n 副作用连坐。
+export { DEFAULT_LOCALE, INTL_LOCALE_MAP, isLocaleCode, type LocaleCode } from './locale-format'
 
 const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages }>> = {
   en: () => import('./locales/en'),
   ru: () => import('./locales/ru'),
   zh: () => import('./locales/zh')
-}
-
-function isLocaleCode(value: string): value is LocaleCode {
-  return value === 'en' || value === 'ru' || value === 'zh'
 }
 
 function getDefaultLocale(): LocaleCode {
@@ -99,12 +99,14 @@ export function getLocale(): LocaleCode {
   return isLocaleCode(current) ? current : DEFAULT_LOCALE
 }
 
+// \u8fd9\u4e24\u4e2a\u4fdd\u7559\u300c\u4e0d\u4f20\u53c2 = \u53d6\u5f53\u524d locale\u300d\u7684\u4fbf\u5229\u91cd\u8f7d\uff0c\u56e0\u4e3a\u9ed8\u8ba4\u503c\u4f9d\u8d56 i18n \u5b9e\u4f8b\u3002
+// \u5df2\u7ecf\u62ff\u5230 locale \u7684\u8c03\u7528\u65b9\u8bf7\u76f4\u63a5\u7528 ./locale-format \u7684 *For \u7248\u672c\u3002
 export function getIntlLocale(locale: string = getLocale()): string {
-  return isLocaleCode(locale) ? INTL_LOCALE_MAP[locale] : INTL_LOCALE_MAP[DEFAULT_LOCALE]
+  return getIntlLocaleFor(locale)
 }
 
 export function getLocaleListSeparator(locale: string = getLocale()): string {
-  return locale === 'zh' ? '\u3001' : ', '
+  return getLocaleListSeparatorFor(locale)
 }
 
 export const availableLocales = [

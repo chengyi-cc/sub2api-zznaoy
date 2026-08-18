@@ -33,11 +33,15 @@ func TestPromptAuditGatePrecedesAccountBillingAndUpstreamSideEffects(t *testing.
 		{file: "openai_alpha_search.go", function: "AlphaSearch", auditToken: "checkSecurityAudit"},
 		{file: "image_task_handler.go", function: "Submit", auditToken: "checkSecurityAuditBeforeSubmit"},
 		{file: "batch_image_handler.go", function: "Submit", auditToken: "checkSecurityAuditBeforeSubmit"},
+		// 自有功能：异步图片任务 /v1/jobs/images/*。审计必须在 Store.Create 与
+		// 后台 runImageJob 之前——返回 202 后就再没有审计时机了。
+		{file: "image_jobs.go", function: "SubmitImageJob", auditToken: "checkImageJobSecurityAuditBeforeSubmit"},
 	}
 	sideEffectTokens := []string{
 		"CheckBillingEligibility(", "SelectAccount", ".Forward", "acquireResponsesUserSlot(",
 		"AcquireUserSlot", "TryAcquireUserSlot", "acquireImageGenerationSlot(",
 		"h.tasks.Create(", "h.service.Submit(",
+		"state.Store.Create(", "go h.runImageJob(",
 	}
 	for _, tt := range tests {
 		t.Run(tt.file+"/"+tt.function, func(t *testing.T) {

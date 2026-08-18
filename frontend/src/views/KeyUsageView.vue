@@ -419,7 +419,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getIntlLocale } from '@/i18n'
+import { getIntlLocaleFor } from '@/i18n/locale-format'
 import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -872,13 +872,13 @@ function usd(value: number | null | undefined): string {
 
 function fmtNum(val: number | null | undefined): string {
   if (val == null) return '-'
-  return val.toLocaleString(getIntlLocale(locale.value))
+  return val.toLocaleString(getIntlLocaleFor(locale.value))
 }
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '-'
   const d = new Date(iso)
-  const loc = getIntlLocale(locale.value)
+  const loc = getIntlLocaleFor(locale.value)
   return d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' })
 }
 

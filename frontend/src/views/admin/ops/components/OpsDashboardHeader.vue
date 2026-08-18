@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getIntlLocale } from '@/i18n'
+import { getIntlLocaleFor } from '@/i18n/locale-format'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -108,7 +108,7 @@ function formatCustomTimeRangeLabel(startTime: string, endTime: string): string 
 
 const groups = ref<Array<{ id: number; name: string; platform: string }>>([])
 const lastUpdatedLabel = computed(() => {
-  const intlLocale = getIntlLocale(locale.value)
+  const intlLocale = getIntlLocaleFor(locale.value)
   if (!props.lastUpdated) {
     return t('common.unknown')
   }
