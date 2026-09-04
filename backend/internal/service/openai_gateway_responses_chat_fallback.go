@@ -71,15 +71,6 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 billingModel 算出之后。
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 	chatReq.Model = upstreamModel
-
-	// 解析图片计费配置：/v1/responses 客户端经 chat_completions 上游桥接时，
-	// 上游可能在 content 中内联返回图片（markdown data URL）。这条回退路径此前
-	// 只统计 token usage，未统计图片输出，导致图片被漏计费（按 token 而非按次）。
-	// 这里预解析出图片计费模型/尺寸，供下游在实际检测到图片输出时使用。
-	imageCfg, _ := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body, billingModel)
-	imageBillingModel := imageCfg.Model
-	imageSizeTier := imageCfg.SizeTier
-	imageInputSize := imageCfg.InputSize
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
 	}
@@ -96,9 +87,8 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		}
 		return nil, err
 	}
-	// 计费兜底 tier = 最终出站 body（policy filter/force 后）里的 tier；最终值由
-	// resolvedOpenAIUpstreamServiceTier 决定（上游回显优先）。filter 删掉字段后
-	// 这里取到 nil，不再按原请求 Fast 计费。
+	// Keep the final outbound tier for usage-time reconciliation. A policy
+	// filter that removes the field therefore leaves this nil.
 	serviceTier := extractOpenAIServiceTierFromBody(chatBody)
 
 	logger.L().Debug("openai responses: forwarding via raw chat completions",
@@ -130,9 +120,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, imageBillingModel, imageSizeTier, imageInputSize)
+		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
-	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, imageBillingModel, imageSizeTier, imageInputSize)
+	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
@@ -148,9 +138,6 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	reasoningEffort *string,
 	serviceTier *string,
 	startTime time.Time,
-	imageBillingModel string,
-	imageSizeTier string,
-	imageInputSize string,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, writeOpenAIResponsesFallbackError)
@@ -160,41 +147,23 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, customTools, functionTools, toolSearch, namespaceTools)
 	s.cacheReasoningItemsFromOutput(responsesResp.Output)
 
-	// 统计上游 chat_completions 响应中内联返回的图片输出（markdown data URL），
-	// 使经 /v1/responses 桥接的图片生成也能按次计费。
-	// 上游重构后响应体已解析为 ccResp，这里回读为 JSON 交给计数器。
-	imageCounter := newOpenAIImageOutputCounter()
-	if raw, marshalErr := json.Marshal(ccResp); marshalErr == nil {
-		imageCounter.AddJSONResponse(raw)
-	}
-	imageCount := imageCounter.Count()
-
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
 	c.JSON(http.StatusOK, responsesResp)
 
-	result := &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     resolvedOpenAIUpstreamServiceTier(c, serviceTier),
-		Stream:          false,
-		Duration:        time.Since(startTime),
-	}
-	if imageCount > 0 {
-		result.ImageCount = imageCount
-		result.ImageSize = imageSizeTier
-		result.ImageInputSize = imageInputSize
-		result.ImageOutputSizes = imageCounter.Sizes()
-		if strings.TrimSpace(imageBillingModel) != "" {
-			result.BillingModel = imageBillingModel
-		}
-	}
-	return result, nil
+	return &OpenAIForwardResult{
+		RequestID:                   requestID,
+		Usage:                       usage,
+		Model:                       originalModel,
+		BillingModel:                billingModel,
+		UpstreamModel:               upstreamModel,
+		ReasoningEffort:             reasoningEffort,
+		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+		Stream:                      false,
+		Duration:                    time.Since(startTime),
+	}, nil
 }
 
 func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
@@ -210,29 +179,8 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	reasoningEffort *string,
 	serviceTier *string,
 	startTime time.Time,
-	imageBillingModel string,
-	imageSizeTier string,
-	imageInputSize string,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
-	// 统计上游流式 chat_completions 中内联返回的图片输出（markdown data URL），
-	// 使经 /v1/responses 桥接的图片生成也能按次计费。
-	imageCounter := newOpenAIImageOutputCounter()
-	applyImageBilling := func(result *OpenAIForwardResult) *OpenAIForwardResult {
-		if result == nil {
-			return result
-		}
-		if imageCount := imageCounter.Count(); imageCount > 0 {
-			result.ImageCount = imageCount
-			result.ImageSize = imageSizeTier
-			result.ImageInputSize = imageInputSize
-			result.ImageOutputSizes = imageCounter.Sizes()
-			if strings.TrimSpace(imageBillingModel) != "" {
-				result.BillingModel = imageBillingModel
-			}
-		}
-		return result
-	}
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
 	state := apicompat.NewChatCompletionsToResponsesStreamState(originalModel)
@@ -270,42 +218,38 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 
 	scan := s.scanCCStream(c, resp, "openai responses chat fallback", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
 		events := apicompat.ChatCompletionsChunkToResponsesEvents(chunk, state)
-		// 上游可能在 delta.content 里内联返回图片（markdown data URL）。
-		// scanCCStream 只回调解析后的 chunk，这里回读为 JSON 交给计数器，
-		// 使经 /v1/responses 桥接的流式图片输出也能按次计费。
-		if raw, err := json.Marshal(chunk); err == nil {
-			imageCounter.AddSSEData(raw)
-		}
 		s.cacheReasoningItemsFromEvents(events)
 		writeEvents(events)
 	})
 
 	if scan.Err != nil {
-		return applyImageBilling(&OpenAIForwardResult{
-			RequestID:       requestID,
-			Usage:           scan.Usage,
-			Model:           originalModel,
-			BillingModel:    billingModel,
-			UpstreamModel:   upstreamModel,
-			ReasoningEffort: reasoningEffort,
-			ServiceTier:     resolvedOpenAIUpstreamServiceTier(c, serviceTier),
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    scan.FirstTokenMs,
-		}), fmt.Errorf("stream usage incomplete: %w", scan.Err)
+		return &OpenAIForwardResult{
+			RequestID:                   requestID,
+			Usage:                       scan.Usage,
+			Model:                       originalModel,
+			BillingModel:                billingModel,
+			UpstreamModel:               upstreamModel,
+			ReasoningEffort:             reasoningEffort,
+			UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+			ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+			Stream:                      true,
+			Duration:                    time.Since(startTime),
+			FirstTokenMs:                scan.FirstTokenMs,
+		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
 	}
 	if err := state.ValidateToolCallArguments(); err != nil {
 		return &OpenAIForwardResult{
-			RequestID:       requestID,
-			Usage:           scan.Usage,
-			Model:           originalModel,
-			BillingModel:    billingModel,
-			UpstreamModel:   upstreamModel,
-			ReasoningEffort: reasoningEffort,
-			ServiceTier:     resolvedOpenAIUpstreamServiceTier(c, serviceTier),
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    scan.FirstTokenMs,
+			RequestID:                   requestID,
+			Usage:                       scan.Usage,
+			Model:                       originalModel,
+			BillingModel:                billingModel,
+			UpstreamModel:               upstreamModel,
+			ReasoningEffort:             reasoningEffort,
+			UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+			ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+			Stream:                      true,
+			Duration:                    time.Since(startTime),
+			FirstTokenMs:                scan.FirstTokenMs,
 		}, fmt.Errorf("invalid tool call arguments from upstream: %w", err)
 	}
 
@@ -325,18 +269,19 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		logCCStreamMissingDoneSentinel("openai responses chat fallback", requestID)
 	}
 
-	return applyImageBilling(&OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           scan.Usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     resolvedOpenAIUpstreamServiceTier(c, serviceTier),
-		Stream:          true,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    scan.FirstTokenMs,
-	}), nil
+	return &OpenAIForwardResult{
+		RequestID:                   requestID,
+		Usage:                       scan.Usage,
+		Model:                       originalModel,
+		BillingModel:                billingModel,
+		UpstreamModel:               upstreamModel,
+		ReasoningEffort:             reasoningEffort,
+		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+		Stream:                      true,
+		Duration:                    time.Since(startTime),
+		FirstTokenMs:                scan.FirstTokenMs,
+	}, nil
 }
 
 func chatChunkStartsResponsesOutput(chunk *apicompat.ChatCompletionsChunk) bool {
