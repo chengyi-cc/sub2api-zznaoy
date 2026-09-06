@@ -71,6 +71,11 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 billingModel 算出之后。
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 	chatReq.Model = upstreamModel
+
+	imageCfg, _ := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body, billingModel)
+	imageBillingModel := imageCfg.Model
+	imageSizeTier := imageCfg.SizeTier
+	imageInputSize := imageCfg.InputSize
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
 	}
@@ -120,9 +125,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, imageBillingModel, imageSizeTier, imageInputSize)
 	}
-	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, imageBillingModel, imageSizeTier, imageInputSize)
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
@@ -138,6 +143,9 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	reasoningEffort *string,
 	serviceTier *string,
 	startTime time.Time,
+	imageBillingModel string,
+	imageSizeTier string,
+	imageInputSize string,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, writeOpenAIResponsesFallbackError)
@@ -146,14 +154,19 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	}
 	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, customTools, functionTools, toolSearch, namespaceTools)
 	s.cacheReasoningItemsFromOutput(responsesResp.Output)
+	imageCounter := newOpenAIImageOutputCounter()
+	if raw, marshalErr := json.Marshal(ccResp); marshalErr == nil {
+		imageCounter.AddJSONResponse(raw)
+	}
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
 	c.JSON(http.StatusOK, responsesResp)
 
-	return &OpenAIForwardResult{
+	result := &OpenAIForwardResult{
 		RequestID:                   requestID,
+		UpstreamHeaders:             resp.Header,
 		Usage:                       usage,
 		Model:                       originalModel,
 		BillingModel:                billingModel,
@@ -163,7 +176,17 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:                      false,
 		Duration:                    time.Since(startTime),
-	}, nil
+	}
+	if imageCount := imageCounter.Count(); imageCount > 0 {
+		result.ImageCount = imageCount
+		result.ImageSize = imageSizeTier
+		result.ImageInputSize = imageInputSize
+		result.ImageOutputSizes = imageCounter.Sizes()
+		if strings.TrimSpace(imageBillingModel) != "" {
+			result.BillingModel = imageBillingModel
+		}
+	}
+	return result, nil
 }
 
 func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
@@ -179,8 +202,27 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	reasoningEffort *string,
 	serviceTier *string,
 	startTime time.Time,
+	imageBillingModel string,
+	imageSizeTier string,
+	imageInputSize string,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	imageCounter := newOpenAIImageOutputCounter()
+	applyImageBilling := func(result *OpenAIForwardResult) *OpenAIForwardResult {
+		if result == nil {
+			return result
+		}
+		if imageCount := imageCounter.Count(); imageCount > 0 {
+			result.ImageCount = imageCount
+			result.ImageSize = imageSizeTier
+			result.ImageInputSize = imageInputSize
+			result.ImageOutputSizes = imageCounter.Sizes()
+			if strings.TrimSpace(imageBillingModel) != "" {
+				result.BillingModel = imageBillingModel
+			}
+		}
+		return result
+	}
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
 	state := apicompat.NewChatCompletionsToResponsesStreamState(originalModel)
@@ -218,13 +260,17 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 
 	scan := s.scanCCStream(c, resp, "openai responses chat fallback", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
 		events := apicompat.ChatCompletionsChunkToResponsesEvents(chunk, state)
+		if raw, marshalErr := json.Marshal(chunk); marshalErr == nil {
+			imageCounter.AddSSEData(raw)
+		}
 		s.cacheReasoningItemsFromEvents(events)
 		writeEvents(events)
 	})
 
 	if scan.Err != nil {
-		return &OpenAIForwardResult{
+		return applyImageBilling(&OpenAIForwardResult{
 			RequestID:                   requestID,
+			UpstreamHeaders:             resp.Header,
 			Usage:                       scan.Usage,
 			Model:                       originalModel,
 			BillingModel:                billingModel,
@@ -235,11 +281,12 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			Stream:                      true,
 			Duration:                    time.Since(startTime),
 			FirstTokenMs:                scan.FirstTokenMs,
-		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
+		}), fmt.Errorf("stream usage incomplete: %w", scan.Err)
 	}
 	if err := state.ValidateToolCallArguments(); err != nil {
 		return &OpenAIForwardResult{
 			RequestID:                   requestID,
+			UpstreamHeaders:             resp.Header,
 			Usage:                       scan.Usage,
 			Model:                       originalModel,
 			BillingModel:                billingModel,
@@ -269,8 +316,9 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		logCCStreamMissingDoneSentinel("openai responses chat fallback", requestID)
 	}
 
-	return &OpenAIForwardResult{
+	return applyImageBilling(&OpenAIForwardResult{
 		RequestID:                   requestID,
+		UpstreamHeaders:             resp.Header,
 		Usage:                       scan.Usage,
 		Model:                       originalModel,
 		BillingModel:                billingModel,
@@ -281,7 +329,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		Stream:                      true,
 		Duration:                    time.Since(startTime),
 		FirstTokenMs:                scan.FirstTokenMs,
-	}, nil
+	}), nil
 }
 
 func chatChunkStartsResponsesOutput(chunk *apicompat.ChatCompletionsChunk) bool {
