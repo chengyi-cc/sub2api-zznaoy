@@ -149,6 +149,7 @@ docs/*
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
+!docs/UPSTREAM_SYNC_V0.2.3_REVIEW.md
 !docs/legal/
 !docs/legal/*.md
 !docs/screenshots/
