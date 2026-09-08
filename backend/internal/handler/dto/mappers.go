@@ -160,7 +160,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		DefaultMappedModel:          g.DefaultMappedModel,
 		ForceOpenAIPriority:         g.ForceOpenAIPriority,
 		MessagesDispatchModelConfig: g.MessagesDispatchModelConfig,
-		ModelsListConfig:            g.ModelsListConfig,
+		ModelAllowlist:              g.ModelAllowlist,
 		CodexModelsManifestConfig:   g.CodexModelsManifestConfig,
 		SupportedModelScopes:        g.SupportedModelScopes,
 		AccountCount:                g.AccountCount,
