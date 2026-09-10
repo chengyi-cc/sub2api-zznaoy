@@ -2138,7 +2138,8 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	if isOAuth {
 		testModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
-	payloadBytes, _ := json.Marshal(createOpenAICompactProbePayload(testModelID, isOAuth))
+	payload := createOpenAICompactProbePayload(testModelID, isOAuth)
+	payloadBytes, _ := json.Marshal(payload)
 	if !agentIdentityTaskRecoveryWasTried(ctx) {
 		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 	}
@@ -2181,6 +2182,21 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		// 否则探测流量会以「缺 x-codex-installation-id + 非收敛 session」的
 		// 形态暴露在上游眼里。账号关闭收敛（off）时返回 nil，探测保持原样。
 		if fpIDs := resolveCodexFingerprintIDsFromRequest(account, req.Header); fpIDs != nil {
+			if fpIDs.mode == codexFingerprintMachine {
+				stampCodexMachineSandboxTag(fpIDs, credentialAccount.GetOpenAIUserAgent())
+				turnMetadata := applyCodexMachineCompactProbeIdentity(payload, probeSessionID, fpIDs.machineSandboxTag, time.Now())
+				req.Header.Set("session-id", probeSessionID)
+				req.Header.Set("thread-id", probeSessionID)
+				req.Header.Set("x-codex-turn-metadata", turnMetadata)
+				applyCodexFingerprintClientMetadata(payload, fpIDs)
+				rewritten, marshalErr := json.Marshal(payload)
+				if marshalErr != nil {
+					return s.sendErrorAndEnd(c, "Failed to encode compact fingerprint")
+				}
+				req.Body = io.NopCloser(bytes.NewReader(rewritten))
+				req.ContentLength = int64(len(rewritten))
+				req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(rewritten)), nil }
+			}
 			applyCodexFingerprintHeaders(req.Header, fpIDs)
 		}
 	}

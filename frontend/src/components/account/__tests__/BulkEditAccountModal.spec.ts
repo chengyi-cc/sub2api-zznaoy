@@ -953,7 +953,7 @@ describe('BulkEditAccountModal', () => {
   })
 
   // 与兄弟字段 codex_cli_only 的写法对齐：关闭态同样落显式值，不靠省略表达。
-  it('OpenAI OAuth 批量编辑显式 opt-in 模式仍原样提交', async () => {
+  it.each(['session', 'machine'])('OpenAI OAuth 批量编辑显式 %s 模式仍原样提交', async (mode) => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
       selectedTypes: ['oauth']
@@ -962,13 +962,13 @@ describe('BulkEditAccountModal', () => {
     await wrapper.get('#bulk-edit-openai-codex-fingerprint-mode-enabled').setValue(true)
     await wrapper
       .get('[data-testid="bulk-codex-fingerprint-mode-select"]')
-      .setValue('session')
+      .setValue(mode)
     await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
-        codex_fingerprint_mode: 'session'
+        codex_fingerprint_mode: mode
       }
     })
   })

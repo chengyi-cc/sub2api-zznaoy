@@ -640,8 +640,10 @@ export default {
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
         codexFingerprintMode: 'Codex fingerprint convergence',
-        codexFingerprintModeDesc: 'When multiple users share the same OAuth account, converge device/session identifiers to account-level stable values to reduce upstream-visible device and session count. Off by default (client identifiers pass through as-is); opt in explicitly when needed. Some accounts reported quota shrinkage after enabling convergence, so choose based on your own measurements.',
-        codexFingerprintOff: 'Off (passthrough, default)',
+        codexFingerprintModeDesc: 'Converge device identifiers per account. New accounts in this form default to Single machine, multi-window: account-seeded pseudonyms preserve distinct original sessions and window suffixes without synthesizing missing identifiers; redundant legacy session headers are removed. Existing settings stay unchanged. Off disables this convergence layer. Validate results with your own measurements.',
+        codexFingerprintOff: 'Off (no convergence)',
+        codexFingerprintMachine: 'Single machine, multi-window',
+        tlsFingerprintHint: 'Simulate TLS handshake characteristics for ordinary HTTP forwarding with OpenAI OAuth accounts. The built-in Node.js/Claude Code profile is not a verified Codex fingerprint. Plugins and WebSocket connections are not controlled by this switch.',
         codexFingerprintDevice: 'Device only',
         codexFingerprintSession: 'Device + Session',
         codexFingerprintFull: 'Full convergence',

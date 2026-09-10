@@ -603,6 +603,18 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)
   })
 
+  it('defaults new Codex imports to machine and saves OpenAI TLS selection', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="create-openai-tls-fingerprint-toggle"]').setValue(true)
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('fingerprint import')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+    expect(importCodexSessionMock.mock.lastCall?.[0]?.extra).toMatchObject({ codex_fingerprint_mode: 'machine', enable_tls_fingerprint: true })
+    wrapper.unmount()
+  })
+
   it('leaves Codex session import billing ownership to the backend', async () => {
     const wrapper = await openCodexImportStep()
     await wrapper.get('[data-testid="import-codex-session"]').trigger('click')

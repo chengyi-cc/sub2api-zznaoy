@@ -1,6 +1,10 @@
 package service
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+)
 
 func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 	s.pluginManager = manager
@@ -14,6 +18,9 @@ func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL 
 		if handled {
 			return response, err
 		}
+	}
+	if account.IsTLSFingerprintEnabled() {
+		return s.httpUpstream.DoWithTLS(request, proxyURL, account.ID, account.Concurrency, resolveOpenAITransportTLSProfile(s.tlsFPProfileService, account))
 	}
 	return s.httpUpstream.Do(request, proxyURL, account.ID, account.Concurrency)
 }
@@ -32,14 +39,24 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 			return response, err
 		}
 	}
-	if useTLSFallback {
+	if useTLSFallback || account.IsTLSFingerprintEnabled() {
 		return s.httpUpstream.DoWithTLS(
 			request,
 			proxyURL,
 			account.ID,
 			account.Concurrency,
-			s.tlsFPProfileService.ResolveTLSProfile(account),
+			resolveOpenAITransportTLSProfile(s.tlsFPProfileService, account),
 		)
 	}
 	return s.httpUpstream.Do(request, proxyURL, account.ID, account.Concurrency)
+}
+
+func resolveOpenAITransportTLSProfile(profiles *TLSFingerprintProfileService, account *Account) *tlsfingerprint.Profile {
+	if profiles != nil {
+		return profiles.ResolveTLSProfile(account)
+	}
+	if account.IsTLSFingerprintEnabled() {
+		return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}
+	}
+	return nil
 }

@@ -323,6 +323,11 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	responsesBody = updatedBody
 	responsesReq.ServiceTier = normalizedOpenAIServiceTierValue(gjson.GetBytes(responsesBody, "service_tier").String())
 
+	responsesBody, err = s.stageCodexMachineFingerprintIDsForCompatBridge(c, account, responsesBody)
+	if err != nil {
+		return nil, fmt.Errorf("apply compatibility fingerprint: %w", err)
+	}
+
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -349,6 +354,10 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			sessionKey = isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), promptCacheKey)
 		}
 		upstreamReq.Header.Set("session_id", generateSessionUUID(sessionKey))
+	}
+
+	if usesCodexMachineFingerprint(account) {
+		applyStagedCodexFingerprintHeaders(c, account, upstreamReq.Header)
 	}
 
 	// 7. Send request

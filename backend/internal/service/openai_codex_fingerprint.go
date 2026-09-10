@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -69,7 +70,8 @@ const (
 	codexFingerprintOff codexFingerprintMode = "off"
 	// codexFingerprintDevice 仅收敛 installation_id 为账号级恒定值。
 	// 上游看到 1 台设备 + 多会话（每用户各自的 session）。
-	codexFingerprintDevice codexFingerprintMode = "device"
+	codexFingerprintDevice  codexFingerprintMode = "device"
+	codexFingerprintMachine codexFingerprintMode = "machine"
 	// codexFingerprintSession 收敛 installation_id + session_id，
 	// thread_id 按客户端原始 session-id 确定性派生（每个真实 Codex 会话一个独立线程）。
 	// 上游看到 1 台设备 + 1 会话 + N 线程，最接近正常用户 spawn 子代理的模式。
@@ -116,7 +118,7 @@ func codexFingerprintModeFromExtra(extra map[string]any) codexFingerprintMode {
 	}
 	raw, _ := extra[codexFingerprintModeExtraKey].(string)
 	switch codexFingerprintMode(strings.TrimSpace(raw)) {
-	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
+	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintMachine, codexFingerprintSession, codexFingerprintFull:
 		return codexFingerprintMode(strings.TrimSpace(raw))
 	default:
 		return codexFingerprintOff
@@ -125,7 +127,7 @@ func codexFingerprintModeFromExtra(extra map[string]any) codexFingerprintMode {
 
 func codexFingerprintModeRequiresSeed(mode codexFingerprintMode) bool {
 	switch mode {
-	case codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
+	case codexFingerprintDevice, codexFingerprintMachine, codexFingerprintSession, codexFingerprintFull:
 		return true
 	default:
 		return false
@@ -262,6 +264,10 @@ func resolveConvergedThreadID(seed, clientSessionID string) string {
 // 确保所有载体中的 turn_id 等随机字段一致。体改写时还会补记原始
 // client_metadata.session_id，用于识别 root prompt_cache_key 的默认值。
 type codexFingerprintIDs struct {
+	machineSeed                   string
+	machinePseudonyms             map[string]string
+	machineMutex                  sync.Mutex
+	machineSandboxTag             string
 	accountID                     int64
 	mode                          codexFingerprintMode
 	installationID                string
@@ -300,6 +306,10 @@ func resolveCodexFingerprintIDs(account *Account, clientSessionID string, mode c
 	}
 
 	switch mode {
+	case codexFingerprintMachine:
+		ids.machineSeed = seed
+		return ids
+
 	case codexFingerprintDevice:
 		return ids
 
@@ -349,13 +359,18 @@ func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.
 	if clientHeaders != nil {
 		clientSessionID = extractClientSessionID(clientHeaders)
 	}
-	return resolveCodexFingerprintIDs(account, clientSessionID, mode)
+	ids := resolveCodexFingerprintIDs(account, clientSessionID, mode)
+	return ids
 }
 
 // applyCodexFingerprintHeaders 按预计算的收敛 ID 改写出站 HTTP 头中的设备指纹。
 // 在 buildUpstreamRequest 的白名单透传之后、enforceCodexIdentityHeaders 之前调用。
 func applyCodexFingerprintHeaders(h http.Header, ids *codexFingerprintIDs) {
 	if h == nil || ids == nil {
+		return
+	}
+	if ids.mode == codexFingerprintMachine {
+		applyCodexMachineHeaders(h, ids)
 		return
 	}
 
@@ -440,6 +455,9 @@ func applyCodexFingerprintToClientMetadataMap(existing map[string]any, ids *code
 	if existing == nil || ids == nil {
 		return false
 	}
+	if ids.mode == codexFingerprintMachine {
+		return applyCodexMachineClientMetadata(existing, ids)
+	}
 
 	modified := false
 
@@ -473,7 +491,7 @@ func applyCodexFingerprintToClientMetadataMap(existing map[string]any, ids *code
 }
 
 func captureCodexFingerprintOriginalBodySessionID(ids *codexFingerprintIDs, clientMetadata any) {
-	if ids == nil || ids.originalBodySessionIDCaptured {
+	if ids == nil || ids.mode == codexFingerprintMachine || ids.originalBodySessionIDCaptured {
 		return
 	}
 	ids.originalBodySessionIDCaptured = true
@@ -491,7 +509,7 @@ func captureCodexFingerprintOriginalBodySessionID(ids *codexFingerprintIDs, clie
 }
 
 func captureCodexFingerprintOriginalBodySessionIDRaw(ids *codexFingerprintIDs, value gjson.Result) {
-	if ids == nil || ids.originalBodySessionIDCaptured {
+	if ids == nil || ids.mode == codexFingerprintMachine || ids.originalBodySessionIDCaptured {
 		return
 	}
 	ids.originalBodySessionIDCaptured = true
@@ -513,6 +531,14 @@ func shouldRewriteCodexFingerprintPromptCacheKey(ids *codexFingerprintIDs, promp
 func applyCodexFingerprintPromptCacheKey(reqBody map[string]any, ids *codexFingerprintIDs) bool {
 	if reqBody == nil {
 		return false
+	}
+	if ids != nil && ids.mode == codexFingerprintMachine {
+		promptCacheKey, ok := reqBody["prompt_cache_key"].(string)
+		if !ok || strings.TrimSpace(promptCacheKey) == "" {
+			return false
+		}
+		reqBody["prompt_cache_key"] = ids.machinePseudonym(promptCacheKey)
+		return true
 	}
 	promptCacheKey, ok := reqBody["prompt_cache_key"].(string)
 	if !ok || strings.TrimSpace(promptCacheKey) == "" || !shouldRewriteCodexFingerprintPromptCacheKey(ids, promptCacheKey) {
@@ -547,7 +573,11 @@ func applyCodexFingerprintClientMetadataRaw(body []byte, ids *codexFingerprintID
 	existing := map[string]any{}
 	if cm := gjson.GetBytes(body, "client_metadata"); cm.IsObject() {
 		captureCodexFingerprintOriginalBodySessionIDRaw(ids, gjson.GetBytes(body, "client_metadata.session_id"))
-		if err := json.Unmarshal([]byte(cm.Raw), &existing); err != nil {
+		decoder := json.NewDecoder(strings.NewReader(cm.Raw))
+		if ids.mode == codexFingerprintMachine {
+			decoder.UseNumber()
+		}
+		if err := decoder.Decode(&existing); err != nil {
 			return body, false, fmt.Errorf("decode client_metadata for fingerprint: %w", err)
 		}
 	} else {
@@ -569,6 +599,13 @@ func applyCodexFingerprintClientMetadataRaw(body []byte, ids *codexFingerprintID
 		modified = true
 	}
 	promptCacheKey := gjson.GetBytes(body, "prompt_cache_key")
+	if ids.mode == codexFingerprintMachine && promptCacheKey.Type == gjson.String && strings.TrimSpace(promptCacheKey.String()) != "" {
+		rewritten, err := sjson.SetBytes(next, "prompt_cache_key", ids.machinePseudonym(promptCacheKey.String()))
+		if err != nil {
+			return body, false, fmt.Errorf("splice machine prompt_cache_key: %w", err)
+		}
+		return rewritten, true, nil
+	}
 	if promptCacheKey.Exists() && promptCacheKey.Type == gjson.String && strings.TrimSpace(promptCacheKey.String()) != "" && shouldRewriteCodexFingerprintPromptCacheKey(ids, promptCacheKey.String()) {
 		rewritten, err := sjson.SetBytes(next, "prompt_cache_key", ids.sessionID)
 		if err != nil {

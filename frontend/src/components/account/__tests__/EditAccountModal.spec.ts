@@ -324,6 +324,33 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('preserves legacy off and saves machine mode with OpenAI TLS', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    const wrapper = mountModal(account)
+    const fingerprint = wrapper.get('[data-testid="edit-codex-fingerprint-mode-select"]')
+    expect((fingerprint.element as HTMLSelectElement).value).toBe('off')
+    await fingerprint.setValue('machine')
+    await wrapper.get('[data-testid="edit-openai-tls-fingerprint-toggle"]').setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(updateAccountMock.mock.lastCall?.[1]?.extra).toMatchObject({ codex_fingerprint_mode: 'machine', enable_tls_fingerprint: true })
+    wrapper.unmount()
+  })
+
+  it('loads saved machine and TLS template and explicitly disables TLS', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { codex_fingerprint_mode: 'machine', enable_tls_fingerprint: true, tls_fingerprint_profile_id: 7 }
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="edit-codex-fingerprint-mode-select"]').element as HTMLSelectElement).value).toBe('machine')
+    expect((wrapper.get('[data-testid="edit-openai-tls-fingerprint-toggle"]').element as HTMLInputElement).checked).toBe(true)
+    await wrapper.get('[data-testid="edit-openai-tls-fingerprint-toggle"]').setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(updateAccountMock.mock.lastCall?.[1]?.extra?.enable_tls_fingerprint).toBe(false)
+    expect(updateAccountMock.mock.lastCall?.[1]?.extra).not.toHaveProperty('tls_fingerprint_profile_id')
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     authIsSimpleMode.value = true
   })

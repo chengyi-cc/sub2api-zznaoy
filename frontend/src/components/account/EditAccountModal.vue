@@ -2210,6 +2210,18 @@
             <Select v-model="codexFingerprintMode" data-testid="edit-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" />
           </div>
         </div>
+        <div class="mt-4 rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <label class="flex items-center justify-between gap-4">
+            <span>{{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}</span>
+            <input v-model="tlsFingerprintEnabled" type="checkbox" role="switch" data-testid="edit-openai-tls-fingerprint-toggle" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+          </label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.tlsFingerprintHint') }}</p>
+          <select v-if="tlsFingerprintEnabled" v-model="tlsFingerprintProfileId" data-testid="edit-openai-tls-fingerprint-profile" class="input mt-3">
+            <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
+            <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
+            <option v-for="profile in tlsFingerprintProfiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
+          </select>
+        </div>
       </div>
 
       <!-- OpenAI 订阅档位手动覆盖（Plus/Pro/Free），仅 OAuth 非影子账号 -->
@@ -3430,7 +3442,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
-type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
+type CodexFingerprintMode = 'off' | 'device' | 'machine' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
@@ -3466,6 +3478,7 @@ const editResetTimezone = ref<string | null>(null)
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
+  { value: 'machine' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintMachine') },
   { value: 'session' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSession') },
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
@@ -3967,7 +3980,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     if (newAccount.type === 'oauth') {
       const fpMode = extra?.codex_fingerprint_mode as string | undefined
       // 缺省/非法值按 off 呈现，与后端 GetCodexFingerprintMode 的 opt-in 语义一致（#5610）
-      codexFingerprintMode.value = (['off', 'device', 'session', 'full'].includes(fpMode || '')
+      codexFingerprintMode.value = (['off', 'device', 'machine', 'session', 'full'].includes(fpMode || '')
         ? fpMode as CodexFingerprintMode
         : 'off')
     }
@@ -4607,6 +4620,11 @@ function loadQuotaControlSettings(account: Account) {
   customBaseUrlEnabled.value = false
   customBaseUrl.value = ''
 
+  if (account.platform === 'openai' && account.type === 'oauth') {
+    tlsFingerprintEnabled.value = (account.enable_tls_fingerprint ?? account.extra?.enable_tls_fingerprint) === true
+    tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? (account.extra?.tls_fingerprint_profile_id as number | undefined) ?? null
+  }
+
   // Remaining quota control settings only apply to Anthropic accounts
   if (account.platform !== 'anthropic') {
     return
@@ -4642,10 +4660,10 @@ function loadQuotaControlSettings(account: Account) {
   userMsgQueueMode.value = account.user_msg_queue_mode ?? ''
 
   // Load TLS fingerprint setting
-  if (account.enable_tls_fingerprint === true) {
+  if ((account.enable_tls_fingerprint ?? account.extra?.enable_tls_fingerprint) === true) {
     tlsFingerprintEnabled.value = true
   }
-  tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? null
+  tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? (account.extra?.tls_fingerprint_profile_id as number | undefined) ?? null
 
   // Load session ID masking setting
   if (account.session_id_masking_enabled === true) {
@@ -5487,6 +5505,12 @@ const handleSubmit = async () => {
       // 指纹收敛模式：默认 off（不写入）；device/session/full 是显式 opt-in，
       // 必须落键，否则管理员的选择会被后端当作"未设置"而回落到 off（#5610）。
       if (props.account.type === 'oauth') {
+        newExtra.enable_tls_fingerprint = tlsFingerprintEnabled.value
+        if (tlsFingerprintEnabled.value && tlsFingerprintProfileId.value) {
+          newExtra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
+        } else {
+          delete newExtra.tls_fingerprint_profile_id
+        }
         if (codexFingerprintMode.value !== 'off') {
           newExtra.codex_fingerprint_mode = codexFingerprintMode.value
         } else {

@@ -572,10 +572,18 @@ func cloneCodexFingerprintIDsForTest(ids *codexFingerprintIDs) *codexFingerprint
 	if ids == nil {
 		return nil
 	}
-	cloned := *ids
-	cloned.originalBodySessionID = ""
-	cloned.originalBodySessionIDCaptured = false
-	return &cloned
+	return &codexFingerprintIDs{
+		machineSeed:         ids.machineSeed,
+		machineSandboxTag:   ids.machineSandboxTag,
+		accountID:           ids.accountID,
+		mode:                ids.mode,
+		installationID:      ids.installationID,
+		sessionID:           ids.sessionID,
+		threadID:            ids.threadID,
+		turnID:              ids.turnID,
+		windowID:            ids.windowID,
+		turnStartedAtUnixMs: ids.turnStartedAtUnixMs,
+	}
 }
 
 func applyMapAndRawFingerprintBodiesForTest(t *testing.T, body []byte, ids *codexFingerprintIDs) (map[string]any, map[string]any) {

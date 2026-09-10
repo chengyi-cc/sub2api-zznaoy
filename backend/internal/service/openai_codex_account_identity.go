@@ -163,7 +163,7 @@ func applyCodexAccountIdentityEmbeddedMetadata(values map[string]any, account *A
 }
 
 func applyCodexAccountIdentityClientMetadataMap(requestBody map[string]any, account *Account, apiKeyID int64) bool {
-	if requestBody == nil || codexAccountIdentityNamespace(account) == "" {
+	if requestBody == nil || usesCodexMachineFingerprint(account) || codexAccountIdentityNamespace(account) == "" {
 		return false
 	}
 	changed := false
@@ -196,7 +196,7 @@ func applyCodexAccountIdentityClientMetadataMap(requestBody map[string]any, acco
 // subobjects with gjson/sjson. The passthrough hot path never unmarshals the
 // potentially multi-megabyte request body.
 func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, apiKeyID int64) ([]byte, bool, error) {
-	if len(body) == 0 || codexAccountIdentityNamespace(account) == "" {
+	if len(body) == 0 || usesCodexMachineFingerprint(account) || codexAccountIdentityNamespace(account) == "" {
 		return body, false, nil
 	}
 	root := gjson.ParseBytes(body)
@@ -250,7 +250,7 @@ func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, a
 }
 
 func applyCodexAccountIdentityHeaders(headers http.Header, account *Account, apiKeyID int64) {
-	if headers == nil || codexAccountIdentityNamespace(account) == "" {
+	if headers == nil || usesCodexMachineFingerprint(account) || codexAccountIdentityNamespace(account) == "" {
 		return
 	}
 	for _, field := range codexAccountIdentityFields {

@@ -321,6 +321,11 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		}
 	}
 
+	responsesBody, err = s.stageCodexMachineFingerprintIDsForCompatBridge(c, account, responsesBody)
+	if err != nil {
+		return nil, fmt.Errorf("apply compatibility fingerprint: %w", err)
+	}
+
 	// 5. Get access token
 	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
@@ -372,6 +377,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	if compatTurnState != "" && upstreamReq.Header.Get("x-codex-turn-state") == "" {
 		upstreamReq.Header.Set("x-codex-turn-state", compatTurnState)
+	}
+
+	if usesCodexMachineFingerprint(account) {
+		applyStagedCodexFingerprintHeaders(c, account, upstreamReq.Header)
 	}
 
 	// 7. Send request

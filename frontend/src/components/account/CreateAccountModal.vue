@@ -3243,6 +3243,18 @@
             <Select v-model="codexFingerprintMode" data-testid="create-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" />
           </div>
         </div>
+        <div class="mt-4 rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <label class="flex items-center justify-between gap-4">
+            <span>{{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}</span>
+            <input v-model="tlsFingerprintEnabled" type="checkbox" role="switch" data-testid="create-openai-tls-fingerprint-toggle" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+          </label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.tlsFingerprintHint') }}</p>
+          <select v-if="tlsFingerprintEnabled" v-model="tlsFingerprintProfileId" data-testid="create-openai-tls-fingerprint-profile" class="input mt-3">
+            <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
+            <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
+            <option v-for="profile in tlsFingerprintProfiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
+          </select>
+        </div>
       </div>
 
       <!-- OpenAI Compact 能力配置 -->
@@ -4310,11 +4322,12 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
-type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
-const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+type CodexFingerprintMode = 'off' | 'device' | 'machine' | 'session' | 'full'
+const codexFingerprintMode = ref<CodexFingerprintMode>('machine')
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
+  { value: 'machine' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintMachine') },
   { value: 'session' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSession') },
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
@@ -5228,7 +5241,7 @@ const resetForm = () => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
-  codexFingerprintMode.value = 'off'
+  codexFingerprintMode.value = 'machine'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
@@ -5330,10 +5343,18 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   }
   // 收敛是显式 opt-in：off 即默认值，不落键；device/session/full 必须显式写入，
   // 否则管理员的选择会被当成默认而丢失（#5610）。
-  if (codexFingerprintMode.value !== 'off') {
+  if (accountCategory.value === 'oauth-based') {
     extra.codex_fingerprint_mode = codexFingerprintMode.value
+    extra.enable_tls_fingerprint = tlsFingerprintEnabled.value
+    if (tlsFingerprintEnabled.value && tlsFingerprintProfileId.value) {
+      extra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
+    } else {
+      delete extra.tls_fingerprint_profile_id
+    }
   } else {
     delete extra.codex_fingerprint_mode
+    delete extra.enable_tls_fingerprint
+    delete extra.tls_fingerprint_profile_id
   }
   if (openAICompactMode.value !== 'auto') {
     extra.openai_compact_mode = openAICompactMode.value
