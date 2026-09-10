@@ -232,6 +232,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
+		SettingKeyChannelMonitorHideUserRanking,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,
@@ -360,6 +361,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 		ChannelMonitorHideThroughput:         !isFalseSettingValue(settings[SettingKeyChannelMonitorHideThroughput]),
 		ChannelMonitorShowQuota:              settings[SettingKeyChannelMonitorShowQuota] == "true",
+		ChannelMonitorHideUserRanking:        isTrueSettingValue(settings[SettingKeyChannelMonitorHideUserRanking]),
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 
@@ -369,8 +371,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
-		InvoiceEnabled: settings[SettingKeyInvoiceEnabled] == "true",
-
+		InvoiceEnabled:   settings[SettingKeyInvoiceEnabled] == "true",
 		InvoiceMinAmount: parsePositiveFloat(settings[SettingKeyInvoiceMinAmount], InvoiceMinAmountDefault),
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
@@ -436,6 +437,9 @@ type ChannelMonitorRuntime struct {
 	// snapshots; otherwise the user handler strips them server-side.
 	// Parsed fail-closed (only literal "true" enables). Admin always sees them.
 	ShowQuota bool
+	// HideUserRanking: when true, user-facing V2 views hide the user ranking tab
+	// and the /users payload. Parsed fail-open (only literal "true" hides it).
+	HideUserRanking bool
 }
 
 // ActiveProbesAllowed reports whether V1 active provider probes may run.
@@ -465,6 +469,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
+		SettingKeyChannelMonitorHideUserRanking,
 	})
 	if err != nil {
 		return ChannelMonitorRuntime{
@@ -480,6 +485,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 		HideThroughput:         !isFalseSettingValue(vals[SettingKeyChannelMonitorHideThroughput]),
 		ShowQuota:              vals[SettingKeyChannelMonitorShowQuota] == "true",
+		HideUserRanking:        isTrueSettingValue(vals[SettingKeyChannelMonitorHideUserRanking]),
 	}
 }
 
@@ -624,16 +630,19 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorHideThroughput bool `json:"channel_monitor_hide_throughput"`
 	// ChannelMonitorShowQuota gates the user-facing quota/balance display on
 	// monitors; fail-closed (absent/false = hidden). Admin UI always shows it.
-	ChannelMonitorShowQuota    bool    `json:"channel_monitor_show_quota"`
-	AvailableChannelsEnabled   bool    `json:"available_channels_enabled"`
-	ModelPlazaEnabled          bool    `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth      bool    `json:"model_plaza_require_auth"`
-	PluginManagementEnabled    bool    `json:"plugin_management_enabled"`
-	AffiliateEnabled           bool    `json:"affiliate_enabled"`
-	InvoiceEnabled             bool    `json:"invoice_enabled"`
-	InvoiceMinAmount           float64 `json:"invoice_min_amount"`
-	RiskControlEnabled         bool    `json:"risk_control_enabled"`
-	AllowUserViewErrorRequests bool    `json:"allow_user_view_error_requests"`
+	// ChannelMonitorHideUserRanking hides the user ranking tab and /users payload
+	// from non-admin channel-monitor v2 viewers; default false (visible).
+	ChannelMonitorHideUserRanking bool    `json:"channel_monitor_hide_user_ranking"`
+	ChannelMonitorShowQuota       bool    `json:"channel_monitor_show_quota"`
+	AvailableChannelsEnabled      bool    `json:"available_channels_enabled"`
+	ModelPlazaEnabled             bool    `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth         bool    `json:"model_plaza_require_auth"`
+	PluginManagementEnabled       bool    `json:"plugin_management_enabled"`
+	AffiliateEnabled              bool    `json:"affiliate_enabled"`
+	InvoiceEnabled                bool    `json:"invoice_enabled"`
+	InvoiceMinAmount              float64 `json:"invoice_min_amount"`
+	RiskControlEnabled            bool    `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests    bool    `json:"allow_user_view_error_requests"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -708,6 +717,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
+		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
