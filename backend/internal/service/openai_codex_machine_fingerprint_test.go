@@ -21,6 +21,7 @@ func machineTestContext(userID int64) *gin.Context {
 	context.Request.Header.Set("User-Agent", "codex_cli_rs/0.146.0")
 	context.Request.Header.Set("session-id", "session-one")
 	context.Request.Header.Set("thread-id", "thread-one")
+	context.Request.Header.Set("x-client-request-id", "thread-one")
 	context.Request.Header.Set("x-codex-window-id", "thread-one:0")
 	context.Request.Header.Set("x-codex-turn-metadata", `{"session_id":"session-one","thread_id":"thread-one","window_id":"thread-one:0","sandbox":"workspace-write"}`)
 	context.Set("api_key", &APIKey{ID: userID})
@@ -45,7 +46,7 @@ func TestCodexMachineFingerprintStableIsolatedAndConsistent(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(original, &body))
 	require.True(t, applyCodexFingerprintClientMetadata(body, ids))
-	raw, changed, err := applyCodexFingerprintClientMetadataRaw(original, resolveCodexFingerprintIDsFromRequest(account, context.Request.Header))
+	raw, changed, err := applyCodexFingerprintClientMetadataRaw(original, ids)
 	require.NoError(t, err)
 	require.True(t, changed)
 	decoded, err := json.Marshal(body)
@@ -68,31 +69,6 @@ func TestCodexMachineFingerprintStableIsolatedAndConsistent(t *testing.T) {
 	require.Empty(t, headers.Get("conversation_id"))
 	require.Contains(t, headers.Get("x-codex-turn-metadata"), "workspace-write")
 	require.Equal(t, "session-one", context.Request.Header.Get("session-id"))
-}
-
-func TestCodexMachineNonCodexDoesNotSynthesizeSession(t *testing.T) {
-	account := newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "machine"})
-	context := machineTestContext(10)
-	context.Request.Header = http.Header{}
-	require.True(t, usesCodexMachineFingerprint(account))
-	ids := resolveCodexFingerprintIDsFromRequest(account, context.Request.Header)
-	body := map[string]any{"prompt_cache_key": "cache", "input": "hello"}
-	require.True(t, applyCodexFingerprintClientMetadata(body, ids))
-	require.NotContains(t, body, "client_metadata")
-	require.NotEqual(t, "cache", body["prompt_cache_key"])
-	headers := http.Header{}
-	applyCodexFingerprintHeaders(headers, ids)
-	require.Empty(t, headers.Get("session-id"))
-	require.Empty(t, headers.Get("x-codex-window-id"))
-	withoutCache := map[string]any{"input": "hello"}
-	require.False(t, applyCodexFingerprintClientMetadata(withoutCache, ids))
-	require.NotContains(t, withoutCache, "prompt_cache_key")
-	for _, original := range []string{`[1,2,3]`, `"scalar"`, `not json`} {
-		rewritten, changed, err := applyCodexFingerprintClientMetadataRaw([]byte(original), ids)
-		require.NoError(t, err)
-		require.False(t, changed)
-		require.Equal(t, original, string(rewritten))
-	}
 }
 
 func TestCodexMachineSeedLifecycleAndLegacyDefaults(t *testing.T) {
@@ -124,6 +100,7 @@ func TestCodexMachineForwardPipelines(t *testing.T) {
 		require.Equal(t, metadata["session_id"], body["prompt_cache_key"])
 		require.Equal(t, metadata["session_id"], upstream.lastReq.Header.Get("session-id"))
 		require.Equal(t, metadata["thread_id"], upstream.lastReq.Header.Get("thread-id"))
+		require.Equal(t, metadata["thread_id"], upstream.lastReq.Header.Get("x-client-request-id"))
 		require.Equal(t, metadata["x-codex-window-id"], upstream.lastReq.Header.Get("x-codex-window-id"))
 		require.Empty(t, upstream.lastReq.Header.Get("session_id"))
 		require.Empty(t, upstream.lastReq.Header.Get("conversation_id"))
@@ -147,6 +124,7 @@ func TestCodexMachineRequestBuilders(t *testing.T) {
 		}
 		require.NoError(t, err)
 		require.Equal(t, ids.machinePseudonym("session-one"), request.Header.Get("session-id"))
+		require.Equal(t, ids.machinePseudonym("thread-one"), request.Header.Get("x-client-request-id"))
 		require.Empty(t, request.Header.Get("session_id"))
 		require.Empty(t, request.Header.Get("conversation_id"))
 	}

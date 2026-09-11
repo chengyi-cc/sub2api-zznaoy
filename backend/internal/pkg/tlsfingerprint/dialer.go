@@ -32,6 +32,27 @@ type Profile struct {
 	Extensions          []uint16 // Extension type IDs in order; empty uses default Node.js 24.x order
 }
 
+// ForWebSocket returns a copy of profile with ALPN omitted from the
+// ClientHello (ALPN 是 TLS 中声明应用层协议的扩展). Codex's WebSocket
+// handshake does not advertise HTTP/2 through this path.
+func ForWebSocket(profile *Profile) *Profile {
+	if profile == nil {
+		return nil
+	}
+	copyProfile := *profile
+	extensions := defaultExtensionOrder
+	if len(profile.Extensions) > 0 {
+		extensions = profile.Extensions
+	}
+	copyProfile.Extensions = make([]uint16, 0, len(extensions))
+	for _, extension := range extensions {
+		if extension != 16 {
+			copyProfile.Extensions = append(copyProfile.Extensions, extension)
+		}
+	}
+	return &copyProfile
+}
+
 // Dialer creates TLS connections with custom fingerprints.
 type Dialer struct {
 	profile    *Profile

@@ -70,21 +70,22 @@ func ClearOpsCyberPolicy(c *gin.Context) {
 	c.Set(opsCyberPolicyKey, (*CyberPolicyMark)(nil))
 }
 
-// detectOpenAICyberPolicy 精确识别 cyber_policy（对齐 codex api_bridge.rs:145 /
-// sse/responses.rs:529）。命中返回 (true, "cyber_policy", message)。
+// detectOpenAICyberPolicy recognizes explicit terminal policy codes only.
+// It returns the normalized upstream code and message; free-text mentions do not match.
 func detectOpenAICyberPolicy(payload []byte) (bool, string, string) {
 	code := gjson.GetBytes(payload, "error.code").String()
 	if code == "" {
 		code = gjson.GetBytes(payload, "response.error.code").String()
 	}
-	if !strings.EqualFold(strings.TrimSpace(code), "cyber_policy") {
+	code = strings.ToLower(strings.TrimSpace(code))
+	if code != "cyber_policy" && code != "session_blocked_by_cyber_policy" {
 		return false, "", ""
 	}
 	msg := gjson.GetBytes(payload, "error.message").String()
 	if msg == "" {
 		msg = gjson.GetBytes(payload, "response.error.message").String()
 	}
-	return true, "cyber_policy", strings.TrimSpace(msg)
+	return true, code, strings.TrimSpace(msg)
 }
 
 func markOpenAICyberPolicyEvent(c *gin.Context, payload []byte, upstreamStatus int, usage *OpenAIUsage) bool {

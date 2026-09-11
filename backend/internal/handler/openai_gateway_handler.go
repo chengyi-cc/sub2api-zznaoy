@@ -3860,22 +3860,23 @@ const cyberPolicyRecordedKey = "ops_cyber_recorded"
 // cyberPolicyOpsErrorMeta carries request-scoped fields captured outside the
 // async goroutine for building the cyber ops_error_logs entry.
 type cyberPolicyOpsErrorMeta struct {
-	RequestID       string
-	ClientRequestID string
-	Platform        string
-	Model           string
-	RequestPath     string
-	Stream          bool
-	InboundEndpoint string
-	UserAgent       string
-	APIKeyPrefix    string
-	UserID          int64
-	APIKeyID        int64
-	AccountID       int64
-	GroupID         *int64
-	ClientIP        string
-	CreatedAt       time.Time
-	SessionBlockKey string
+	ClientStatusCode int
+	RequestID        string
+	ClientRequestID  string
+	Platform         string
+	Model            string
+	RequestPath      string
+	Stream           bool
+	InboundEndpoint  string
+	UserAgent        string
+	APIKeyPrefix     string
+	UserID           int64
+	APIKeyID         int64
+	AccountID        int64
+	GroupID          *int64
+	ClientIP         string
+	CreatedAt        time.Time
+	SessionBlockKey  string
 }
 
 // buildCyberPolicyOpsErrorEntry builds the ops_error_logs entry for an upstream
@@ -3883,6 +3884,10 @@ type cyberPolicyOpsErrorMeta struct {
 // (400 non-stream / 200 stream), per F6.
 func buildCyberPolicyOpsErrorEntry(meta cyberPolicyOpsErrorMeta, mark *service.CyberPolicyMark) *service.OpsInsertErrorLogInput {
 	rt := int16(service.RequestTypeCyberBlocked)
+	clientStatus := meta.ClientStatusCode
+	if clientStatus <= 0 {
+		clientStatus = mark.UpstreamStatus
+	}
 	entry := &service.OpsInsertErrorLogInput{
 		RequestID:         meta.RequestID,
 		ClientRequestID:   meta.ClientRequestID,
@@ -3897,7 +3902,7 @@ func buildCyberPolicyOpsErrorEntry(meta cyberPolicyOpsErrorMeta, mark *service.C
 		ErrorPhase:        "request",
 		ErrorType:         "cyber_policy",
 		Severity:          "P3",
-		StatusCode:        mark.UpstreamStatus,
+		StatusCode:        clientStatus,
 		IsBusinessLimited: true,
 		ErrorMessage:      "cyber_policy: " + mark.Message,
 		// 原始 body 直接入队；ops service 落库前统一走 sanitizeErrorBodyForStorage 脱敏与截断。
@@ -3905,6 +3910,10 @@ func buildCyberPolicyOpsErrorEntry(meta cyberPolicyOpsErrorMeta, mark *service.C
 		ErrorSource: "upstream_http",
 		ErrorOwner:  "provider",
 		CreatedAt:   meta.CreatedAt,
+	}
+	if mark.UpstreamStatus > 0 {
+		status := mark.UpstreamStatus
+		entry.UpstreamStatusCode = &status
 	}
 	if meta.UserID > 0 {
 		entry.UserID = &meta.UserID
@@ -4172,21 +4181,22 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 		apiKeyPrefix = keyPrefix(apiKey.Key, 8)
 	}
 	opsMeta := cyberPolicyOpsErrorMeta{
-		RequestID:       requestID,
-		ClientRequestID: clientRequestID,
-		Platform:        platform,
-		Model:           model,
-		RequestPath:     requestPath,
-		Stream:          stream,
-		InboundEndpoint: inboundEndpoint,
-		UserAgent:       userAgent,
-		APIKeyPrefix:    apiKeyPrefix,
-		UserID:          userID,
-		APIKeyID:        apiKeyID,
-		AccountID:       accountID,
-		GroupID:         groupID,
-		ClientIP:        clientIPStr,
-		CreatedAt:       time.Now(),
+		ClientStatusCode: c.Writer.Status(),
+		RequestID:        requestID,
+		ClientRequestID:  clientRequestID,
+		Platform:         platform,
+		Model:            model,
+		RequestPath:      requestPath,
+		Stream:           stream,
+		InboundEndpoint:  inboundEndpoint,
+		UserAgent:        userAgent,
+		APIKeyPrefix:     apiKeyPrefix,
+		UserID:           userID,
+		APIKeyID:         apiKeyID,
+		AccountID:        accountID,
+		GroupID:          groupID,
+		ClientIP:         clientIPStr,
+		CreatedAt:        time.Now(),
 	}
 	if gwSvc != nil && apiKey != nil {
 		plan := buildCyberSessionBlockWritePlan(apiKey.ID, c, cyberBlockBody)

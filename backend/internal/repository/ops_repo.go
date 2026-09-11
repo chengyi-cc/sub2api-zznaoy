@@ -412,6 +412,7 @@ SELECT
   COALESCE(e.error_source, ''),
   e.severity,
   COALESCE(e.upstream_status_code, e.status_code, 0),
+  e.status_code,
   COALESCE(e.platform, ''),
   COALESCE(e.model, ''),
   COALESCE(e.resolved, false),
@@ -460,6 +461,7 @@ LIMIT 1`
 
 	var out service.OpsErrorLogDetail
 	var statusCode sql.NullInt64
+	var clientStatusCode sql.NullInt64
 	var upstreamStatusCode sql.NullInt64
 	var resolvedAt sql.NullTime
 	var resolvedBy sql.NullInt64
@@ -486,6 +488,7 @@ LIMIT 1`
 		&out.Source,
 		&out.Severity,
 		&statusCode,
+		&clientStatusCode,
 		&out.Platform,
 		&out.Model,
 		&out.Resolved,
@@ -530,6 +533,10 @@ LIMIT 1`
 	}
 
 	out.StatusCode = int(statusCode.Int64)
+	if clientStatusCode.Valid {
+		v := int(clientStatusCode.Int64)
+		out.ClientStatusCode = &v
+	}
 	if resolvedAt.Valid {
 		t := resolvedAt.Time
 		out.ResolvedAt = &t

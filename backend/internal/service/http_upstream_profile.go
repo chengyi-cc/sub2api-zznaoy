@@ -16,6 +16,7 @@ const (
 type httpUpstreamProfileContextKey struct{}
 type httpUpstreamDisableRedirectsContextKey struct{}
 type httpUpstreamPublicHostsOnlyContextKey struct{}
+type codexRequestCompressionContextKey struct{}
 
 // WithHTTPUpstreamProfile injects an upstream transport profile into ctx.
 func WithHTTPUpstreamProfile(ctx context.Context, profile HTTPUpstreamProfile) context.Context {
@@ -71,4 +72,18 @@ func WithHTTPUpstreamPublicHostsOnly(ctx context.Context) context.Context {
 
 func HTTPUpstreamPublicHostsOnly(ctx context.Context) bool {
 	return ctx != nil && ctx.Value(httpUpstreamPublicHostsOnlyContextKey{}) == true
+}
+
+// WithCodexRequestCompression marks a request for configured zstd body encoding
+// (zstd 是一种请求体压缩格式). Both core and plugin transports apply it with
+// PrepareCodexRequestBody before sending headers or body bytes.
+func WithCodexRequestCompression(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, codexRequestCompressionContextKey{}, true)
+}
+
+func CodexRequestCompressionEnabled(ctx context.Context) bool {
+	return ctx != nil && ctx.Value(codexRequestCompressionContextKey{}) == true
 }

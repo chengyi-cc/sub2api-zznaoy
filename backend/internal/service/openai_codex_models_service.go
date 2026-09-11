@@ -428,6 +428,9 @@ type codexModelMetadataOverride struct {
 
 func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescriptor {
 	modelID = strings.TrimSpace(modelID)
+	// The gateway advertises known aliases with their routed model's metadata.
+	// Select that model's prompt as well, before publishing it to clients.
+	instructionsModel := normalizeCodexModel(modelID)
 	noReasoningLevel := "none"
 	descriptor := configuredCodexModelDescriptor{
 		Slug:                  modelID,
@@ -443,7 +446,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		Priority:                          configuredCodexModelPriority,
 		AdditionalSpeedTiers:              []string{},
 		ServiceTiers:                      []configuredCodexServiceTier{},
-		ModelMessages:                     configuredCodexModelMessages{InstructionsTemplate: openai.CodexBaseInstructionsForModel(modelID)},
+		ModelMessages:                     configuredCodexModelMessages{InstructionsTemplate: openai.CodexBaseInstructionsForModel(instructionsModel)},
 		SupportsReasoningSummaryParameter: true,
 		DefaultReasoningSummary:           "auto",
 		WebSearchToolType:                 "text",

@@ -71,14 +71,39 @@ var instructionsGPT52 string
 //go:embed instructions_gpt5_5.txt
 var instructionsGPT55 string
 
+//go:embed instructions_gpt5_4_official.txt
+var instructionsGPT54Official string
+
+//go:embed instructions_gpt5_5_official.txt
+var instructionsGPT55Official string
+
+//go:embed instructions_gpt5_6_code_mode.txt
+var instructionsGPT56CodeMode string
+
+//go:embed instructions_codex_auto_review.txt
+var instructionsCodexAutoReview string
+
 // Source: openai/codex codex-rs/models-manager/models.json at 121f91fd5d9d.
 //
 //go:embed instructions_gpt6_astra.txt
 var instructionsGPT6Astra string
 
+//go:embed instructions_gpt6_astra_official.txt
+var instructionsGPT6AstraOfficial string
+
+// Source: openai/codex rust-v0.153.4, codex-rs/models-manager/prompt.md.
+// The catalog has no entries for bare gpt-5.6, gpt-6, or gpt-5.3-codex
+// (including Spark); model_info.rs uses this fallback text for these models.
+//
+//go:embed instructions_fallback_0_153_4.txt
+var instructionsFallback01534 string
+
 // latestCodexInstructions 返回当前已知最新版本的 Codex base instructions，
 // 当前为 GPT-5.5；若 5.5 prompt 意外为空则回退到 DefaultInstructions 保证非空。
 func latestCodexInstructions() string {
+	if v := strings.TrimSpace(instructionsGPT55Official); v != "" {
+		return instructionsGPT55Official
+	}
 	if v := strings.TrimSpace(instructionsGPT55); v != "" {
 		return instructionsGPT55
 	}
@@ -127,18 +152,41 @@ func CanonicalizeOpenAIModelAliasSpelling(model string) string {
 }
 
 // CodexBaseInstructionsForModel 按模型返回最匹配的真实 Codex base instructions：
-//   - gpt-6 / gpt-6-astra（含供应商前缀与日期变体）→ GPT-6 Astra prompt
+//   - 裸 gpt-5.6 / gpt-6 → 官方 0.153.4 无模型元数据时的默认 prompt
+//   - gpt-5.3-codex / spark → 同一官方回退 prompt
+//   - gpt-6-astra（含供应商前缀与日期变体）→ GPT-6 Astra prompt
+//   - gpt-5.6-sol/terra/luna / codex-auto-review → 对应代码模式 prompt
 //   - 含 "codex" 的模型（gpt-5-codex / gpt-5.x-codex / codex-max / spark 等）→ GPT-5-Codex prompt
+//   - gpt-5.4 系非 codex 模型 → GPT-5.4 prompt
 //   - gpt-5.5 系非 codex 模型 → GPT-5.5 prompt
 //   - gpt-5.2 系非 codex 模型 → GPT-5.2 prompt
 //   - gpt-5.1 系非 codex 模型 → GPT-5.1 prompt
-//   - 其它（含 gpt-5.3 / gpt-5.4 / 裸 gpt-5 / 未知模型）→ 回退到最新版本（当前 GPT-5.5）
+//   - 其它（含 gpt-5.3 / 裸 gpt-5 / 未知模型）→ 保留原有回退规则（当前 GPT-5.5）
 //
 // 任一专用 prompt 意外为空时回退链最终落到 DefaultInstructions，保证返回非空。
 func CodexBaseInstructionsForModel(model string) string {
 	canonical := CanonicalizeOpenAIModelAliasSpelling(model)
 	switch {
-	case canonical == "gpt-6" || canonical == "gpt-6-astra" || strings.HasPrefix(canonical, "gpt-6-astra-"):
+	case canonical == "gpt-5.6" || canonical == "gpt-6" || canonical == "gpt-5.3-codex" || strings.HasPrefix(canonical, "gpt-5.3-codex-"):
+		if v := strings.TrimSpace(instructionsFallback01534); v != "" {
+			return instructionsFallback01534
+		}
+	case canonical == "codex-auto-review":
+		if v := strings.TrimSpace(instructionsCodexAutoReview); v != "" {
+			return instructionsCodexAutoReview
+		}
+	case strings.HasPrefix(canonical, "gpt-5.6-sol"), strings.HasPrefix(canonical, "gpt-5.6-terra"), strings.HasPrefix(canonical, "gpt-5.6-luna"):
+		if v := strings.TrimSpace(instructionsGPT56CodeMode); v != "" {
+			return instructionsGPT56CodeMode
+		}
+	case strings.HasPrefix(canonical, "gpt-5.4"):
+		if v := strings.TrimSpace(instructionsGPT54Official); v != "" {
+			return instructionsGPT54Official
+		}
+	case canonical == "gpt-6-astra" || strings.HasPrefix(canonical, "gpt-6-astra-"):
+		if v := strings.TrimSpace(instructionsGPT6AstraOfficial); v != "" {
+			return instructionsGPT6AstraOfficial
+		}
 		if v := strings.TrimSpace(instructionsGPT6Astra); v != "" {
 			return instructionsGPT6Astra
 		}
@@ -156,4 +204,16 @@ func CodexBaseInstructionsForModel(model string) string {
 		}
 	}
 	return latestCodexInstructions()
+}
+
+// CodexUsesInputDeveloperInstructions reports models whose official catalog
+// uses code-mode input (代码模式输入) instead of top-level instructions.
+func CodexUsesInputDeveloperInstructions(model string) bool {
+	canonical := CanonicalizeOpenAIModelAliasSpelling(model)
+	return canonical == "gpt-6-astra" ||
+		strings.HasPrefix(canonical, "gpt-6-astra-") ||
+		strings.HasPrefix(canonical, "gpt-5.6-sol") ||
+		strings.HasPrefix(canonical, "gpt-5.6-terra") ||
+		strings.HasPrefix(canonical, "gpt-5.6-luna") ||
+		canonical == "codex-auto-review"
 }

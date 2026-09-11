@@ -118,6 +118,7 @@ export interface OpsRequestDetail {
   model?: string
   duration_ms?: number | null
   status_code?: number | null
+  upstream_status_code?: number | null
 
   error_id?: number | null
   phase?: string
@@ -939,6 +940,7 @@ export interface OpsErrorLog {
 }
 
 export interface OpsErrorDetail extends OpsErrorLog {
+  client_status_code?: number | null
   error_body: string
 
   // Upstream context (optional; enriched by gateway services)

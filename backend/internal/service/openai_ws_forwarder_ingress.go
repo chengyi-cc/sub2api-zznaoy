@@ -89,7 +89,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return err
 	}
-	s.stageCodexMachineFingerprintIDs(c, account)
+	s.stageCodexMachineFingerprintIDs(c, account, firstClientMessage)
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
@@ -312,6 +312,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				"previous_response_id must be a response.id (resp_*), not a message id",
 				nil,
 			)
+		}
+		if turn > 1 {
+			s.advanceCodexMachineWebSocketTurn(c, account, raw)
 		}
 		if turnMetadata := strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader)); turnMetadata != "" {
 			next, setErr := applyPayloadMutation(normalized, "client_metadata."+openAIWSTurnMetadataHeader, turnMetadata)
@@ -788,9 +791,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return fmt.Errorf("build ws headers: %w", buildHdrErr)
 	}
 	baseAcquireReq := openAIWSAcquireRequest{
-		Account: account,
-		WSURL:   wsURL,
-		Headers: wsHeaders,
+		Account:    account,
+		WSURL:      wsURL,
+		Headers:    wsHeaders,
+		TLSProfile: resolveOpenAITransportTLSProfile(s.tlsFPProfileService, account),
 		HeadersFactory: func(factoryCtx context.Context, headers http.Header) (http.Header, error) {
 			return s.refreshOpenAIAgentIdentityHeaders(factoryCtx, account, headers)
 		},

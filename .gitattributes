@@ -20,3 +20,12 @@ backend/migrations/*.sql text eol=lf
 
 # Dockerfile
 Dockerfile text eol=lf
+
+# Fixed-version prompt snapshots must keep the same line endings on all hosts.
+backend/internal/pkg/openai/instructions_gpt5_2.txt text eol=lf
+backend/internal/pkg/openai/instructions_gpt5_4_official.txt text eol=lf
+backend/internal/pkg/openai/instructions_gpt5_5_official.txt text eol=lf
+backend/internal/pkg/openai/instructions_gpt5_6_code_mode.txt text eol=lf
+backend/internal/pkg/openai/instructions_gpt6_astra_official.txt text eol=lf
+backend/internal/pkg/openai/instructions_codex_auto_review.txt text eol=lf
+backend/internal/pkg/openai/instructions_fallback_0_153_4.txt text eol=lf

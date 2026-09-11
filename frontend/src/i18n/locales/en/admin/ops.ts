@@ -344,6 +344,7 @@ export default {
         phase: 'Phase',
         status: 'Status',
         upstreamStatus: 'Upstream Status',
+        clientStatus: 'Client status code',
         message: 'Message',
         rootCause: 'Root Cause',
         diagnosticPayloads: 'Diagnostic Payloads',
@@ -421,6 +422,8 @@ export default {
           model: 'Model',
           duration: 'Duration',
           status: 'Status',
+          clientStatus: 'Client status code',
+          upstreamStatus: 'Upstream status code',
           requestId: 'Request ID',
           actions: 'Actions'
         }

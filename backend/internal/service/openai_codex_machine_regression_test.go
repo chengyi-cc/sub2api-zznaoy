@@ -50,7 +50,7 @@ func TestCodexMachineMetadataPreservesShape(t *testing.T) {
 	for _, raw := range []string{`{"sandbox":"none"}`, `{"sandbox":false}`, `{"unknown":1}`, `[]`, `invalid`} {
 		require.Equal(t, raw, rewriteCodexMachineTurnMetadata(raw, ids))
 	}
-	for _, raw := range []string{"{}", `{"client_metadata":null}`, `{"client_metadata":[]}`} {
+	for _, raw := range []string{`{"client_metadata":null}`, `{"client_metadata":[]}`} {
 		next, changed, err := applyCodexFingerprintClientMetadataRaw([]byte(raw), ids)
 		require.NoError(t, err)
 		require.False(t, changed)
@@ -66,6 +66,43 @@ func TestCodexMachineMetadataPreservesShape(t *testing.T) {
 	require.Empty(t, headers.Get("conversation_id"))
 	require.Empty(t, headers.Get("x-codex-installation-id"))
 	require.False(t, applyCodexMachineClientMetadata(map[string]any{}, ids))
+}
+
+func TestCodexMachineContextWindowMetadata(t *testing.T) {
+	account := newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "machine"})
+	ids := resolveCodexFingerprintIDsFromRequest(account, nil)
+	windowID := "019539e8-8c00-7000-8000-000000000001"
+	turn := map[string]any{"context_window_id": windowID, "turn_id": "keep-turn", "unknown": json.Number("9007199254740993")}
+	encoded, err := json.Marshal(turn)
+	require.NoError(t, err)
+	body := map[string]any{"client_metadata": map[string]any{"x-codex-turn-metadata": string(encoded)}}
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+	require.True(t, applyCodexFingerprintClientMetadata(body, ids))
+	headers := http.Header{}
+	headers.Set("x-codex-turn-metadata", string(encoded))
+	applyCodexFingerprintHeaders(headers, ids)
+	rewritten, changed, err := applyCodexFingerprintClientMetadataRaw(raw, ids)
+	require.NoError(t, err)
+	require.True(t, changed)
+	expected := ids.machinePseudonym(windowID)
+	for _, metadata := range []string{
+		body["client_metadata"].(map[string]any)["x-codex-turn-metadata"].(string),
+		headers.Get("x-codex-turn-metadata"),
+		gjson.GetBytes(rewritten, "client_metadata.x-codex-turn-metadata").String(),
+	} {
+		require.Equal(t, expected, gjson.Get(metadata, "context_window_id").String())
+		require.Equal(t, "keep-turn", gjson.Get(metadata, "turn_id").String())
+		require.Equal(t, "9007199254740993", gjson.Get(metadata, "unknown").Raw)
+		require.Equal(t, metadata, rewriteCodexMachineTurnMetadata(metadata, ids))
+	}
+	originalUUID := uuid.MustParse(windowID)
+	rewrittenUUID := uuid.MustParse(expected)
+	require.Equal(t, originalUUID[:6], rewrittenUUID[:6])
+	require.Equal(t, uuid.Version(7), rewrittenUUID.Version())
+	for _, raw := range []string{`{"context_window_id":null}`, `{"context_window_id":123}`, `{"context_window_id":""}`, `{"turn_id":"keep-turn"}`} {
+		require.Equal(t, raw, rewriteCodexMachineTurnMetadata(raw, ids))
+	}
 }
 
 func TestCodexMachineSandboxMatrix(t *testing.T) {
@@ -222,8 +259,19 @@ func (dialer *machineWSDialer) Dial(ctx context.Context, wsURL string, headers h
 }
 
 func TestCodexMachineDirectWebSocketMultipleTurns(t *testing.T) {
-	for _, mode := range []string{OpenAIWSIngressModeCtxPool, OpenAIWSIngressModePassthrough} {
-		t.Run(mode, func(t *testing.T) {
+	for _, scenario := range []struct {
+		mode       string
+		thirdParty bool
+	}{
+		{OpenAIWSIngressModeCtxPool, false}, {OpenAIWSIngressModeCtxPool, true},
+		{OpenAIWSIngressModePassthrough, false}, {OpenAIWSIngressModePassthrough, true},
+	} {
+		mode := scenario.mode
+		client := "official"
+		if scenario.thirdParty {
+			client = "third-party"
+		}
+		t.Run(mode+"/"+client, func(t *testing.T) {
 			cfg := &config.Config{}
 			cfg.Gateway.OpenAIWS.Enabled = true
 			cfg.Gateway.OpenAIWS.OAuthEnabled = true
@@ -246,11 +294,15 @@ func TestCodexMachineDirectWebSocketMultipleTurns(t *testing.T) {
 			account.Credentials = map[string]any{"access_token": "token"}
 			sessionID := "019539e8-8c00-7000-8000-000000000001"
 			originalHeaders := http.Header{}
+			originalHeaders.Set("User-Agent", "codex_cli_rs/0.153.4")
 			originalHeaders.Set("session-id", sessionID)
 			originalHeaders.Set("thread-id", sessionID)
 			originalHeaders.Set("x-codex-parent-thread-id", sessionID)
 			originalHeaders.Set("x-codex-window-id", sessionID+":007")
 			originalHeaders.Set("x-codex-turn-metadata", `{"session_id":"`+sessionID+`","sandbox":"windows_elevated"}`)
+			if scenario.thirdParty {
+				originalHeaders = http.Header{}
+			}
 			finished := make(chan error, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				connection, err := coderws.Accept(writer, request, nil)
@@ -277,6 +329,10 @@ func TestCodexMachineDirectWebSocketMultipleTurns(t *testing.T) {
 			defer client.CloseNow()
 			for _, turnID := range []string{"turn-one", "turn-two"} {
 				body := map[string]any{"type": "response.create", "model": "gpt-5.4", "store": false, "input": []any{}, "prompt_cache_key": sessionID, "client_metadata": map[string]any{"session_id": sessionID, "thread_id": sessionID, "turn_id": turnID, "x-codex-window-id": sessionID + ":007"}}
+				if scenario.thirdParty {
+					delete(body, "client_metadata")
+					delete(body, "prompt_cache_key")
+				}
 				payload, err := json.Marshal(body)
 				require.NoError(t, err)
 				require.NoError(t, client.Write(ctx, coderws.MessageText, payload))
@@ -304,25 +360,59 @@ func TestCodexMachineDirectWebSocketMultipleTurns(t *testing.T) {
 			default:
 				t.Fatal("no upstream handshake captured")
 			}
-			expected := resolveCodexFingerprintIDsFromRequest(account, originalHeaders).machinePseudonym(sessionID)
+			expectedIDs := resolveCodexFingerprintIDsFromRequest(account, originalHeaders)
+			expected := expectedIDs.machinePseudonym(sessionID)
+			suffix := ":007"
+			if scenario.thirdParty {
+				expected = headers.Get("thread-id")
+				parsed, err := uuid.Parse(expected)
+				require.NoError(t, err)
+				require.Equal(t, uuid.Version(7), parsed.Version())
+				require.Equal(t, expected, headers.Get("x-client-request-id"))
+				require.Empty(t, headers.Get("x-codex-parent-thread-id"))
+				suffix = ":0"
+			} else {
+				require.Equal(t, expected, headers.Get("x-codex-parent-thread-id"))
+			}
 			require.Equal(t, expected, headers.Get("session-id"))
-			require.Equal(t, expected, headers.Get("x-codex-parent-thread-id"))
-			require.Equal(t, expected+":007", headers.Get("x-codex-window-id"))
+			require.Equal(t, expected+suffix, headers.Get("x-codex-window-id"))
 			require.Empty(t, headers.Get("session_id"))
 			require.Empty(t, headers.Get("conversation_id"))
 			captured.mu.Lock()
 			writes := append([]map[string]any(nil), captured.writes...)
 			captured.mu.Unlock()
 			require.Len(t, writes, 2)
+			var previousTurn, contextWindow string
 			for index, body := range writes {
 				metadata := body["client_metadata"].(map[string]any)
 				require.Equal(t, expected, metadata["session_id"])
 				require.Equal(t, expected, body["prompt_cache_key"])
-				require.Equal(t, expected+":007", metadata["x-codex-window-id"])
-				require.Equal(t, []string{"turn-one", "turn-two"}[index], metadata["turn_id"])
-				require.NotContains(t, metadata, "x-codex-installation-id")
+				require.Equal(t, expected+suffix, metadata["x-codex-window-id"])
+				if scenario.thirdParty {
+					turnID := metadata["turn_id"].(string)
+					parsed, err := uuid.Parse(turnID)
+					require.NoError(t, err)
+					require.Equal(t, uuid.Version(7), parsed.Version())
+					require.NotEqual(t, previousTurn, turnID)
+					previousTurn = turnID
+					require.Equal(t, expectedIDs.installationID, metadata["x-codex-installation-id"])
+					turnMetadata := metadata[openAIWSTurnMetadataHeader].(string)
+					require.Equal(t, turnID, gjson.Get(turnMetadata, "turn_id").String())
+					require.Equal(t, expected, gjson.Get(turnMetadata, "thread_id").String())
+					if index == 0 {
+						require.JSONEq(t, headers.Get(openAIWSTurnMetadataHeader), turnMetadata)
+						contextWindow = gjson.Get(turnMetadata, "context_window_id").String()
+					} else {
+						require.Equal(t, contextWindow, gjson.Get(turnMetadata, "context_window_id").String())
+					}
+				} else {
+					require.Equal(t, []string{"turn-one", "turn-two"}[index], metadata["turn_id"])
+					require.NotContains(t, metadata, "x-codex-installation-id")
+				}
 			}
-			require.Equal(t, sessionID, originalHeaders.Get("session-id"))
+			if !scenario.thirdParty {
+				require.Equal(t, sessionID, originalHeaders.Get("session-id"))
+			}
 		})
 	}
 }

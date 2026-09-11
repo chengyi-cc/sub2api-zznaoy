@@ -79,6 +79,9 @@ type OpsErrorLog struct {
 type OpsErrorLogDetail struct {
 	OpsErrorLog
 
+	// Actual client HTTP status, separate from the effective monitoring status.
+	ClientStatusCode *int `json:"client_status_code"`
+
 	ErrorBody string `json:"error_body"`
 
 	// Upstream context (optional)

@@ -85,10 +85,10 @@
         </div>
 
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
-          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.status') }}</div>
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.clientStatus') }}</div>
           <div class="mt-1">
             <span :class="['inline-flex items-center rounded-lg px-2 py-1 text-xs font-black ring-1 ring-inset shadow-sm', statusClass]">
-              {{ detail.status_code }}
+              {{ detail.client_status_code ?? '—' }}
             </span>
           </div>
         </div>
@@ -430,7 +430,7 @@ function statusBadgeClass(code: number): string {
   return 'bg-gray-50 text-gray-700 ring-gray-600/20 dark:bg-gray-900/30 dark:text-gray-400 dark:ring-gray-500/30'
 }
 
-const statusClass = computed(() => statusBadgeClass(detail.value?.status_code ?? 0))
+const statusClass = computed(() => statusBadgeClass(detail.value?.client_status_code ?? 0))
 
 const upstreamStatusClass = computed(() => statusBadgeClass(detail.value?.upstream_status_code ?? 0))
 

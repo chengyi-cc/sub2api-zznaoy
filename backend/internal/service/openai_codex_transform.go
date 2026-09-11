@@ -87,6 +87,7 @@ type codexOAuthTransformOptions struct {
 	SkipDefaultInstructions             bool
 	PreserveToolCallIDs                 bool
 	OmitPromotedSystemMessagesFromInput bool
+	UseCodeModeInstructions             bool
 }
 
 const (
@@ -306,7 +307,7 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 	}
 
 	// instructions 处理逻辑：根据是否是 Codex CLI 分别调用不同方法
-	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI) {
+	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI, opts.UseCodeModeInstructions) {
 		result.Modified = true
 	}
 	if isCodexSparkModel(normalizedModel) && applyCodexSparkImageUnsupportedInstructions(reqBody) {
@@ -1489,12 +1490,46 @@ func applyCodexClientMetadata(reqBody map[string]any, account *Account) bool {
 }
 
 // applyInstructions 处理 instructions 字段：仅在 instructions 为空时填充默认值。
-func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
+func applyInstructions(reqBody map[string]any, isCodexCLI bool, useCodeModeInstructions bool) bool {
 	if !isInstructionsEmpty(reqBody) {
 		return false
 	}
 	model, _ := reqBody["model"].(string)
-	reqBody["instructions"] = defaultCodexSynthInstructions(model)
+	instructions := defaultCodexSynthInstructions(model)
+	if useCodeModeInstructions && !isCodexCLI && openai.CodexUsesInputDeveloperInstructions(model) {
+		return prependCodexDeveloperInstructions(reqBody, instructions)
+	}
+	reqBody["instructions"] = instructions
+	return true
+}
+
+func prependCodexDeveloperInstructions(reqBody map[string]any, instructions string) bool {
+	if reqBody == nil || strings.TrimSpace(instructions) == "" {
+		return false
+	}
+	developer := map[string]any{
+		"type":    "message",
+		"role":    "developer",
+		"content": instructions,
+	}
+	switch input := reqBody["input"].(type) {
+	case []any:
+		if len(input) > 0 {
+			if first, ok := input[0].(map[string]any); ok && first["role"] == "developer" && extractTextFromContent(first["content"]) == instructions {
+				if _, exists := reqBody["instructions"]; exists {
+					delete(reqBody, "instructions")
+					return true
+				}
+				return false
+			}
+		}
+		reqBody["input"] = append([]any{developer}, input...)
+	case string:
+		reqBody["input"] = []any{developer, map[string]any{"type": "message", "role": "user", "content": input}}
+	default:
+		reqBody["input"] = []any{developer}
+	}
+	delete(reqBody, "instructions")
 	return true
 }
 

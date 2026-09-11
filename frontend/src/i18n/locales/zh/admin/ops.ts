@@ -344,6 +344,7 @@ export default {
         phase: '阶段',
         status: '状态码',
         upstreamStatus: '上游状态码',
+        clientStatus: '客户端状态码',
         message: '消息',
         rootCause: '根因',
         diagnosticPayloads: '诊断载荷',
@@ -421,6 +422,8 @@ export default {
           model: '模型',
           duration: '耗时',
           status: '状态码',
+          clientStatus: '客户端状态码',
+          upstreamStatus: '上游状态码',
           requestId: '请求ID',
           actions: '操作'
         }

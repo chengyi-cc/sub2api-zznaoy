@@ -3525,6 +3525,8 @@ export default {
         time: 'Время',
         phase: 'Этап',
         status: 'Статус',
+        clientStatus: 'Код ответа клиенту',
+        upstreamStatus: 'Код ответа upstream',
         message: 'Сообщение',
         basicInfo: 'Основная информация',
         platform: 'Платформа',
@@ -3622,6 +3624,8 @@ export default {
           model: 'Модель',
           duration: 'Длительность',
           status: 'Статус',
+          clientStatus: 'Код ответа клиенту',
+          upstreamStatus: 'Код ответа upstream',
           requestId: 'Request ID',
           actions: 'Действия'
         }

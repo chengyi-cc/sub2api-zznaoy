@@ -196,12 +196,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		// 手术，透传热路径禁全量 Unmarshal），出站头改写由请求构造器读取
 		// context 中的同一份 IDs 完成（turn_id 等随机字段两侧必须一致）。
 		if !isOpenAIResponsesCompactPath(c) || usesCodexMachineFingerprint(account) {
-			var clientHeaders http.Header
-			if c != nil && c.Request != nil {
-				clientHeaders = c.Request.Header
-			}
-			fpIDs := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
-			stampCodexMachineSandboxTag(fpIDs, s.codexIdentityOverrideUA(account))
+			fpIDs := s.resolveCodexFingerprintForRequest(c, account, body)
 			if fpIDs != nil {
 				fpBody, fpChanged, fpErr := applyCodexFingerprintClientMetadataRaw(body, fpIDs)
 				if fpErr != nil {
@@ -854,6 +849,26 @@ func writeSanitizedOpenAIPassthroughError(c *gin.Context, upstreamStatus int, up
 	writeOpenAIPassthroughErrorEnvelope(c, downstreamStatus, upstreamHeaders, message)
 }
 
+// writeOpenAIPassthroughPolicyError preserves a terminal policy rejection without
+// exposing unrelated upstream fields or encouraging automatic retries.
+func writeOpenAIPassthroughPolicyError(c *gin.Context, status int, code, message string) {
+	if c == nil {
+		return
+	}
+	message = sanitizeUpstreamErrorMessage(message)
+	if message == "" {
+		message = "Request blocked by upstream security policy"
+	}
+	body, _ := json.Marshal(gin.H{"error": gin.H{
+		"type": "permission_error", "code": code, "message": message,
+	}})
+	if writeOpenAICompactSSEBridge(c, status, body) {
+		return
+	}
+	writeOpenAIPassthroughErrorHeaders(c.Writer.Header(), nil)
+	c.Data(status, "application/json; charset=utf-8", body)
+}
+
 // writeOpenAIPassthroughErrorEnvelope 以本地 JSON 信封 + 净化后的头策略写出
 // 错误响应；message 由调用方决定（净化通用文案或脱敏后的上游消息）。
 func writeOpenAIPassthroughErrorEnvelope(c *gin.Context, downstreamStatus int, upstreamHeaders http.Header, message string) {
@@ -983,7 +998,9 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	// context-window 超限是确定性请求失败（shouldFailoverOpenAIPassthroughResponse
 	// 已保证不切号），其文案对客户端可操作（如触发自动压缩）；在净化信封内保留
 	// 脱敏后的上游消息，而不是抹成通用文案。
-	if isOpenAIContextWindowError(upstreamMsg, body) && upstreamMsg != "" {
+	if cyberHit {
+		writeOpenAIPassthroughPolicyError(c, resp.StatusCode, cyberCode, cyberMsg)
+	} else if isOpenAIContextWindowError(upstreamMsg, body) && upstreamMsg != "" {
 		writeOpenAIPassthroughErrorEnvelope(c, resp.StatusCode, resp.Header, upstreamMsg)
 	} else {
 		writeSanitizedOpenAIPassthroughError(c, resp.StatusCode, resp.Header)

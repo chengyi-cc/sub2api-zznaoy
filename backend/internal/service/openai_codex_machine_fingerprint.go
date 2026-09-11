@@ -40,7 +40,7 @@ func applyCodexMachineCompactProbeIdentity(payload map[string]any, probeSessionI
 
 func isCodexMachineIdentityHeader(name string) bool {
 	switch name {
-	case "session-id", "thread-id", "x-codex-parent-thread-id":
+	case "session-id", "thread-id", "x-client-request-id", "x-codex-parent-thread-id":
 		return true
 	default:
 		return false
@@ -177,7 +177,7 @@ func rewriteCodexMachineTurnMetadata(raw string, ids *codexFingerprintIDs) strin
 	}
 	rewritten := dedupeCodexMachineTurnMetadata(raw)
 	metadata := gjson.Parse(rewritten)
-	for _, field := range []string{"installation_id", "session_id", "thread_id", "parent_thread_id", "forked_from_thread_id", "window_id", "sandbox"} {
+	for _, field := range []string{"installation_id", "session_id", "thread_id", "parent_thread_id", "forked_from_thread_id", "context_window_id", "window_id", "sandbox"} {
 		value := metadata.Get(field)
 		if value.Type != gjson.String || strings.TrimSpace(value.String()) == "" {
 			continue
@@ -232,6 +232,10 @@ func applyCodexMachineClientMetadata(metadata map[string]any, ids *codexFingerpr
 }
 
 func applyCodexMachineHeaders(headers http.Header, ids *codexFingerprintIDs) {
+	if ids.machineIdentity != nil {
+		ids.machineIdentity.applyHeaders(headers)
+		return
+	}
 	if strings.TrimSpace(headers.Get("x-codex-installation-id")) != "" {
 		headers.Set("x-codex-installation-id", ids.installationID)
 	}
@@ -252,22 +256,21 @@ func applyCodexMachineHeaders(headers http.Header, ids *codexFingerprintIDs) {
 	}
 }
 
-func (s *OpenAIGatewayService) stageCodexMachineFingerprintIDs(c *gin.Context, account *Account) {
+func (s *OpenAIGatewayService) stageCodexMachineFingerprintIDs(c *gin.Context, account *Account, bodies ...[]byte) {
 	stageCodexFingerprintIDs(c, nil)
 	if !usesCodexMachineFingerprint(account) {
 		return
 	}
-	var headers http.Header
-	if c != nil && c.Request != nil {
-		headers = c.Request.Header
+	var body []byte
+	if len(bodies) > 0 {
+		body = bodies[0]
 	}
-	ids := resolveCodexFingerprintIDsFromRequest(account, headers)
-	stampCodexMachineSandboxTag(ids, s.codexIdentityOverrideUA(account))
+	ids := s.resolveCodexFingerprintForRequest(c, account, body)
 	stageCodexFingerprintIDs(c, ids)
 }
 
 func (s *OpenAIGatewayService) stageCodexMachineFingerprintIDsForCompatBridge(c *gin.Context, account *Account, body []byte) ([]byte, error) {
-	s.stageCodexMachineFingerprintIDs(c, account)
+	s.stageCodexMachineFingerprintIDs(c, account, body)
 	next, _, err := applyCodexFingerprintClientMetadataRaw(body, stagedCodexFingerprintIDs(c, account))
 	return next, err
 }
