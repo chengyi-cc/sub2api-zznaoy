@@ -1,0 +1,8 @@
+.art-collection .studio-intro{margin-top:30px;margin-bottom:23px}
+.art-collection .studio-intro h1{font-size:27px}
+.art-collection .concept-nav{gap:7px}
+.art-collection .concept-nav>button{padding-block:10px}
+.art-collection .art-swatch{background:#151613;display:grid;place-items:center;width:34px;height:38px}
+.art-collection .art-swatch img{width:100%;height:auto}
+.art-collection .brand-editor{margin-top:23px;padding-top:17px}
+@media(max-width:840px){.art-collection .concept-nav{grid-template-columns:repeat(6,minmax(143px,1fr))}.art-collection .studio-intro{margin:23px 0 20px}.art-collection .studio-intro h1{font-size:27px}.art-collection .brand-editor{margin-top:10px;padding-top:0}.art-collection .art-swatch{width:26px;height:30px}}

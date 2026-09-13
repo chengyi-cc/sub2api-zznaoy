@@ -1,3 +1,5 @@
+import designedHome from './designedHome'
+
 export default {
   batchImageGuide: {
     title: '图片批量生成',
@@ -5,6 +7,7 @@ export default {
   },
   // Home Page
   home: {
+    designed: designedHome,
     viewOnGithub: '在 GitHub 上查看',
     viewDocs: '查看文档',
     docs: '文档',

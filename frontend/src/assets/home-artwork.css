@@ -1,0 +1,33 @@
+.hf-site .hf-stage{--hf-metal-1:#364a75;--hf-metal-2:#7b93b5;--hf-metal-3:#4c648f;--hf-metal-4:#a0adc1;--hf-metal-5:#3c4e72}
+.hf-command .hf-stage{--hf-metal-1:#86a4c6;--hf-metal-2:#deedff;--hf-metal-3:#91b8dd;--hf-metal-4:#f2f6ff;--hf-metal-5:#7496bf}
+.hf-editorial .hf-stage{--hf-metal-1:#755139;--hf-metal-2:#ac8b5f;--hf-metal-3:#7e6545;--hf-metal-4:#b49a73;--hf-metal-5:#694c39}
+.hf-cobalt .hf-stage{--hf-metal-1:#d7c8ac;--hf-metal-2:#fff2d2;--hf-metal-3:#e3d9bc;--hf-metal-4:#fffaf0;--hf-metal-5:#bcbcd0}
+.hf-silver .hf-stage{--hf-metal-1:#4b507f;--hf-metal-2:#9196b6;--hf-metal-3:#666b96;--hf-metal-4:#a7aec4;--hf-metal-5:#4e587c}
+.hf-site .hf-art .hc-gold-art,.hf-site .hf-art svg{animation:none;transform:none}
+.hf-site .hf-art svg{overflow:visible}
+.hf-site .hf-art [data-depth-layer] circle[fill]{fill:var(--hf-metal-2)}
+.hf-site .hf-art[data-hc-interactive]{cursor:grab;touch-action:pan-y pinch-zoom;user-select:none;-webkit-user-select:none;outline:none;-webkit-tap-highlight-color:transparent}
+.hf-site .hf-art[data-hc-interactive]:focus-visible{outline:none}
+.hf-site .hf-art[data-hc-interactive]:focus-visible~.hf-interaction-hint{color:var(--hf-accent);text-decoration:underline;text-underline-offset:4px}
+.hf-site .hf-art[data-hc-interactive] .hc-gold-art{pointer-events:none}
+.hf-site .hf-art[data-hc-dragging]{cursor:grabbing}
+.hf-site .hf-art[data-hc-active-interaction] .hc-gold-art,.hf-site .hf-art[data-hc-active-interaction] svg{animation-play-state:paused}
+.hf-site .hf-interaction-hint{display:none;justify-content:center;gap:12px;font:10px/1.7 "Segoe UI","Microsoft YaHei",sans-serif;color:var(--hf-muted);text-align:center;margin:0}
+.hf-site .hf-interaction-hint>span{opacity:.65}
+.hf-site .hf-art[data-hc-interactive]~.hf-interaction-hint{display:flex}
+.hf-site .hf-art-controls{display:flex;align-items:center;gap:10px}
+.hf-site .hf-art-reset{display:none;min-height:32px;padding:6px 8px;border:0;background:transparent;color:var(--hf-muted);font:9px/1.5 "Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer}
+.hf-site .hf-art[data-hc-interactive]~.hf-stage-bottom .hf-art-reset{display:inline-flex;align-items:center}
+.hf-site .hf-art-reset:hover{color:var(--hf-accent)}
+.hf-site .hf-art-reset:focus-visible{outline:2px solid var(--hf-accent);outline-offset:4px}
+.hf-site .hf-motion-pause{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.hf-site .hf-motion-control{display:inline-flex;align-items:center;min-height:32px;padding:6px 0 6px 10px;cursor:pointer;color:var(--hf-muted);font:9px/1.5 "Segoe UI","Microsoft YaHei",sans-serif;letter-spacing:.3px}
+.hf-site .hf-motion-control:hover{color:var(--hf-accent)}
+.hf-site .hf-motion-stopped{display:none}
+.hf-site .hf-motion-pause:focus-visible~.hf-stage-bottom .hf-motion-control{outline:2px solid var(--hf-accent);outline-offset:4px}
+.hf-site .hf-motion-pause:checked~.hf-art .hc-gold-art,.hf-site .hf-motion-pause:checked~.hf-art svg{animation-play-state:paused}
+.hf-site .hf-motion-pause:checked~.hf-stage-bottom .hf-motion-running{display:none}
+.hf-site .hf-motion-pause:checked~.hf-stage-bottom .hf-motion-stopped{display:inline}
+@media(max-width:760px){.hf-site .hf-art-reset{min-height:44px}.hf-site .hf-interaction-hint{font-size:9px}.hf-site .hf-interaction-hint>span{display:none}}
+@media(max-width:760px){.hf-site .hf-motion-control{min-height:44px}}
+@media(prefers-reduced-motion:reduce){.hf-site .hf-art .hc-gold-art,.hf-site .hf-art svg{animation:none;transform:none}.hf-site .hf-motion-pause,.hf-site .hf-motion-control{display:none}}

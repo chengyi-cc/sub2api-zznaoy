@@ -1,3 +1,5 @@
+import designedHome from './designedHome'
+
 export default {
   batchImageGuide: {
     title: 'Batch Image Generation',
@@ -5,6 +7,7 @@ export default {
   },
   // Home Page
   home: {
+    designed: designedHome,
     viewOnGithub: 'View on GitHub',
     viewDocs: 'View Documentation',
     docs: 'Docs',

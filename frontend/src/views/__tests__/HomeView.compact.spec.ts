@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount, RouterLinkStub } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, mount, RouterLinkStub } from '@vue/test-utils'
 
 import HomeView from '../HomeView.vue'
+
+enableAutoUnmount(afterEach)
 
 const { appStore, authStore } = vi.hoisted(() => ({
   appStore: {
@@ -108,7 +110,7 @@ describe('HomeView compact mode', () => {
     const wrapper = mountHome(settings)
 
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
-    expect(wrapper.find('.terminal-container').exists()).toBe(true)
+    expect(wrapper.find('[data-home-design="12-command"]').exists()).toBe(true)
   })
 
   it('links unauthenticated visitors to login', () => {

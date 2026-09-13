@@ -1,0 +1,76 @@
+.hc-site.hc-terminal{--hc-bg:#0f1213;--hc-panel:#14191b;--hc-ink:#eef2ed;--hc-muted:#939f9b;--hc-line:#2b3332;--hc-accent:#b2f476;--hc-on-accent:#152409;background-image:radial-gradient(#45554c28 .65px,transparent .65px);background-size:18px 18px}
+.hc-terminal .hc-header{height:84px}
+.hc-terminal .hc-header .hc-mark{background:var(--hc-accent);color:#162412;padding:3px;width:29px;border-radius:2px}
+.hc-terminal .hc-nav-cta,.hc-terminal .hc-button{border-radius:3px}
+.hc-terminal .hc-terminal-banner{background:#b2f476;border-top:1px solid #b2f476;color:#203a0e;font:10px Consolas,"Microsoft YaHei",monospace;letter-spacing:.7px}
+.hc-terminal .hc-terminal-banner>.hc-wrap{min-height:32px;display:flex;align-items:center;justify-content:space-between;gap:15px}
+.hc-terminal .hc-split{min-height:603px;gap:48px;padding-block:65px}
+.hc-terminal h1{font-size:clamp(40px,3.9vw,59px);letter-spacing:-2px;font-weight:620}
+.hc-terminal .hc-eyebrow{color:#a8b2ac}
+.hc-terminal .hc-code-underscore{font-family:Consolas,monospace;font-weight:400}
+.hc-terminal .hc-dev-tags{display:flex;gap:10px;flex-wrap:wrap;margin-top:33px}
+.hc-terminal .hc-dev-tags span{font:10px Consolas,"Microsoft YaHei",monospace;color:var(--hc-muted);border:1px solid var(--hc-line);padding:4px 9px;border-radius:3px;background:#141919}
+.hc-site .hc-terminal{border:1px solid #39403a;border-radius:8px;overflow:hidden;background:#121818;box-shadow:0 25px 70px #0004,0 0 60px #b2f47606;font-family:Consolas,"Microsoft YaHei",monospace;transform:perspective(1400px) rotateY(-3deg)}
+.hc-terminal .hc-terminal-top{height:43px;background:#1d2323;border-bottom:1px solid #2b3432;display:flex;align-items:center;justify-content:space-between;padding:0 16px;color:#9ca7a2;font-size:10px}
+.hc-terminal .hc-terminal-dots{letter-spacing:3px;color:#5b675f;font-size:11px}
+.hc-terminal .hc-terminal-body{padding:26px 26px 30px;font-size:12px;line-height:1.9;color:#ccd4cb}
+.hc-terminal .hc-terminal-path{color:#9aa79d;font-size:10px;margin-bottom:24px}
+.hc-terminal .hc-terminal-path span{color:var(--hc-accent);margin-left:10px}
+.hc-terminal .hc-terminal-body pre{overflow-x:auto;white-space:pre;font-family:inherit;font-size:11px;line-height:2.15;margin-top:13px}
+.hc-terminal .hc-terminal-body code{font-family:inherit}
+.hc-terminal .hc-code-green{color:#b2f476}
+.hc-terminal .hc-code-purple{color:#b9a5ea}
+.hc-terminal .hc-code-muted{color:#9aa79d}
+.hc-terminal .hc-terminal-divider{height:1px;background:#2b3332;margin:21px 0}
+.hc-terminal .hc-terminal-result{font-size:11px;margin:6px 0;color:#a5b2a6}
+.hc-terminal .hc-terminal-result span{color:var(--hc-accent);margin-right:10px}
+.hc-terminal .hc-terminal-prompt{margin-top:23px;font-size:11px;color:#cbd4ca}
+.hc-terminal .hc-cursor{display:inline-block;width:7px;height:13px;background:var(--hc-accent);vertical-align:middle;margin-left:5px;animation:hc-caret 1.2s steps(1) infinite}
+.hc-terminal .hc-terminal-bottom{padding:8px 14px;background:#1b2520;color:#9fb49e;display:flex;align-items:center;justify-content:space-between;font-size:9px;gap:12px}
+.hc-terminal .hc-terminal-bottom .hc-led{width:4px;height:4px;margin-right:4px}
+.hc-terminal .hc-terminal-ecosystem{padding:27px 0;border-block:1px dashed #39483d;display:grid;grid-template-columns:1fr 3fr;align-items:center;gap:12px 35px}
+.hc-terminal .hc-terminal-ecosystem .hc-model-note{grid-column:2;margin-top:0;font:9px Consolas,"Microsoft YaHei",monospace}
+.hc-terminal .hc-dev-comment{font:10px Consolas,monospace;color:var(--hc-muted);white-space:nowrap}
+.hc-terminal .hc-dev-features{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--hc-line);background:#121717}
+.hc-terminal .hc-dev-features article{padding:30px;border-right:1px solid var(--hc-line)}
+.hc-terminal .hc-dev-features article:last-child{border:0}
+.hc-terminal .hc-dev-feature-icon{font:25px Consolas,monospace;display:block;color:var(--hc-accent);height:61px}
+.hc-terminal .hc-dev-features h3{margin-top:13px}
+.hc-terminal .hc-step-number{border-top-style:dashed}
+.hc-terminal .hc-final-cta{padding:40px 28px;background:#182018;border:1px solid #37442f}
+.hc-site.hc-atelier{--hc-bg:#151613;--hc-panel:#1c1d18;--hc-ink:#e9e4d9;--hc-muted:#a7a498;--hc-line:#34352c;--hc-accent:#d6bd8c;--hc-on-accent:#262215;background:radial-gradient(ellipse at 80% 300px,#7063400d,transparent 40%),#151613}
+.hc-atelier .hc-header{height:102px}
+.hc-atelier .hc-header .hc-brand{font-family:Georgia,"Times New Roman",serif;font-size:28px;font-weight:400;letter-spacing:-.6px}
+.hc-atelier .hc-nav-cta{border-color:#615a45;border-radius:0;font-size:11px;letter-spacing:.8px}
+.hc-atelier .hc-split{min-height:713px;grid-template-columns:1.04fr 1fr;padding-top:48px;padding-bottom:75px;gap:30px}
+.hc-atelier .hc-hero-copy>.hc-eyebrow{font-size:9px;letter-spacing:2.6px;color:#bbb29b}
+.hc-atelier .hc-atelier-display{font:clamp(57px,5.8vw,85px)/.99 Georgia,"Times New Roman",serif;letter-spacing:-3px;margin:30px 0 24px}
+.hc-atelier .hc-atelier-display em{font-weight:400;color:var(--hc-accent)}
+.hc-atelier h1{font-family:"Songti SC","Noto Serif CJK SC","SimSun",serif;font-weight:400;font-size:26px;letter-spacing:3px;line-height:1.55;margin:0 0 19px}
+.hc-atelier .hc-lead{font-size:12px;line-height:2;letter-spacing:.6px}
+.hc-atelier .hc-actions{margin-top:29px}
+.hc-atelier .hc-button{border-radius:0;min-height:45px;font-size:11px;letter-spacing:1px;padding:11px 23px}
+.hc-atelier .hc-secondary{border:none}
+.hc-atelier .hc-gold-art{position:relative;width:115%;margin-left:-8%;margin-top:10px}
+.hc-atelier .hc-gold-art svg{filter:drop-shadow(0 0 30px #ddbf7c0d)}
+.hc-atelier .hc-gold-art-label{display:block;text-align:center;font:9px Georgia,serif;letter-spacing:4px;color:#bcb197;margin-top:9px}
+.hc-atelier .hc-gold-coordinate{display:block;text-align:center;font:8px Consolas,monospace;letter-spacing:1.5px;color:#888675;margin-top:12px}
+.hc-atelier .hc-atelier-edition{position:absolute;left:0;bottom:24px;font:8px Consolas,monospace;letter-spacing:2px;color:#8c8a7c}
+.hc-atelier .hc-atelier-ecosystem{padding:31px 0 25px;border-block:1px solid var(--hc-line);display:grid;grid-template-columns:1fr 2.3fr;gap:8px 32px;align-items:center}
+.hc-atelier .hc-atelier-ecosystem>.hc-eyebrow{font-family:Georgia,serif;font-size:9px;letter-spacing:2px;color:#b7ae98}
+.hc-atelier .hc-atelier-ecosystem .hc-providers{color:#c9c3b2}
+.hc-atelier .hc-atelier-ecosystem .hc-model-note{grid-column:2;margin:0;font-size:9px;color:#a7a498}
+.hc-atelier h2{font-family:"Songti SC","SimSun",serif;font-size:34px;font-weight:400;letter-spacing:2px}
+.hc-atelier .hc-section-heading .hc-eyebrow{font-size:9px;color:#b7ae98;letter-spacing:2px}
+.hc-atelier .hc-atelier-features{border-top:1px solid var(--hc-line)}
+.hc-atelier .hc-atelier-features article{display:grid;grid-template-columns:100px 1fr 180px;align-items:center;gap:20px;border-bottom:1px solid var(--hc-line);padding:31px 0}
+.hc-atelier .hc-roman{font:35px Georgia,serif;color:var(--hc-accent)}
+.hc-atelier .hc-atelier-features h3{font-family:"Songti SC","SimSun",serif;font-size:21px;letter-spacing:2px;font-weight:400}
+.hc-atelier .hc-atelier-features article p{font-size:12px;max-width:none;line-height:1.9}
+.hc-atelier .hc-atelier-features article p br{display:none}
+.hc-atelier .hc-atelier-word{font:italic 24px Georgia,serif;color:#99937e;justify-self:end}
+.hc-atelier .hc-start{border:0;padding-top:20px}
+.hc-atelier .hc-step-number{font-family:Georgia,serif;font-size:18px;font-style:italic}
+.hc-atelier .hc-faq h2{font-size:28px}
+.hc-atelier .hc-final-cta{background:radial-gradient(ellipse at 50% 110%,#a58c4114,transparent 70%);padding:52px 0}
+.hc-atelier .hc-final-cta h2{font-size:28px}
