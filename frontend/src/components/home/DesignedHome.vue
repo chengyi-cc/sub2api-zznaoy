@@ -13,6 +13,10 @@
       </a>
       <div class="dh-header-actions">
         <div class="dh-preferences">
+          <a v-if="docUrl" class="dh-docs" :href="docUrl" target="_blank" rel="noopener noreferrer" data-testid="home-header-docs">
+            <Icon name="book" size="sm" />
+            <span>{{ t('home.docs') }}</span>
+          </a>
           <div class="dh-locale"><slot name="locale" /></div>
           <button
             type="button"

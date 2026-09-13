@@ -44,6 +44,8 @@
 .designed-home .dh-brand span { min-width: 0; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .designed-home .dh-header-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .designed-home :is(.dh-preferences, .dh-account-actions) { display: flex; align-items: center; gap: 12px; }
+.designed-home .dh-docs { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 10px 14px; border: 1px solid var(--dh-line); border-radius: var(--dh-radius); color: var(--dh-ink); font-size: 15px; font-weight: 500; white-space: nowrap; }
+.designed-home .dh-docs:hover { border-color: var(--dh-muted); background: var(--dh-panel); }
 .designed-home :is(.dh-theme, .dh-login) { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; border: 1px solid var(--dh-line); border-radius: var(--dh-radius); color: var(--dh-ink); background: transparent; }
 .designed-home .dh-theme { width: 46px; border-color: transparent; color: var(--dh-muted); }
 .designed-home .dh-header svg { width: 20px; height: 20px; flex-shrink: 0; }
@@ -147,6 +149,8 @@
   .designed-home .dh-brand img { width: 32px; height: 32px; }
   .designed-home .dh-header-actions { display: contents; }
   .designed-home .dh-preferences { gap: 2px; }
+  .designed-home .dh-docs { padding-inline: 8px; font-size: 13px; }
+  .designed-home .dh-docs > svg { display: none; }
   .designed-home .dh-account-actions { grid-column: 1 / -1; gap: 12px; }
   .designed-home .dh-locale { margin-right: 0; }
   .designed-home .dh-login { flex: 1; font-size: 14px; padding-inline: 14px; }

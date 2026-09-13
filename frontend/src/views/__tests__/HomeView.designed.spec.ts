@@ -182,6 +182,27 @@ describe('selected dual-theme homepage', () => {
     expect(wrapper.findAllComponents(RouterLinkStub).filter(link => link.props('to') === '/model-plaza')).toHaveLength(0)
   })
 
+  it.each(['zh', 'en'])('adds the same documentation link immediately before the locale selector in %s', async locale => {
+    appStore.cachedPublicSettings.doc_url = 'https://example.com/docs'
+    const wrapper = mountHome(locale)
+    const headerDocs = wrapper.get('[data-testid="home-header-docs"]')
+    const footerDocs = wrapper.get('.dh-footer a[target="_blank"]')
+    expect(headerDocs.text()).toBe(locale === 'zh' ? '文档' : 'Docs')
+    expect(headerDocs.attributes('href')).toBe(footerDocs.attributes('href'))
+    expect(headerDocs.attributes('target')).toBe('_blank')
+    expect(headerDocs.attributes('rel')).toBe('noopener noreferrer')
+    expect(headerDocs.element.nextElementSibling).toBe(wrapper.get('.dh-locale').element)
+    await wrapper.get('[data-testid="home-theme-toggle"]').trigger('click')
+    expect(wrapper.get('[data-testid="home-header-docs"]').attributes('href')).toBe('https://example.com/docs')
+  })
+
+  it.each(['', 'javascript:alert(1)'])('hides the header documentation link without a safe configured URL: %s', docUrl => {
+    appStore.cachedPublicSettings.doc_url = docUrl
+    const wrapper = mountHome()
+    expect(wrapper.find('[data-testid="home-header-docs"]').exists()).toBe(false)
+    expect(wrapper.find('.dh-footer a[target="_blank"]').exists()).toBe(false)
+  })
+
   it('keeps switching usable when browser storage is blocked', async () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
