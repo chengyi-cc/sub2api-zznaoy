@@ -10,15 +10,17 @@ export default {
     eyebrow: 'THE INTELLIGENCE INTERFACE',
     title: 'Your app.',
     accent: 'Its next layer.',
-    description: 'One entry point for your models.\nYou focus on building. We keep access and management clear.'
+    description: 'Connect models, manage keys and track usage in one workspace.\nSpend less time on setup and more time building.'
   },
   silver: {
     eyebrow: 'A clearer way to work',
     title: 'Connect ideas.',
     accent: 'Find your focus.',
-    description: 'Bring models, applications and ideas together.\nA clearer connection. A more focused workflow.'
+    description: 'Model access, keys and usage, all in one place.\nLess switching. More focus.'
   },
   start: 'Start building',
+  signIn: 'Sign in to console',
+  register: 'Create account',
   readGuide: 'See the steps',
   artCaption: 'THE SHAPE OF CONNECTED INTELLIGENCE',
   interaction: 'Click to turn · Drag to rotate',

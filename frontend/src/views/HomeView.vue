@@ -100,6 +100,7 @@
     :is-authenticated="isAuthenticated"
     :dashboard-path="dashboardPath"
     :show-model-plaza-entry="showModelPlazaEntry"
+    :registration-enabled="appStore.cachedPublicSettings?.registration_enabled === true"
     @toggle-theme="toggleTheme"
   >
     <template #locale><LocaleSwitcher /></template>

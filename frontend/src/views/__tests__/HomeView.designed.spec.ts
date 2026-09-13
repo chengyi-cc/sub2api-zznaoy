@@ -134,11 +134,52 @@ describe('selected dual-theme homepage', () => {
     expect(wrapper.get('.dh-lead').text()).toBe('Our own subtitle')
     expect(wrapper.get('.dh-brand').text()).toContain('A deliberately long')
     expect(wrapper.text()).not.toContain('home.designed.')
-    expect(wrapper.get('.dh-nav').text()).toContain(locale === 'zh' ? '模型广场' : 'Models')
+    expect(wrapper.get('.dh-footer').text()).toContain(locale === 'zh' ? '模型广场' : 'Models')
     for (const link of wrapper.findAll('a[href^="#"]')) expect(wrapper.find(link.attributes('href')).exists()).toBe(true)
     for (const link of wrapper.findAll('a[target="_blank"]')) expect(link.attributes('rel')).toBe('noopener noreferrer')
     await wrapper.get('[data-testid="home-theme-toggle"]').trigger('click')
     expect(wrapper.text()).not.toContain('home.designed.')
+  })
+
+  it.each(['dark', 'light'])('keeps only account actions above the fold in %s mode', theme => {
+    localStorage.setItem('theme', theme)
+    authStore.isAuthenticated = true
+    appStore.cachedPublicSettings.registration_enabled = true
+    const wrapper = mountHome()
+    expect(wrapper.find('.dh-nav').exists()).toBe(false)
+    expect(wrapper.find('a[href="#dh-guide"]').exists()).toBe(false)
+    expect(wrapper.find('.dh-mini-grid').exists()).toBe(false)
+    expect(wrapper.findAll('.dh-actions a')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="home-primary-action"]').text()).toBe('进入控制台')
+    expect(wrapper.findAllComponents(RouterLinkStub).filter(link => link.props('to') === '/register')).toHaveLength(0)
+    expect(wrapper.get('[data-testid="home-header-login"]').classes()).toContain('dh-account-primary')
+  })
+
+  it.each([true, false, undefined])('respects the registration setting: %s', enabled => {
+    appStore.cachedPublicSettings.registration_enabled = enabled
+    const wrapper = mountHome()
+    expect(wrapper.get('[data-testid="home-primary-action"]').text()).toBe('登录控制台')
+    expect(wrapper.get('[data-testid="home-header-login"]').text()).toBe('登录')
+    const registrationLinks = wrapper.findAllComponents(RouterLinkStub).filter(link => link.props('to') === '/register')
+    expect(registrationLinks).toHaveLength(enabled === true ? 2 : 0)
+    if (enabled) {
+      expect(wrapper.get('[data-testid="home-register-action"]').text()).toBe('注册账号')
+      expect(wrapper.get('[data-testid="home-header-register"]').classes()).toContain('dh-account-primary')
+    }
+  })
+
+  it('uses meaningful product copy when the configured subtitle only repeats the brand', async () => {
+    appStore.cachedPublicSettings.site_subtitle = ' Our platform '
+    const wrapper = mountHome()
+    expect(wrapper.get('.dh-lead').text()).toContain('在一个控制台连接模型')
+    await wrapper.get('[data-testid="home-theme-toggle"]').trigger('click')
+    expect(wrapper.get('.dh-lead').text()).toContain('模型接入、密钥管理与用量记录')
+  })
+
+  it('does not expose the model plaza footer link when it requires authentication', () => {
+    appStore.cachedPublicSettings.model_plaza_require_auth = true
+    const wrapper = mountHome()
+    expect(wrapper.findAllComponents(RouterLinkStub).filter(link => link.props('to') === '/model-plaza')).toHaveLength(0)
   })
 
   it('keeps switching usable when browser storage is blocked', async () => {

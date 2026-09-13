@@ -10,15 +10,17 @@ export default {
     eyebrow: '让智能，成为应用的下一层能力',
     title: '你的应用，',
     accent: '下一层智能。',
-    description: '把模型连接交给统一入口。\n你负责构建，我们让接入与管理更加清晰。'
+    description: '在一个控制台连接模型、管理密钥、查看用量。\n把时间留给产品，让想法更快落地。'
   },
   silver: {
     eyebrow: '为下一种工作方式而来',
     title: '连接所想。',
     accent: '专注所长。',
-    description: '将模型、应用与灵感连在一起。\n用更清晰的入口，开启更流畅的工作。'
+    description: '模型接入、密钥管理与用量记录，尽在一处。\n少一些切换，多一些专注。'
   },
   start: '开始构建',
+  signIn: '登录控制台',
+  register: '注册账号',
   readGuide: '查看接入步骤',
   artCaption: 'THE SHAPE OF CONNECTED INTELLIGENCE',
   interaction: '点击转动 · 按住拖拽旋转',
