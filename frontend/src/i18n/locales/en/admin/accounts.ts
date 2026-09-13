@@ -1,5 +1,21 @@
 export default {
     accounts: {
+      candy: {
+        mode: 'Candy reasoning test',
+        hint: 'Send a fixed candy puzzle through this account and the selected text model, then grade the answer on the server. Uses real quota; allow up to 3 minutes.',
+        showQuestion: 'View the puzzle and grading rules',
+        question: 'A black bag contains three flavors of candy, each in two different shapes (round and five-pointed star, which can be distinguished by touch). The counts by flavor and shape are shown below. Participants must decide before the activity how many candies to draw. What is the minimum number to take out to guarantee having apple-flavored and peach-flavored candies of different shapes? Either a round apple candy paired with a star-shaped peach candy, or a round peach candy paired with a star-shaped apple candy, meets the requirement.',
+        shape: 'Shape', apple: 'Apple', peach: 'Peach', melon: 'Melon', round: 'Round', star: 'Star',
+        formatHint: 'The model may explain first, but must end with CANDY_RESULT=number and exactly one final total, without units, conditions or commentary. Only this final line is graded; other numbers in the analysis are ignored.',
+        disclaimer: 'One puzzle cannot establish model identity or overall intelligence. Retry incorrect answers. Format errors, timeouts and truncated replies are inconclusive, not evidence of degradation. Wrong answers do not disable the account.',
+        connected: 'Request completed; see the separate candy test verdict',
+        sending: 'Sending the candy puzzle and waiting for the final answer…',
+        incomplete: 'The stream ended without a completion result. Please retry.',
+        actual: 'Final model answer: {answer} candies',
+        expected: 'Expected: {answer} candies',
+        duration: 'Elapsed: {seconds} seconds',
+        verdict: { pass: 'Puzzle passed', incorrect: 'Incorrect answer; retry recommended', invalid_format: 'Invalid answer format; cannot grade automatically', inconclusive: 'No complete valid result; not graded' }
+      },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',

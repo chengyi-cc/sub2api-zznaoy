@@ -336,6 +336,17 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	if strings.EqualFold(strings.TrimSpace(mode), AccountTestModeCandy) {
+		c.Set(candyTestContextKey, &candyTestState{started: time.Now()})
+		defer func() { s.observeCandyTestEvent(c, TestEvent{Type: "error"}) }()
+		if err := validateCandyTest(account, modelID, testOpts); err != nil {
+			return s.sendErrorAndEnd(c, err.Error())
+		}
+		limited, cancel := context.WithTimeout(ctx, 180*time.Second)
+		defer cancel()
+		c.Request = c.Request.WithContext(limited)
+		prompt, mode = candyTestPrompt, "default"
+	}
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal
 	// interactions, but intentionally do not send their placeholder credentials
@@ -469,6 +480,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
+	applyCandyTestPayload(c, payload)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event
@@ -547,6 +559,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
+	applyCandyTestPayload(c, payload)
 	payloadBytes, _ := json.Marshal(payload)
 	vertexBody, err := buildVertexAnthropicRequestBody(payloadBytes)
 	if err != nil {
@@ -631,6 +644,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 		"max_tokens":  256,
 		"temperature": 1,
 	}
+	applyCandyTestPayload(c, bedrockPayload)
 	bedrockBody, _ := json.Marshal(bedrockPayload)
 
 	// Use non-streaming endpoint (response is standard Claude JSON)
@@ -680,7 +694,8 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 
 	// Bedrock non-streaming response is standard Claude JSON, extract the text
 	var result struct {
-		Content []struct {
+		StopReason string `json:"stop_reason"`
+		Content    []struct {
 			Text string `json:"text"`
 		} `json:"content"`
 	}
@@ -696,6 +711,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 		text = "(empty response)"
 	}
 
+	markCandyCompletion(c, result.StopReason == "end_turn" || result.StopReason == "stop_sequence")
 	s.sendEvent(c, TestEvent{Type: "content", Text: text})
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 	return nil
@@ -796,6 +812,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
 	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
+	applyCandyTestPayload(c, payload)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -2650,6 +2667,9 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 					if parts, ok := content["parts"].([]any); ok {
 						for _, part := range parts {
 							if partMap, ok := part.(map[string]any); ok {
+								if thought, _ := partMap["thought"].(bool); thought && candyState(c) != nil {
+									continue
+								}
 								if text, ok := partMap["text"].(string); ok && text != "" {
 									s.sendEvent(c, TestEvent{Type: "content", Text: text})
 								}
@@ -2671,6 +2691,7 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 
 				// Check for completion after extracting content
 				if finishReason, ok := candidate["finishReason"].(string); ok && finishReason != "" {
+					markCandyCompletion(c, finishReason == "STOP")
 					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 					return nil
 				}
@@ -2774,6 +2795,11 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 					s.sendEvent(c, TestEvent{Type: "content", Text: text})
 				}
 			}
+		case "message_delta":
+			if delta, ok := data["delta"].(map[string]any); ok {
+				reason, _ := delta["stop_reason"].(string)
+				markCandyCompletion(c, reason == "end_turn" || reason == "stop_sequence")
+			}
 		case "message_stop":
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
@@ -2860,6 +2886,7 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 			}
 			if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
 				seenFinish = true
+				markCandyCompletion(c, finishReason == "stop")
 			}
 		}
 	}
@@ -2911,8 +2938,18 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
 			}
 		case "response.completed", "response.done":
+			complete := true
+			if response, ok := data["response"].(map[string]any); ok {
+				status, _ := response["status"].(string)
+				complete = status == "" || status == "completed"
+			}
+			markCandyCompletion(c, complete)
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
+		case "response.incomplete":
+			if candyState(c) != nil {
+				return s.sendErrorAndEnd(c, "Reasoning test response was incomplete")
+			}
 		case "response.failed":
 			errorMsg := "OpenAI response failed"
 			if responseData, ok := data["response"].(map[string]any); ok {
@@ -3175,6 +3212,7 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 			}
 		}
 	}
+	s.observeCandyTestEvent(c, event)
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {
 		log.Printf("failed to write SSE event: %v", err)

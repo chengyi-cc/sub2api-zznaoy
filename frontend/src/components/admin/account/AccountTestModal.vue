@@ -70,7 +70,7 @@
         />
       </div>
 
-      <div v-if="isOpenAIAccount" class="space-y-1.5">
+      <div v-if="isOpenAIAccount || supportsCandyTest" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.openai.testMode') }}
         </label>
@@ -202,7 +202,7 @@
             class="mt-3 flex items-center gap-2 border-t border-gray-700 pt-3 text-green-400"
           >
             <Icon name="check" size="sm" :stroke-width="2" />
-            <span>{{ t('admin.accounts.testCompleted') }}</span>
+            <span>{{ testMode === 'candy' ? t('admin.accounts.candy.connected') : t('admin.accounts.testCompleted') }}</span>
           </div>
           <div
             v-else-if="status === 'error'"
@@ -223,6 +223,8 @@
           <Icon name="link" size="sm" :stroke-width="2" />
         </button>
       </div>
+
+      <CandyTestPanel v-if="testMode === 'candy'" :result="candyResult" />
 
       <div v-if="generatedImages.length > 0" class="space-y-2">
         <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
@@ -365,7 +367,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -376,6 +378,9 @@ import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
+import CandyTestPanel from '@/components/account/CandyTestPanel.vue'
+import { supportsAccountCandyTest, parseCandyTestResult, missingCandyTestResult, type CandyTestResult } from '@/utils/accountCandyTest'
+import { readAccountTestStream, type AccountTestStreamEvent } from '@/utils/accountTestStream'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
@@ -413,7 +418,10 @@ const generatedImages = ref<PreviewMedia[]>([])
 const generatedAudios = ref<PreviewMedia[]>([])
 const generatedVideos = ref<PreviewMedia[]>([])
 const previewImageUrl = ref('')
-const testMode = ref<'default' | 'compact'>('default')
+const testMode = ref<'default' | 'compact' | 'candy'>('default')
+const supportsCandyTest = computed(() => supportsAccountCandyTest(props.account, selectedModelId.value))
+const candyResult = ref<CandyTestResult | null>(null)
+watch(supportsCandyTest, supported => { if (!supported && testMode.value === 'candy') testMode.value = 'default' })
 const grokTestMode = ref<'text' | 'image' | 'video' | 'search' | 'tts' | 'stt' | 'realtime'>('text')
 const uploadImageDataURL = ref('')
 const uploadImagePreview = ref('')
@@ -426,7 +434,8 @@ const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
 const isGrokAccount = computed(() => props.account?.platform === 'grok')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+  ...(isOpenAIAccount.value ? [{ value: 'compact', label: t('admin.accounts.openai.testModeCompact') }] : []),
+  ...(supportsCandyTest.value ? [{ value: 'candy', label: t('admin.accounts.candy.mode') }] : [])
 ])
 const grokTestModeOptions = computed(() => [
   { value: 'text', label: t('admin.accounts.grok.testModeText') },
@@ -651,6 +660,7 @@ const promptInputHint = computed(() => {
 })
 
 const testModeSummary = computed(() => {
+  if (testMode.value === 'candy') return t('admin.accounts.candy.mode')
   if (isGrokAccount.value) {
     switch (grokTestMode.value) {
       case 'video':
@@ -792,6 +802,7 @@ const loadAvailableModels = async () => {
 
 const resetState = () => {
   status.value = 'idle'
+  candyResult.value = null
   outputLines.value = []
   streamingContent.value = ''
   errorMessage.value = ''
@@ -800,6 +811,10 @@ const resetState = () => {
   generatedVideos.value = []
   previewImageUrl.value = ''
 }
+
+watch([selectedModelId, testMode], () => {
+  if (status.value !== 'connecting') resetState()
+})
 
 const handleClose = () => {
   abortStream()
@@ -841,7 +856,8 @@ const startTest = async () => {
 
   abortStream()
 
-  abortController = new AbortController()
+  const controller = new AbortController()
+  abortController = controller
 
   try {
     const requestBody: {
@@ -854,7 +870,7 @@ const startTest = async () => {
       model_id: showModelSelect.value ? selectedModelId.value : '',
       prompt: supportsPromptInput.value ? testPrompt.value.trim() : ''
     }
-    if (isOpenAIAccount.value) {
+    if (isOpenAIAccount.value || testMode.value === 'candy') {
       requestBody.mode = testMode.value
     }
     if (isGrokAccount.value) {
@@ -889,7 +905,7 @@ const startTest = async () => {
         [ADMIN_UI_REQUEST_HEADER]: '1'
       },
       body: JSON.stringify(requestBody),
-      signal: abortController.signal
+      signal: controller.signal
     })
 
     if (!response.ok) {
@@ -901,32 +917,15 @@ const startTest = async () => {
       throw new Error(t('admin.accounts.grok.noResponseBody'))
     }
 
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const jsonStr = line.slice(6).trim()
-          if (jsonStr) {
-            try {
-              const event = JSON.parse(jsonStr)
-              handleEvent(event)
-            } catch (e) {
-              console.error('Failed to parse SSE event:', e)
-            }
-          }
-        }
-      }
-    }
+    await readAccountTestStream(reader, event => {
+      if (abortController === controller && !controller.signal.aborted) handleEvent(event)
+    })
+    if (abortController !== controller || controller.signal.aborted) return
+    if (status.value === 'connecting') throw new Error(t('admin.accounts.candy.incomplete'))
+    if (testMode.value === 'candy' && !candyResult.value) candyResult.value = missingCandyTestResult()
   } catch (error: unknown) {
+    if (abortController !== controller) return
+    if (testMode.value === 'candy' && !candyResult.value) candyResult.value = missingCandyTestResult()
     if (error instanceof DOMException && error.name === 'AbortError') {
       status.value = 'idle'
       return
@@ -938,17 +937,7 @@ const startTest = async () => {
   }
 }
 
-const handleEvent = (event: {
-  type: string
-  text?: string
-  model?: string
-  success?: boolean
-  error?: string
-  image_url?: string
-  audio_url?: string
-  video_url?: string
-  mime_type?: string
-}) => {
+const handleEvent = (event: AccountTestStreamEvent) => {
   switch (event.type) {
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
@@ -956,7 +945,9 @@ const handleEvent = (event: {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
       addLine(
-        isGrokAccount.value
+        testMode.value === 'candy'
+          ? t('admin.accounts.candy.sending')
+          : isGrokAccount.value
           ? grokTestMode.value === 'video'
             ? t('admin.accounts.sendingVideoRequest')
             : grokTestMode.value === 'image'
@@ -977,6 +968,10 @@ const handleEvent = (event: {
       )
       addLine('', 'text-gray-300')
       addLine(t('admin.accounts.response'), 'text-yellow-400')
+      break
+
+    case 'candy_result':
+      if (testMode.value === 'candy') candyResult.value = parseCandyTestResult(event.data)
       break
 
     case 'content':
@@ -1028,6 +1023,10 @@ const handleEvent = (event: {
         addLine(streamingContent.value, 'text-green-300')
         streamingContent.value = ''
       }
+      if (testMode.value === 'candy') {
+        candyResult.value ??= missingCandyTestResult()
+        addLine(t(`admin.accounts.candy.verdict.${candyResult.value.verdict}`), candyResult.value.verdict === 'pass' ? 'text-green-400' : 'text-amber-400')
+      }
       if (event.success) {
         status.value = 'success'
       } else {
@@ -1046,6 +1045,8 @@ const handleEvent = (event: {
       break
   }
 }
+
+onBeforeUnmount(abortStream)
 
 const copyOutput = () => {
   const text = outputLines.value.map((l) => l.text).join('\n')

@@ -55,7 +55,7 @@
         />
       </div>
 
-      <div v-if="isOpenAIAccount" class="space-y-1.5">
+      <div v-if="isOpenAIAccount || supportsCandyTest" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.openai.testMode') }}
         </label>
@@ -109,7 +109,7 @@
             class="mt-3 flex items-center gap-2 border-t border-gray-700 pt-3 text-green-400"
           >
             <Icon name="check" size="sm" :stroke-width="2" />
-            <span>{{ t('admin.accounts.testCompleted') }}</span>
+            <span>{{ testMode === 'candy' ? t('admin.accounts.candy.connected') : t('admin.accounts.testCompleted') }}</span>
           </div>
           <div
             v-else-if="status === 'error'"
@@ -130,6 +130,8 @@
           <Icon name="link" size="sm" :stroke-width="2" />
         </button>
       </div>
+
+      <CandyTestPanel v-if="testMode === 'candy'" :result="candyResult" />
 
       <div v-if="generatedImages.length > 0" class="space-y-2">
         <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
@@ -187,7 +189,9 @@
         <span class="flex items-center gap-1">
           <Icon name="chat" size="sm" :stroke-width="2" />
           {{
-            supportsImageTest
+            testMode === 'candy'
+              ? t('admin.accounts.candy.mode')
+              : supportsImageTest
               ? t('admin.accounts.imageTestMode')
               : t('admin.accounts.testPrompt')
           }}
@@ -242,7 +246,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -252,6 +256,9 @@ import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
+import CandyTestPanel from '@/components/account/CandyTestPanel.vue'
+import { supportsAccountCandyTest, parseCandyTestResult, missingCandyTestResult, type CandyTestResult } from '@/utils/accountCandyTest'
+import { readAccountTestStream, type AccountTestStreamEvent } from '@/utils/accountTestStream'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
@@ -286,11 +293,15 @@ const testPrompt = ref('')
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
-const testMode = ref<'default' | 'compact'>('default')
+const testMode = ref<'default' | 'compact' | 'candy'>('default')
+const supportsCandyTest = computed(() => supportsAccountCandyTest(props.account, selectedModelId.value))
+const candyResult = ref<CandyTestResult | null>(null)
+watch(supportsCandyTest, supported => { if (!supported && testMode.value === 'candy') testMode.value = 'default' })
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+  ...(isOpenAIAccount.value ? [{ value: 'compact', label: t('admin.accounts.openai.testModeCompact') }] : []),
+  ...(supportsCandyTest.value ? [{ value: 'candy', label: t('admin.accounts.candy.mode') }] : [])
 ])
 const previewImageUrl = ref('')
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
@@ -373,12 +384,17 @@ const loadAvailableModels = async () => {
 
 const resetState = () => {
   status.value = 'idle'
+  candyResult.value = null
   outputLines.value = []
   streamingContent.value = ''
   errorMessage.value = ''
   generatedImages.value = []
   previewImageUrl.value = ''
 }
+
+watch([selectedModelId, testMode], () => {
+  if (status.value !== 'connecting') resetState()
+})
 
 const handleClose = () => {
   abortStream()
@@ -415,7 +431,8 @@ const startTest = async () => {
 
   abortStream()
 
-  abortController = new AbortController()
+  const controller = new AbortController()
+  abortController = controller
 
   try {
     // Use the configured API base; EventSource does not support POST.
@@ -431,9 +448,9 @@ const startTest = async () => {
       body: JSON.stringify({
         model_id: selectedModelId.value,
         prompt: supportsImageTest.value ? testPrompt.value.trim() : '',
-        mode: isOpenAIAccount.value ? testMode.value : 'default'
+        mode: isOpenAIAccount.value || testMode.value === 'candy' ? testMode.value : 'default'
       }),
-      signal: abortController.signal
+      signal: controller.signal
     })
 
     if (!response.ok) {
@@ -445,32 +462,15 @@ const startTest = async () => {
       throw new Error('No response body')
     }
 
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const jsonStr = line.slice(6).trim()
-          if (jsonStr) {
-            try {
-              const event = JSON.parse(jsonStr)
-              handleEvent(event)
-            } catch (e) {
-              console.error('Failed to parse SSE event:', e)
-            }
-          }
-        }
-      }
-    }
+    await readAccountTestStream(reader, event => {
+      if (abortController === controller && !controller.signal.aborted) handleEvent(event)
+    })
+    if (abortController !== controller || controller.signal.aborted) return
+    if (status.value === 'connecting') throw new Error(t('admin.accounts.candy.incomplete'))
+    if (testMode.value === 'candy' && !candyResult.value) candyResult.value = missingCandyTestResult()
   } catch (error: unknown) {
+    if (abortController !== controller) return
+    if (testMode.value === 'candy' && !candyResult.value) candyResult.value = missingCandyTestResult()
     if (error instanceof DOMException && error.name === 'AbortError') {
       status.value = 'idle'
       return
@@ -482,15 +482,7 @@ const startTest = async () => {
   }
 }
 
-const handleEvent = (event: {
-  type: string
-  text?: string
-  model?: string
-  success?: boolean
-  error?: string
-  image_url?: string
-  mime_type?: string
-}) => {
+const handleEvent = (event: AccountTestStreamEvent) => {
   switch (event.type) {
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
@@ -498,13 +490,19 @@ const handleEvent = (event: {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
       addLine(
-        supportsImageTest.value
+        testMode.value === 'candy'
+            ? t('admin.accounts.candy.sending')
+            : supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')
             : t('admin.accounts.sendingTestMessage'),
         'text-gray-400'
       )
       addLine('', 'text-gray-300')
       addLine(t('admin.accounts.response'), 'text-yellow-400')
+      break
+
+    case 'candy_result':
+      if (testMode.value === 'candy') candyResult.value = parseCandyTestResult(event.data)
       break
 
     case 'content':
@@ -536,6 +534,10 @@ const handleEvent = (event: {
         addLine(streamingContent.value, 'text-green-300')
         streamingContent.value = ''
       }
+      if (testMode.value === 'candy') {
+        candyResult.value ??= missingCandyTestResult()
+        addLine(t(`admin.accounts.candy.verdict.${candyResult.value.verdict}`), candyResult.value.verdict === 'pass' ? 'text-green-400' : 'text-amber-400')
+      }
       if (event.success) {
         status.value = 'success'
       } else {
@@ -554,6 +556,8 @@ const handleEvent = (event: {
       break
   }
 }
+
+onBeforeUnmount(abortStream)
 
 const copyOutput = () => {
   const text = outputLines.value.map((l) => l.text).join('\n')
