@@ -13,6 +13,7 @@ func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 // doOpenAIUpstream 只在 OpenAI OAuth 能力绑定已启用时把真实请求交给插件。
 // 插件返回标准 http.Response，响应解析、错误映射、SSE 和计费仍由现有核心链处理。
 func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL string, account *Account) (*http.Response, error) {
+	s.applyTurnStateAutoRequest(request, account)
 	if account != nil && account.IsOpenAIOAuthLike() && (s.cfg == nil || !s.cfg.Gateway.DisableCodexZstdRequestBody) {
 		request = request.WithContext(WithCodexRequestCompression(request.Context()))
 	}
@@ -36,6 +37,9 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 	account *Account,
 	useTLSFallback bool,
 ) (*http.Response, error) {
+	if s.openaiGatewayService != nil {
+		s.openaiGatewayService.applyTurnStateAutoRequest(request, account)
+	}
 	if account != nil && account.IsOpenAIOAuthLike() && (s.cfg == nil || !s.cfg.Gateway.DisableCodexZstdRequestBody) {
 		request = request.WithContext(WithCodexRequestCompression(request.Context()))
 	}

@@ -195,6 +195,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		"soft_routing_hint",
 	)
 
+	s.applyTurnStateAuto(ctx, account, routingModel, headers)
 	return headers, sessionResolution, nil
 }
 

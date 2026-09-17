@@ -774,6 +774,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	firstRoutingFields := gjson.GetManyBytes(firstPayload.payloadRaw, "model", "service_tier")
+	autoTurnModel := firstRoutingFields[0].String()
 	wsHeaders, _, buildHdrErr := s.buildOpenAIWSHeaders(
 		ctx,
 		c,
@@ -790,6 +791,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if buildHdrErr != nil {
 		return fmt.Errorf("build ws headers: %w", buildHdrErr)
 	}
+	autoTurnInjected := s.applyTurnStateAuto(ctx, account, autoTurnModel, wsHeaders)
 	baseAcquireReq := openAIWSAcquireRequest{
 		Account:    account,
 		WSURL:      wsURL,
@@ -865,6 +867,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	var acquireTurnLease func(int, string, bool) (*openAIWSConnLease, error)
 	acquireTurnLease = func(turn int, preferred string, forcePreferredConn bool) (*openAIWSConnLease, error) {
 		req := cloneOpenAIWSAcquireRequest(baseAcquireReq)
+		s.applyTurnStateAuto(ctx, account, autoTurnModel, req.Headers)
 		req.PreferredConnID = strings.TrimSpace(preferred)
 		req.ForcePreferredConn = forcePreferredConn
 		// dedicated 模式下每次获取均新建连接，避免跨会话复用残留上下文。
@@ -939,6 +942,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				updatedHeaders = make(http.Header)
 			}
 			updatedHeaders.Set(openAIWSTurnStateHeader, handshakeTurnState)
+			s.applyTurnStateAuto(ctx, account, autoTurnModel, updatedHeaders)
 			baseAcquireReq.Headers = updatedHeaders
 		}
 		logOpenAIWSModeInfo(
@@ -1469,6 +1473,23 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		skipBeforeTurn = false
+		if s.turnStateAuto != nil && account.IsCodexTurnStateAutoEnabled() {
+			model := gjson.GetBytes(currentPayload, "model").String()
+			modelChanged := model != autoTurnModel
+			if modelChanged || autoTurnInjected {
+				baseAcquireReq.Headers.Del(openAIWSTurnStateHeader)
+				if !modelChanged && turnState != "" {
+					baseAcquireReq.Headers.Set(openAIWSTurnStateHeader, turnState)
+				}
+			}
+			autoTurnModel = model
+			injected := s.applyTurnStateAuto(ctx, account, model, baseAcquireReq.Headers)
+			if sessionLease != nil && (injected || autoTurnInjected || modelChanged) &&
+				!sessionLease.conn.matchesHandshakeCompatibility(normalizeOpenAIWSHandshakeCompatibility(account, baseAcquireReq.Headers, baseAcquireReq.TLSProfile)) {
+				resetSessionLease(true)
+			}
+			autoTurnInjected = injected
+		}
 		// 剥离本会话已知失效的加密项，阻断同一失效密文随历史反复触发上游拒绝。
 		// 历史序列须同步剥离，否则与已剥离的当前 input 项错位，prefix 复用失配。
 		if invalidDigests := s.sessionInvalidEncryptedContentDigests(groupID, sessionHash); len(invalidDigests) > 0 {

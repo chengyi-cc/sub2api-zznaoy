@@ -1,0 +1,24 @@
+[Unit]
+Description=Independent single-use IPv6 turn-state egress pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sub2api-turn-state-egress
+ExecStart=/usr/bin/python3 /opt/sub2api-turn-state-egress/pool.py --config /etc/sub2api-turn-state-egress/config.json
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sub2api-turn-state-egress
+PrivateTmp=true
+ProtectHome=true
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

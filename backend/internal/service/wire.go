@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/Wei-Shaw/sub2api/internal/turnstate"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -198,9 +199,16 @@ func ProvideOpenAIGatewayService(
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	redisClient *redis.Client,
 ) *OpenAIGatewayService {
 	gateway := NewOpenAIGatewayService(accountRepo, usageLogRepo, usageBillingRepo, userRepo, userSubRepo, userGroupRateRepo, cache, cfg, schedulerSnapshot, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, grokTokenProvider, resolver, channelService, balanceNotifyService, settingService, userPlatformQuotaRepo)
 	gateway.tlsFPProfileService = tlsFPProfileService
+	manager, err := turnstate.New(turnstate.ConfigFromEnv(), redisClient, gateway.prepareTurnStateSample)
+	if err != nil {
+		reportTurnStateConfigurationError(err)
+	} else {
+		gateway.turnStateAuto = manager
+	}
 	return gateway
 }
 

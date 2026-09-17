@@ -8,6 +8,13 @@ permissions:
   contents: read
 
 jobs:
+  turn-state-egress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test isolated IPv6 egress pool
+        run: python3 -m unittest discover -s tools/turn-state-egress -v
+
   shell:
     runs-on: macos-15
     steps:
