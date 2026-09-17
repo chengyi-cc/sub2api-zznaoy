@@ -203,12 +203,10 @@ func ProvideOpenAIGatewayService(
 ) *OpenAIGatewayService {
 	gateway := NewOpenAIGatewayService(accountRepo, usageLogRepo, usageBillingRepo, userRepo, userSubRepo, userGroupRateRepo, cache, cfg, schedulerSnapshot, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, grokTokenProvider, resolver, channelService, balanceNotifyService, settingService, userPlatformQuotaRepo)
 	gateway.tlsFPProfileService = tlsFPProfileService
-	manager, err := turnstate.New(turnstate.ConfigFromEnv(), redisClient, gateway.prepareTurnStateSample)
-	if err != nil {
-		reportTurnStateConfigurationError(err)
-	} else {
-		gateway.turnStateAuto = manager
-	}
+	gateway.turnStateAuto = turnstate.NewRuntime(func(settings turnstate.Config) (*turnstate.Manager, error) {
+		return turnstate.New(settings, redisClient, gateway.prepareTurnStateSample)
+	})
+	gateway.initializeTurnStateSettings(turnstate.ConfigFromEnv())
 	return gateway
 }
 

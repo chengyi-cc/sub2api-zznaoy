@@ -38,6 +38,7 @@ type Config struct {
 	URL           string
 	Token         string
 	CAFile        string
+	CAPEM         string
 	Attempts      int
 	Concurrency   int
 	ProxyHost     string
@@ -151,6 +152,9 @@ func New(config Config, cache redis.UniversalClient, prepare Prepare) (*Manager,
 		if readErr != nil || !roots.AppendCertsFromPEM(pem) {
 			return nil, errors.New("cannot load turn-state pool CA certificate")
 		}
+	}
+	if config.CAPEM != "" && !roots.AppendCertsFromPEM([]byte(config.CAPEM)) {
+		return nil, errors.New("invalid IPv6 pool CA certificate")
 	}
 	if config.Attempts < 1 || config.Attempts > 30 {
 		config.Attempts = 9

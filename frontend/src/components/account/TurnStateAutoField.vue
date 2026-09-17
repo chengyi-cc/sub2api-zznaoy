@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'
+import TurnStateSettingsPanel from './TurnStateSettingsPanel.vue'
 
 const props = withDefaults(defineProps<{ accountId: number; modelValue: boolean; profile?: string; source?: string }>(), { profile: 'team', source: 'purchased' })
 const emit = defineEmits<{
@@ -26,6 +27,7 @@ type Snapshot = {
 const status = ref<Snapshot | null>(null)
 const error = ref(false)
 const showHistory = ref(false)
+const showSettings = ref(false)
 const now = ref(Date.now())
 const serverOffset = ref(0)
 const selectedConfigured = computed(() => status.value?.sources?.[props.source] ?? status.value?.configured)
@@ -81,11 +83,18 @@ function toggleHistory(): void {
   void refresh(generation)
 }
 
+function settingsSaved(): void {
+  generation += 1
+  clearTimeout(timer)
+  void refresh(generation)
+}
+
 watch(() => props.accountId, () => {
   generation += 1
   clearTimeout(timer)
   status.value = null
   showHistory.value = false
+  showSettings.value = false
   serverOffset.value = 0
   void refresh(generation)
 }, { immediate: true })
@@ -100,15 +109,19 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600">
-    <label class="flex cursor-pointer items-center justify-between gap-4">
+    <div class="flex items-center justify-between gap-4">
       <span>
         <span class="input-label mb-1 block">{{ chinese ? '自动采集并注入轮次状态' : 'Automatic turn-state acquisition' }}</span>
         <span class="block text-xs text-gray-500 dark:text-gray-400">
           {{ chinese ? '按账号和模型单独保存。新导入账号默认开启，默认使用 Team 规则和购买代理。修改后请保存账号。' : 'Stored separately per account and model. New imports default to enabled, Team rules and purchased proxies. Save the account to apply changes.' }}
         </span>
       </span>
-      <input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-primary-600" :checked="modelValue" @change="emit('update:modelValue', ($event.target as HTMLInputElement).checked)">
-    </label>
+      <div class="flex shrink-0 items-center gap-3">
+        <button type="button" class="btn btn-secondary text-xs" :aria-expanded="showSettings" data-testid="turn-state-configure" @click="showSettings = !showSettings">{{ showSettings ? (chinese ? '收起配置' : 'Hide settings') : (chinese ? '配置' : 'Configure') }}</button>
+        <input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-primary-600" :aria-label="chinese ? '自动采集并注入轮次状态' : 'Automatic turn-state acquisition'" :checked="modelValue" @change="emit('update:modelValue', ($event.target as HTMLInputElement).checked)">
+      </div>
+    </div>
+    <TurnStateSettingsPanel v-if="showSettings" @saved="settingsSaved" />
     <div class="grid gap-3 sm:grid-cols-2">
       <label class="text-sm">
         <span class="input-label">{{ chinese ? '账号采集规则' : 'Account acquisition rules' }}</span>
@@ -133,7 +146,7 @@ onBeforeUnmount(() => {
     </p>
     <p v-if="error" class="text-xs text-amber-600">{{ chinese ? '状态暂时无法读取；不影响保存设置。' : 'Status unavailable; settings can still be saved.' }}</p>
     <p v-else-if="status && !selectedConfigured" class="text-xs text-amber-600">
-      {{ chinese ? '所选采集服务尚未配置或配置无效，当前不能通过此方式采集。' : 'The selected acquisition service is missing or invalid.' }}
+      {{ chinese ? '所选采集服务尚未配置或配置无效，请点击开关旁的“配置”填写并保存。' : 'The selected acquisition service is missing or invalid. Click Configure next to the switch.' }}
     </p>
     <template v-if="status">
       <p class="text-xs text-gray-500">{{ chinese ? '生效状态：' : 'Saved state: ' }}{{ status.enabled ? (chinese ? '开启' : 'enabled') : (chinese ? '关闭' : 'disabled') }}</p>

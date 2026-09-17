@@ -128,7 +128,7 @@ func (gateway *OpenAIGatewayService) applyTurnStateAutoRequest(request *http.Req
 
 func (gateway *OpenAIGatewayService) TurnStateAutoStatus(ctx context.Context, account *Account, includeHistory bool) map[string]any {
 	options := turnstate.OptionsFromExtra(account.Extra)
-	var manager *turnstate.Manager
+	var manager *turnstate.Runtime
 	if gateway != nil {
 		manager = gateway.turnStateAuto
 	}
@@ -146,6 +146,9 @@ func (gateway *OpenAIGatewayService) TurnStateAutoStatus(ctx context.Context, ac
 }
 
 func (gateway *OpenAIGatewayService) CloseTurnStateAuto() {
+	if gateway != nil && gateway.turnStateSettings != nil {
+		gateway.turnStateSettings.close()
+	}
 	if gateway != nil && gateway.turnStateAuto != nil {
 		gateway.turnStateAuto.Close()
 	}

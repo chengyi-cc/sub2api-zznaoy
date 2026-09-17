@@ -33,6 +33,10 @@ func TestDeriveAuditAction(t *testing.T) {
 	}
 }
 
+func TestTurnStateSettingsOmitsAuditCredentials(test *testing.T) {
+	require.Contains(test, auditBodyOmittedRoutes, "PUT /api/v1/admin/accounts/turn-state/settings")
+}
+
 type auditCaptureRepository struct {
 	mu   sync.Mutex
 	logs []*service.AuditLog

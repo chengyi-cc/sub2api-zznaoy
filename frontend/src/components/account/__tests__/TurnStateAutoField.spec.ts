@@ -11,6 +11,18 @@ beforeEach(() => { vi.useFakeTimers(); getStatus.mockReset() })
 afterEach(() => { vi.useRealTimers() })
 
 describe('TurnStateAutoField', () => {
+  it('opens configuration next to the switch without changing the account switch', async () => {
+    getStatus.mockResolvedValue({ data: { configured: false, enabled: false, models: [] } })
+    const wrapper = mount(TurnStateAutoField, { props: { accountId: 42, modelValue: false }, global: { stubs: { TurnStateSettingsPanel: true } } })
+    await flushPromises()
+    await wrapper.get('[data-testid="turn-state-configure"]').trigger('click')
+    expect(wrapper.findComponent({ name: 'TurnStateSettingsPanel' }).exists()).toBe(true)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    wrapper.findComponent({ name: 'TurnStateSettingsPanel' }).vm.$emit('saved')
+    await flushPromises()
+    expect(getStatus).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
   it('emits the account switch without mutating the saved state', async () => {
     getStatus.mockResolvedValue({ data: { configured: true, enabled: false, models: [] } })
     const wrapper = mount(TurnStateAutoField, { props: { accountId: 42, modelValue: false } })
