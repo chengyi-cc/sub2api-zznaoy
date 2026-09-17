@@ -33,6 +33,27 @@ func (handler *AccountHandler) SaveTurnStateSettings(requestContext *gin.Context
 	response.Success(requestContext, updated)
 }
 
+func (handler *AccountHandler) TriggerTurnStateAcquisition(requestContext *gin.Context) {
+	accountID, err := strconv.ParseInt(requestContext.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(requestContext, "Invalid account ID")
+		return
+	}
+	var request struct {
+		Model string `json:"model" binding:"required"`
+	}
+	requestContext.Request.Body = http.MaxBytesReader(requestContext.Writer, requestContext.Request.Body, 4096)
+	if err := requestContext.ShouldBindJSON(&request); err != nil {
+		response.BadRequest(requestContext, "请填写有效模型名称")
+		return
+	}
+	if err := handler.turnStateGateway.TriggerTurnStateAcquisition(requestContext.Request.Context(), accountID, request.Model); err != nil {
+		response.ErrorFrom(requestContext, err)
+		return
+	}
+	response.Success(requestContext, gin.H{"queued": true, "model": request.Model})
+}
+
 func (handler *AccountHandler) GetTurnStateAutoStatus(requestContext *gin.Context) {
 	accountID, err := strconv.ParseInt(requestContext.Param("id"), 10, 64)
 	if err != nil || accountID <= 0 {

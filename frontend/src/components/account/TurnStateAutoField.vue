@@ -38,7 +38,7 @@ const clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
 
 function stateText(value: string): string {
   const labels: Record<string, string> = {
-    preparing: '采集中', ready: '可用', refreshing: '刷新中', unavailable: '暂不可用', expired: '已过期'
+    queued: '等待采集', preparing: '采集中', ready: '可用', refreshing: '刷新中', unavailable: '暂不可用', expired: '已过期'
   }
   return chinese.value ? labels[value] || value : value
 }
@@ -121,7 +121,7 @@ onBeforeUnmount(() => {
         <input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-primary-600" :aria-label="chinese ? '自动采集并注入轮次状态' : 'Automatic turn-state acquisition'" :checked="modelValue" @change="emit('update:modelValue', ($event.target as HTMLInputElement).checked)">
       </div>
     </div>
-    <TurnStateSettingsPanel v-if="showSettings" @saved="settingsSaved" />
+    <TurnStateSettingsPanel v-if="showSettings" :account-id="accountId" @saved="settingsSaved" />
     <div class="grid gap-3 sm:grid-cols-2">
       <label class="text-sm">
         <span class="input-label">{{ chinese ? '账号采集规则' : 'Account acquisition rules' }}</span>

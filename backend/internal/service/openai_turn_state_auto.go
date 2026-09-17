@@ -9,8 +9,43 @@ import (
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/turnstate"
 )
+
+func (gateway *OpenAIGatewayService) TriggerTurnStateAcquisition(ctx context.Context, accountID int64, model string) error {
+	model = strings.TrimSpace(model)
+	if accountID <= 0 || model == "" || len(model) > 256 || strings.ContainsAny(model, "\r\n\t") {
+		return infraerrors.BadRequest("TURN_STATE_INVALID_MODEL", "请填写有效模型名称和账号")
+	}
+	if gateway == nil || gateway.turnStateAuto == nil || gateway.accountRepo == nil {
+		return infraerrors.BadRequest("TURN_STATE_UNAVAILABLE", "采集服务不可用")
+	}
+	account, err := gateway.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	if !account.IsCodexTurnStateAutoEnabled() || account.Status != StatusActive {
+		return infraerrors.BadRequest("TURN_STATE_DISABLED", "请先保存账号并开启自动采集，且账号须处于可用状态")
+	}
+	options := turnstate.OptionsFromExtra(account.Extra)
+	if !gateway.turnStateAuto.Configured(options.Source) {
+		return infraerrors.BadRequest("TURN_STATE_UNCONFIGURED", "所选采集出口尚未配置，请先保存采集配置")
+	}
+	headers := make(http.Header)
+	headers.Set("User-Agent", codexCLIUserAgent)
+	headers.Set("Originator", openai.CodexDefaultOriginator)
+	headers.Set("Version", codexCLIVersion)
+	headers, options, enabled := gateway.prepareTurnStateSample(ctx, accountID, headers)
+	if !enabled {
+		return infraerrors.BadRequest("TURN_STATE_AUTH_UNAVAILABLE", "账号授权不可用，无法开始采集")
+	}
+	if !gateway.turnStateAuto.Force(ctx, accountID, model, headers, options) {
+		return infraerrors.BadRequest("TURN_STATE_NOT_QUEUED", "采集任务未能加入队列，请检查缓存服务或稍后重试")
+	}
+	return nil
+}
 
 func (account *Account) IsCodexTurnStateAutoEnabled() bool {
 	if account == nil || !account.IsOpenAIOAuthLike() {
@@ -41,7 +76,7 @@ func (account *Account) InitializeCodexTurnStateAuto() {
 }
 
 func (gateway *OpenAIGatewayService) prepareTurnStateSample(ctx context.Context, accountID int64, headers http.Header) (http.Header, turnstate.Options, bool) {
-	if gateway.accountRepo == nil || gateway.openAITokenProvider == nil {
+	if gateway.accountRepo == nil {
 		return nil, turnstate.Options{}, false
 	}
 	account, err := gateway.accountRepo.GetByID(ctx, accountID)
@@ -50,12 +85,18 @@ func (gateway *OpenAIGatewayService) prepareTurnStateSample(ctx context.Context,
 	}
 	token := account.GetOpenAIAccessToken()
 	if account.Type == AccountTypeOAuth {
+		if gateway.openAITokenProvider == nil {
+			return nil, turnstate.Options{}, false
+		}
 		token, err = gateway.openAITokenProvider.GetAccessToken(ctx, account)
 	}
 	if err != nil || token == "" {
 		return nil, turnstate.Options{}, false
 	}
 	headers = headers.Clone()
+	if headers == nil {
+		headers = make(http.Header)
+	}
 	headers.Set("Authorization", "Bearer "+token)
 	if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, gateway.accountRepo, headers, account); err != nil {
 		return nil, turnstate.Options{}, false

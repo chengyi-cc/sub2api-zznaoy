@@ -75,6 +75,18 @@ func (runtime *Runtime) Apply(ctx context.Context, accountID int64, model string
 	return runtime.manager.Apply(ctx, accountID, model, headers, options...)
 }
 
+func (runtime *Runtime) Force(ctx context.Context, accountID int64, model string, headers http.Header, options Options) bool {
+	if runtime == nil {
+		return false
+	}
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
+	if runtime.manager == nil {
+		return false
+	}
+	return runtime.manager.Force(ctx, accountID, model, headers, options)
+}
+
 func (runtime *Runtime) Forget(accountID int64) {
 	if runtime == nil {
 		return

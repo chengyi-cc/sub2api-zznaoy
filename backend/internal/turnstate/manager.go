@@ -93,6 +93,7 @@ type target struct {
 	lastSeen  time.Time
 	retryAt   time.Time
 	running   bool
+	force     bool
 	status    Status
 	options   Options
 }
@@ -248,6 +249,14 @@ func (manager *Manager) read(ctx context.Context, accountID int64, model string)
 }
 
 func (manager *Manager) Apply(ctx context.Context, accountID int64, model string, headers http.Header, configured ...Options) bool {
+	return manager.apply(ctx, accountID, model, headers, false, configured...)
+}
+
+func (manager *Manager) Force(ctx context.Context, accountID int64, model string, headers http.Header, options Options) bool {
+	return manager.apply(ctx, accountID, model, headers, true, options)
+}
+
+func (manager *Manager) apply(ctx context.Context, accountID int64, model string, headers http.Header, force bool, configured ...Options) bool {
 	if manager == nil || accountID <= 0 || headers == nil {
 		return false
 	}
@@ -276,7 +285,7 @@ func (manager *Manager) Apply(ctx context.Context, accountID int64, model string
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if manager.closed {
-		return err == nil
+		return !force && err == nil
 	}
 	key := recordKey(accountID, model)
 	entry := manager.targets[key]
@@ -288,7 +297,7 @@ func (manager *Manager) Apply(ctx context.Context, accountID int64, model string
 				}
 			}
 			if len(manager.targets) >= 2048 {
-				return err == nil
+				return !force && err == nil
 			}
 		}
 		entry = &target{accountID: accountID, model: model, options: options, status: Status{Options: options, Model: model, State: "preparing"}}
@@ -303,16 +312,27 @@ func (manager *Manager) Apply(ctx context.Context, accountID int64, model string
 	entry.lastSeen = time.Now()
 	if err == nil {
 		updateStatusRecord(&entry.status, record)
-		if !entry.running {
+		if !entry.running && !entry.force {
 			entry.status.State = "ready"
 		}
 	}
 	if !manager.Configured(options.Source) {
 		entry.status.State = "unavailable"
 		entry.status.LastError = "selected acquisition source is not configured"
-		return err == nil
+		return !force && err == nil
 	}
 	if errors.Is(err, redis.Nil) || err == nil || (err != nil && err.Error() == "cached state is invalid or expired") {
+		if force {
+			if !entry.running {
+				entry.force = true
+				entry.retryAt = time.Time{}
+				entry.status.RetryAt = nil
+				entry.status.LastError = ""
+				entry.status.State = "queued"
+				manager.scheduleLocked(entry)
+			}
+			return true
+		}
 		if err != nil || time.Until(record.ExpiresAt) <= refreshBefore {
 			manager.scheduleLocked(entry)
 		}
@@ -353,8 +373,10 @@ func (manager *Manager) scheduleLocked(entry *target) {
 		entry.status.State = "refreshing"
 	}
 	accountID, model, headers := entry.accountID, entry.model, entry.headers.Clone()
+	force := entry.force
+	entry.force = false
 	manager.workers.Add(1)
-	go manager.refresh(accountID, model, headers, entry.options)
+	go manager.refresh(accountID, model, headers, entry.options, force)
 }
 
 func (manager *Manager) refreshLoop() {
@@ -381,13 +403,13 @@ func (manager *Manager) schedulePendingLocked() {
 			}
 			continue
 		}
-		if entry.status.ExpiresAt == nil || time.Until(*entry.status.ExpiresAt) <= refreshBefore {
+		if entry.force || entry.status.ExpiresAt == nil || time.Until(*entry.status.ExpiresAt) <= refreshBefore {
 			manager.scheduleLocked(entry)
 		}
 	}
 }
 
-func (manager *Manager) refresh(accountID int64, model string, headers http.Header, options Options) {
+func (manager *Manager) refresh(accountID int64, model string, headers http.Header, options Options, forced ...bool) {
 	defer manager.workers.Done()
 	ctx, cancel := context.WithTimeout(manager.ctx, 5*time.Minute)
 	defer cancel()
@@ -443,7 +465,8 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 		defer releaseCancel()
 		_ = manager.cache.Eval(releaseCtx, "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end", []string{key + ":lock"}, lockValue).Err()
 	}()
-	if cached, readErr := manager.read(ctx, accountID, model); readErr == nil && cached.Options == options && cached.Identity == accountIdentity(headers) && time.Until(cached.ExpiresAt) > refreshBefore {
+	force := len(forced) > 0 && forced[0]
+	if cached, readErr := manager.read(ctx, accountID, model); !force && readErr == nil && cached.Options == options && cached.Identity == accountIdentity(headers) && time.Until(cached.ExpiresAt) > refreshBefore {
 		acquired = &cached
 		return
 	}

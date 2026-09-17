@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'
 
 const emit = defineEmits<{ saved: [] }>()
+const props = defineProps<{ accountId: number }>()
 const { locale } = useI18n()
 const chinese = computed(() => locale.value.startsWith('zh'))
 const label = (zh: string, en: string) => chinese.value ? zh : en
@@ -19,6 +20,9 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const saved = ref(false)
+const acquisitionModel = ref('gpt-6-astra')
+const acquiring = ref(false)
+const acquisitionStarted = ref(false)
 const controller = new AbortController()
 const endpoint = '/admin/accounts/turn-state/settings'
 
@@ -50,6 +54,24 @@ async function save(): Promise<void> {
     error.value = response.response?.data?.message || response.message || label('保存失败，原配置保持不变。', 'Save failed. Previous settings are unchanged.')
   } finally {
     saving.value = false
+  }
+}
+
+async function acquireNow(): Promise<void> {
+  const model = acquisitionModel.value.trim()
+  if (!model || acquiring.value) return
+  acquiring.value = true
+  error.value = ''
+  acquisitionStarted.value = false
+  try {
+    await apiClient.post('/admin/accounts/' + props.accountId + '/turn-state/acquire', { model })
+    acquisitionStarted.value = true
+    emit('saved')
+  } catch (failure: unknown) {
+    const response = failure as { response?: { data?: { message?: string } }; message?: string }
+    error.value = response.response?.data?.message || response.message || label('立即采集启动失败。', 'Unable to start acquisition.')
+  } finally {
+    acquiring.value = false
   }
 }
 
@@ -111,6 +133,15 @@ onBeforeUnmount(() => { controller.abort(); settings.value = null })
       <div class="grid gap-3 border-t border-gray-200 pt-3 dark:border-dark-500 sm:grid-cols-2">
         <label class="text-xs">{{ label('每轮最多尝试次数（1–30）', 'Attempts per round (1–30)') }}<input v-model.number="settings.attempts" type="number" min="1" max="30" class="input mt-1 w-full"></label>
         <label class="text-xs">{{ label('同时采集任务数（1–16）', 'Concurrent acquisition tasks (1–16)') }}<input v-model.number="settings.concurrency" type="number" min="1" max="16" class="input mt-1 w-full"></label>
+      </div>
+      <div class="space-y-2 border-t border-gray-200 pt-3 dark:border-dark-500">
+        <h5 class="text-sm font-medium">{{ label('立即采集（立即开始换出口并检测）', 'Acquire now (start rotating and probing immediately)') }}</h5>
+        <div class="flex flex-col gap-2 sm:flex-row">
+          <input v-model="acquisitionModel" type="text" maxlength="256" :aria-label="label('采集模型', 'Acquisition model')" class="input flex-1" placeholder="gpt-6-astra" data-testid="settings-acquisition-model">
+          <button type="button" class="btn btn-secondary text-sm" :disabled="acquiring || !acquisitionModel.trim()" data-testid="settings-acquire-now" @click="acquireNow">{{ acquiring ? label('提交中…', 'Submitting…') : label('立即采集／重新获取', 'Acquire / refresh now') }}</button>
+        </div>
+        <p class="text-xs text-gray-500">{{ label('使用已保存的账号规则和出口，请先保存配置及账号修改。点击后后台立即尝试获取；并发满时排队，正在采集时不重复创建任务。仍有效的旧头继续使用，结果见检测记录。', 'Uses saved account rules and source; save configuration and account edits first. Starts in the background or queues when busy; an existing acquisition is reused. A valid old state remains usable. See detection history for results.') }}</p>
+        <p v-if="acquisitionStarted" role="status" class="text-xs text-green-600">{{ label('已提交采集任务（已有任务则继续）；请查看检测记录。', 'Acquisition submitted (existing tasks continue). Check detection history.') }}</p>
       </div>
       <p class="text-xs text-gray-500">{{ label('密码和密钥加密保存在服务器数据库，不会返回网页。仅保存配置，不会立即发送测试请求；成功采集以检测记录为准。', 'Secrets are encrypted in the server database and never returned to the page. Saving does not send a test request; check detection history for acquisition results.') }}</p>
       <button type="button" class="btn btn-primary text-sm" :disabled="saving" data-testid="settings-save" @click="save">{{ saving ? label('保存中…', 'Saving…') : label('保存采集配置并生效', 'Save and apply acquisition settings') }}</button>
