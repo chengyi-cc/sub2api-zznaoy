@@ -15,9 +15,15 @@ func TestTurnStateAutoAccountDefaults(test *testing.T) {
 		require.False(test, account.IsCodexTurnStateAutoEnabled())
 		account.InitializeCodexTurnStateAuto()
 		require.True(test, account.IsCodexTurnStateAutoEnabled())
+		require.Equal(test, turnstate.ProfileTeam, account.Extra[turnstate.ProfileKey])
+		require.Equal(test, turnstate.SourcePurchased, account.Extra[turnstate.SourceKey])
 		account.Extra[turnstate.EnabledKey] = false
+		account.Extra[turnstate.ProfileKey] = turnstate.ProfilePro
+		account.Extra[turnstate.SourceKey] = turnstate.SourceIPv6
 		account.InitializeCodexTurnStateAuto()
 		require.False(test, account.IsCodexTurnStateAutoEnabled())
+		require.Equal(test, turnstate.ProfilePro, account.Extra[turnstate.ProfileKey])
+		require.Equal(test, turnstate.SourceIPv6, account.Extra[turnstate.SourceKey])
 	}
 	for _, account := range []*Account{nil, {Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, {Platform: PlatformAnthropic, Type: AccountTypeOAuth}} {
 		account.InitializeCodexTurnStateAuto()

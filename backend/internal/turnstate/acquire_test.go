@@ -31,7 +31,7 @@ func TestAcquireThroughAuthenticatedTLSProxyAndAlwaysRetiresLease(test *testing.
 	require.NoError(test, err)
 	cert, err := tls.X509KeyPair(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(private)}))
 	require.NoError(test, err)
-	normal := stateValue(time.Now(), 217)
+	normal := stateValue(time.Now(), 249)
 	var abnormal atomic.Bool
 	var upstreamCalls atomic.Int64
 	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -48,7 +48,7 @@ func TestAcquireThroughAuthenticatedTLSProxyAndAlwaysRetiresLease(test *testing.
 		require.Equal(test, true, payload["stream"])
 		value := normal
 		if abnormal.Load() {
-			value = stateValue(time.Now(), 233)
+			value = stateValue(time.Now(), 265)
 		}
 		writer.Header().Set(Header, value)
 		_, _ = io.WriteString(writer, "data: {}\n\n")
@@ -105,13 +105,14 @@ func TestAcquireThroughAuthenticatedTLSProxyAndAlwaysRetiresLease(test *testing.
 	headers.Set(Header, "old-state")
 	headers.Set("Cookie", "old-cookie")
 	headers.Set("Session-Id", "old-session")
-	record, err := manager.acquire(context.Background(), headers, "model-a")
+	sampleCtx := context.WithValue(context.Background(), acquisitionKey{}, acquisitionOptions{Options: Options{Profile: ProfileTeam, Source: SourceIPv6}})
+	record, err := manager.acquireIPv6(sampleCtx, headers, "model-a")
 	require.NoError(test, err)
 	require.Equal(test, normal, record.Value)
 	require.EqualValues(test, 1, released.Load())
 	abnormal.Store(true)
-	_, err = manager.acquire(context.Background(), headers, "model-a")
-	require.ErrorContains(test, err, "312")
+	_, err = manager.acquireIPv6(sampleCtx, headers, "model-a")
+	require.ErrorContains(test, err, "356")
 	require.EqualValues(test, 2, released.Load())
 	require.EqualValues(test, 2, allocated.Load())
 	require.EqualValues(test, 2, upstreamCalls.Load())

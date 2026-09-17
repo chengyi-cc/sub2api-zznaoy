@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/turnstate"
 )
@@ -23,38 +24,43 @@ func (account *Account) InitializeCodexTurnStateAuto() {
 	if account == nil || !account.IsOpenAIOAuthLike() {
 		return
 	}
-	if _, exists := account.Extra[turnstate.EnabledKey]; exists {
-		return
-	}
-	extra := make(map[string]any, len(account.Extra)+1)
+	extra := make(map[string]any, len(account.Extra)+3)
 	for key, value := range account.Extra {
 		extra[key] = value
 	}
-	extra[turnstate.EnabledKey] = true
+	if _, exists := extra[turnstate.EnabledKey]; !exists {
+		extra[turnstate.EnabledKey] = true
+	}
+	if _, exists := extra[turnstate.ProfileKey]; !exists {
+		extra[turnstate.ProfileKey] = turnstate.ProfileTeam
+	}
+	if _, exists := extra[turnstate.SourceKey]; !exists {
+		extra[turnstate.SourceKey] = turnstate.SourcePurchased
+	}
 	account.Extra = extra
 }
 
-func (gateway *OpenAIGatewayService) prepareTurnStateSample(ctx context.Context, accountID int64, headers http.Header) (http.Header, bool) {
+func (gateway *OpenAIGatewayService) prepareTurnStateSample(ctx context.Context, accountID int64, headers http.Header) (http.Header, turnstate.Options, bool) {
 	if gateway.accountRepo == nil || gateway.openAITokenProvider == nil {
-		return nil, false
+		return nil, turnstate.Options{}, false
 	}
 	account, err := gateway.accountRepo.GetByID(ctx, accountID)
 	if err != nil || !account.IsCodexTurnStateAutoEnabled() || account.Status != StatusActive {
-		return nil, false
+		return nil, turnstate.Options{}, false
 	}
 	token := account.GetOpenAIAccessToken()
 	if account.Type == AccountTypeOAuth {
 		token, err = gateway.openAITokenProvider.GetAccessToken(ctx, account)
 	}
 	if err != nil || token == "" {
-		return nil, false
+		return nil, turnstate.Options{}, false
 	}
 	headers = headers.Clone()
 	headers.Set("Authorization", "Bearer "+token)
 	if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, gateway.accountRepo, headers, account); err != nil {
-		return nil, false
+		return nil, turnstate.Options{}, false
 	}
-	return headers, true
+	return headers, turnstate.OptionsFromExtra(account.Extra), true
 }
 
 func (gateway *OpenAIGatewayService) applyTurnStateAuto(ctx context.Context, account *Account, model string, headers http.Header) bool {
@@ -67,7 +73,7 @@ func (gateway *OpenAIGatewayService) applyTurnStateAuto(ctx context.Context, acc
 		}
 		return false
 	}
-	return gateway.turnStateAuto.Apply(ctx, account.ID, model, headers)
+	return gateway.turnStateAuto.Apply(ctx, account.ID, model, headers, turnstate.OptionsFromExtra(account.Extra))
 }
 
 func requestTurnStateModel(request *http.Request) string {
@@ -120,11 +126,23 @@ func (gateway *OpenAIGatewayService) applyTurnStateAutoRequest(request *http.Req
 	gateway.applyTurnStateAuto(request.Context(), account, requestTurnStateModel(request), request.Header)
 }
 
-func (gateway *OpenAIGatewayService) TurnStateAutoStatus(accountID int64) map[string]any {
-	if gateway == nil || gateway.turnStateAuto == nil {
-		return map[string]any{"configured": false, "models": []turnstate.Status{}}
+func (gateway *OpenAIGatewayService) TurnStateAutoStatus(ctx context.Context, account *Account, includeHistory bool) map[string]any {
+	options := turnstate.OptionsFromExtra(account.Extra)
+	var manager *turnstate.Manager
+	if gateway != nil {
+		manager = gateway.turnStateAuto
 	}
-	return map[string]any{"configured": true, "models": gateway.turnStateAuto.Snapshot(accountID)}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	result := map[string]any{"configured": manager.Configured(options.Source), "enabled": account.IsCodexTurnStateAutoEnabled(), "profile": options.Profile, "source": options.Source, "models": manager.Inspect(queryCtx, account.ID, options), "sources": map[string]bool{turnstate.SourcePurchased: manager.Configured(turnstate.SourcePurchased), turnstate.SourceIPv6: manager.Configured(turnstate.SourceIPv6)}, "countries": manager.Countries(), "server_time": time.Now().UTC()}
+	if includeHistory {
+		history, err := manager.History(queryCtx, account.ID)
+		result["history"] = history
+		if err != nil {
+			result["history_error"] = err.Error()
+		}
+	}
+	return result
 }
 
 func (gateway *OpenAIGatewayService) CloseTurnStateAuto() {

@@ -18,6 +18,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/turnstate"
 )
 
 // Account management implementations
@@ -589,6 +590,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		if err := ValidateUpstreamRequestIDHeaderExtra(normalizedExtra); err != nil {
 			return nil, err
+		}
+		if err := turnstate.ValidateOptions(normalizedExtra); err != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_TURN_STATE_SETTINGS", "%s", err.Error())
 		}
 	}
 	previousProbeIdentity := upstreamBillingProbeIdentity(account)

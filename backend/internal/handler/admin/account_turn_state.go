@@ -18,7 +18,6 @@ func (handler *AccountHandler) GetTurnStateAutoStatus(requestContext *gin.Contex
 		response.ErrorFrom(requestContext, err)
 		return
 	}
-	status := handler.turnStateGateway.TurnStateAutoStatus(accountID)
-	status["enabled"] = account.IsCodexTurnStateAutoEnabled()
+	status := handler.turnStateGateway.TurnStateAutoStatus(requestContext.Request.Context(), account, requestContext.Query("history") == "1")
 	response.Success(requestContext, status)
 }

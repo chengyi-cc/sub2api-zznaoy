@@ -1,0 +1,4 @@
+services:
+  sub2api:
+    env_file:
+      - /etc/sub2api-turn-state-proxy/sub2api.env

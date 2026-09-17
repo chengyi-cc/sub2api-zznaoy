@@ -30,20 +30,27 @@ import (
 const Header = "X-Codex-Turn-State"
 const EnabledKey = "codex_turn_state_auto_enabled"
 const lifetime = time.Hour
-const refreshBefore = 5 * time.Minute
+const refreshBefore = 30 * time.Minute
 const retryDelay = 2 * time.Minute
+const activeWindow = 2 * time.Hour
 
 type Config struct {
-	URL         string
-	Token       string
-	CAFile      string
-	Attempts    int
-	Concurrency int
+	URL           string
+	Token         string
+	CAFile        string
+	Attempts      int
+	Concurrency   int
+	ProxyHost     string
+	ProxyUsername string
+	ProxyPassword string
+	ProxyUpstream string
+	Countries     []string
 }
 
 func ConfigFromEnv() Config {
-	config := Config{URL: strings.TrimRight(os.Getenv("TURN_STATE_POOL_URL"), "/"), Token: os.Getenv("TURN_STATE_POOL_TOKEN"), CAFile: os.Getenv("TURN_STATE_POOL_CA_FILE"), Attempts: 3, Concurrency: 4}
-	if value, err := strconv.Atoi(os.Getenv("TURN_STATE_POOL_ATTEMPTS")); err == nil && value >= 1 && value <= 10 {
+	config := Config{URL: strings.TrimRight(os.Getenv("TURN_STATE_POOL_URL"), "/"), Token: os.Getenv("TURN_STATE_POOL_TOKEN"), CAFile: os.Getenv("TURN_STATE_POOL_CA_FILE"), Attempts: 9, Concurrency: 4,
+		ProxyHost: os.Getenv("TURN_STATE_PROXY_HOST"), ProxyUsername: os.Getenv("TURN_STATE_PROXY_USERNAME"), ProxyPassword: os.Getenv("TURN_STATE_PROXY_PASSWORD"), ProxyUpstream: os.Getenv("TURN_STATE_PROXY_UPSTREAM"), Countries: strings.Split(os.Getenv("TURN_STATE_PROXY_COUNTRIES"), ",")}
+	if value, err := strconv.Atoi(os.Getenv("TURN_STATE_POOL_ATTEMPTS")); err == nil && value >= 1 && value <= 30 {
 		config.Attempts = value
 	}
 	if value, err := strconv.Atoi(os.Getenv("TURN_STATE_POOL_CONCURRENCY")); err == nil && value >= 1 && value <= 16 {
@@ -53,19 +60,29 @@ func ConfigFromEnv() Config {
 }
 
 type Record struct {
+	Options
 	Identity   string    `json:"identity"`
 	Value      string    `json:"value"`
 	Model      string    `json:"model"`
 	IssuedAt   time.Time `json:"issued_at"`
 	ExpiresAt  time.Time `json:"expires_at"`
 	AcquiredAt time.Time `json:"acquired_at"`
+	Country    string    `json:"country,omitempty"`
+	SourceIP   string    `json:"source_ip,omitempty"`
 }
 
 type Status struct {
+	Options
 	Model     string     `json:"model"`
 	State     string     `json:"state"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	LastError string     `json:"last_error,omitempty"`
+	IssuedAt  *time.Time `json:"issued_at,omitempty"`
+	RefreshAt *time.Time `json:"refresh_at,omitempty"`
+	RetryAt   *time.Time `json:"retry_at,omitempty"`
+	Country   string     `json:"country,omitempty"`
+	SourceIP  string     `json:"source_ip,omitempty"`
+	Length    int        `json:"length,omitempty"`
 }
 
 type target struct {
@@ -76,37 +93,55 @@ type target struct {
 	retryAt   time.Time
 	running   bool
 	status    Status
+	options   Options
 }
 
-type Prepare func(context.Context, int64, http.Header) (http.Header, bool)
+type Prepare func(context.Context, int64, http.Header) (http.Header, Options, bool)
 
 type Manager struct {
-	config    Config
-	cache     redis.UniversalClient
-	client    *http.Client
-	tlsConfig *tls.Config
-	prepare   Prepare
-	ctx       context.Context
-	cancel    context.CancelFunc
-	mu        sync.Mutex
-	targets   map[string]*target
-	slots     chan struct{}
-	workers   sync.WaitGroup
-	closed    bool
-	sample    func(context.Context, http.Header, string) (Record, error)
+	config        Config
+	cache         redis.UniversalClient
+	client        *http.Client
+	tlsConfig     *tls.Config
+	prepare       Prepare
+	ctx           context.Context
+	cancel        context.CancelFunc
+	mu            sync.Mutex
+	targets       map[string]*target
+	slots         chan struct{}
+	workers       sync.WaitGroup
+	closed        bool
+	sample        func(context.Context, http.Header, string) (Record, error)
+	dialPurchased func(string) (contextDialer, error)
+	ipMu          sync.Mutex
+	ipv4          string
+	ipv4Expires   time.Time
 }
 
 func New(config Config, cache redis.UniversalClient, prepare Prepare) (*Manager, error) {
-	if config.URL == "" && config.Token == "" {
+	if config.URL == "" && config.Token == "" && config.ProxyHost == "" && config.ProxyUsername == "" && config.ProxyPassword == "" {
 		return nil, nil
 	}
-	endpoint, err := url.Parse(config.URL)
-	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" {
-		return nil, errors.New("TURN_STATE_POOL_URL must be an HTTPS origin")
+	if config.URL != "" || config.Token != "" {
+		endpoint, err := url.Parse(config.URL)
+		if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+			return nil, errors.New("TURN_STATE_POOL_URL must be an HTTPS origin")
+		}
+		if len(config.Token) < 32 {
+			return nil, errors.New("turn-state pool requires a token of at least 32 characters")
+		}
 	}
-	if len(config.Token) < 32 || cache == nil {
-		return nil, errors.New("turn-state pool requires a token of at least 32 characters and Redis")
+	if cache == nil {
+		return nil, errors.New("automatic turn-state requires Redis")
 	}
+	if err := validatePurchasedConfig(config); err != nil {
+		return nil, err
+	}
+	countries, err := parseCountries(strings.Join(config.Countries, ","))
+	if err != nil {
+		return nil, err
+	}
+	config.Countries = countries
 	roots, err := x509.SystemCertPool()
 	if err != nil {
 		return nil, errors.New("cannot load system certificate roots")
@@ -117,8 +152,8 @@ func New(config Config, cache redis.UniversalClient, prepare Prepare) (*Manager,
 			return nil, errors.New("cannot load turn-state pool CA certificate")
 		}
 	}
-	if config.Attempts < 1 || config.Attempts > 10 {
-		config.Attempts = 3
+	if config.Attempts < 1 || config.Attempts > 30 {
+		config.Attempts = 9
 	}
 	if config.Concurrency < 1 || config.Concurrency > 16 {
 		config.Concurrency = 4
@@ -128,6 +163,7 @@ func New(config Config, cache redis.UniversalClient, prepare Prepare) (*Manager,
 	ctx, cancel := context.WithCancel(context.Background())
 	manager := &Manager{config: config, cache: cache, tlsConfig: tlsConfig, prepare: prepare, client: &http.Client{Transport: transport, Timeout: 20 * time.Second, CheckRedirect: noRedirect}, ctx: ctx, cancel: cancel, targets: make(map[string]*target), slots: make(chan struct{}, config.Concurrency)}
 	manager.sample = manager.acquire
+	manager.dialPurchased = manager.purchasedDialer
 	manager.workers.Add(1)
 	go manager.refreshLoop()
 	return manager, nil
@@ -135,9 +171,13 @@ func New(config Config, cache redis.UniversalClient, prepare Prepare) (*Manager,
 
 func noRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
-func Parse(value, model string, now time.Time) (Record, error) {
+func Parse(value, model string, now time.Time, profiles ...string) (Record, error) {
+	profile := ProfileTeam
+	if len(profiles) > 0 && profiles[0] == ProfilePro {
+		profile = ProfilePro
+	}
 	value = strings.TrimSpace(value)
-	if len(value) != 292 {
+	if len(value) != acceptedLength(profile) {
 		return Record{}, fmt.Errorf("candidate length %d is not accepted", len(value))
 	}
 	for _, character := range value {
@@ -160,7 +200,7 @@ func Parse(value, model string, now time.Time) (Record, error) {
 	if issued.After(now.Add(30*time.Second)) || !issued.Add(lifetime).After(now.Add(2*time.Minute)) {
 		return Record{}, errors.New("candidate is expired or has insufficient remaining lifetime")
 	}
-	return Record{Value: value, Model: model, IssuedAt: issued, ExpiresAt: issued.Add(lifetime), AcquiredAt: now.UTC()}, nil
+	return Record{Options: Options{Profile: profile, Source: SourcePurchased}, Value: value, Model: model, IssuedAt: issued, ExpiresAt: issued.Add(lifetime), AcquiredAt: now.UTC()}, nil
 }
 
 func recordKey(accountID int64, model string) string {
@@ -188,13 +228,22 @@ func (manager *Manager) read(ctx context.Context, accountID int64, model string)
 		return Record{}, err
 	}
 	var record Record
-	if json.Unmarshal(data, &record) != nil || record.Model != model || len(record.Value) != 292 || !record.ExpiresAt.After(time.Now()) {
+	if json.Unmarshal(data, &record) != nil {
+		return Record{}, errors.New("cached state is invalid or expired")
+	}
+	if record.Profile == "" {
+		record.Profile = ProfilePro
+	}
+	if record.Source == "" {
+		record.Source = SourceIPv6
+	}
+	if record.Model != model || len(record.Value) != acceptedLength(record.Profile) || !record.ExpiresAt.After(time.Now()) {
 		return Record{}, errors.New("cached state is invalid or expired")
 	}
 	return record, nil
 }
 
-func (manager *Manager) Apply(ctx context.Context, accountID int64, model string, headers http.Header) bool {
+func (manager *Manager) Apply(ctx context.Context, accountID int64, model string, headers http.Header, configured ...Options) bool {
 	if manager == nil || accountID <= 0 || headers == nil {
 		return false
 	}
@@ -202,10 +251,14 @@ func (manager *Manager) Apply(ctx context.Context, accountID int64, model string
 	if model == "" || len(model) > 256 {
 		return false
 	}
+	options := Options{}.Normalized()
+	if len(configured) > 0 {
+		options = configured[0].Normalized()
+	}
 	readCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	record, err := manager.read(readCtx, accountID, model)
 	cancel()
-	if err == nil && record.Identity != accountIdentity(headers) {
+	if err == nil && (record.Identity != accountIdentity(headers) || record.Options != options) {
 		err = errors.New("cached state is invalid or expired")
 	}
 	if err == nil {
@@ -226,7 +279,7 @@ func (manager *Manager) Apply(ctx context.Context, accountID int64, model string
 	if entry == nil {
 		if len(manager.targets) >= 2048 {
 			for existingKey, existing := range manager.targets {
-				if !existing.running && time.Since(existing.lastSeen) > 15*time.Minute {
+				if !existing.running && time.Since(existing.lastSeen) > activeWindow {
 					delete(manager.targets, existingKey)
 				}
 			}
@@ -234,17 +287,26 @@ func (manager *Manager) Apply(ctx context.Context, accountID int64, model string
 				return err == nil
 			}
 		}
-		entry = &target{accountID: accountID, model: model, status: Status{Model: model, State: "preparing"}}
+		entry = &target{accountID: accountID, model: model, options: options, status: Status{Options: options, Model: model, State: "preparing"}}
 		manager.targets[key] = entry
+	}
+	if entry.options != options {
+		entry.options = options
+		entry.retryAt = time.Time{}
+		entry.status = Status{Options: options, Model: model, State: "preparing"}
 	}
 	entry.headers = sampleHeaders(headers)
 	entry.lastSeen = time.Now()
 	if err == nil {
-		expires := record.ExpiresAt
-		entry.status.ExpiresAt = &expires
+		updateStatusRecord(&entry.status, record)
 		if !entry.running {
 			entry.status.State = "ready"
 		}
+	}
+	if !manager.Configured(options.Source) {
+		entry.status.State = "unavailable"
+		entry.status.LastError = "selected acquisition source is not configured"
+		return err == nil
 	}
 	if errors.Is(err, redis.Nil) || err == nil || (err != nil && err.Error() == "cached state is invalid or expired") {
 		if err != nil || time.Until(record.ExpiresAt) <= refreshBefore {
@@ -271,6 +333,11 @@ func (manager *Manager) scheduleLocked(entry *target) {
 	if entry.running || time.Now().Before(entry.retryAt) || manager.closed {
 		return
 	}
+	if !manager.Configured(entry.options.Source) {
+		entry.status.State = "unavailable"
+		entry.status.LastError = "selected acquisition source is not configured"
+		return
+	}
 	select {
 	case manager.slots <- struct{}{}:
 	default:
@@ -283,7 +350,7 @@ func (manager *Manager) scheduleLocked(entry *target) {
 	}
 	accountID, model, headers := entry.accountID, entry.model, entry.headers.Clone()
 	manager.workers.Add(1)
-	go manager.refresh(accountID, model, headers)
+	go manager.refresh(accountID, model, headers, entry.options)
 }
 
 func (manager *Manager) refreshLoop() {
@@ -296,26 +363,29 @@ func (manager *Manager) refreshLoop() {
 			return
 		case <-ticker.C:
 			manager.mu.Lock()
-			for key, entry := range manager.targets {
-				if time.Since(entry.lastSeen) > 15*time.Minute {
-					if !entry.running {
-						delete(manager.targets, key)
-					}
-					continue
-				}
-				if entry.status.ExpiresAt == nil || time.Until(*entry.status.ExpiresAt) <= refreshBefore {
-					manager.scheduleLocked(entry)
-				}
-			}
+			manager.schedulePendingLocked()
 			manager.mu.Unlock()
 		}
 	}
 }
 
-func (manager *Manager) refresh(accountID int64, model string, headers http.Header) {
+func (manager *Manager) schedulePendingLocked() {
+	for key, entry := range manager.targets {
+		if time.Since(entry.lastSeen) > activeWindow {
+			if !entry.running {
+				delete(manager.targets, key)
+			}
+			continue
+		}
+		if entry.status.ExpiresAt == nil || time.Until(*entry.status.ExpiresAt) <= refreshBefore {
+			manager.scheduleLocked(entry)
+		}
+	}
+}
+
+func (manager *Manager) refresh(accountID int64, model string, headers http.Header, options Options) {
 	defer manager.workers.Done()
-	defer func() { <-manager.slots }()
-	ctx, cancel := context.WithTimeout(manager.ctx, 100*time.Second)
+	ctx, cancel := context.WithTimeout(manager.ctx, 5*time.Minute)
 	defer cancel()
 	key := recordKey(accountID, model)
 	reason := ""
@@ -323,16 +393,22 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 	defer func() {
 		manager.mu.Lock()
 		defer manager.mu.Unlock()
+		<-manager.slots
+		defer manager.schedulePendingLocked()
 		entry := manager.targets[key]
 		if entry == nil {
 			return
 		}
 		entry.running = false
+		if entry.options != options {
+			return
+		}
 		entry.retryAt = time.Now().Add(retryDelay)
+		retryAt := entry.retryAt
+		entry.status.RetryAt = &retryAt
 		entry.status.LastError = reason
 		if acquired != nil {
-			expires := acquired.ExpiresAt
-			entry.status.ExpiresAt = &expires
+			updateStatusRecord(&entry.status, *acquired)
 			entry.status.State = "ready"
 		} else if entry.status.ExpiresAt != nil && entry.status.ExpiresAt.After(time.Now()) {
 			entry.status.State = "ready"
@@ -349,7 +425,7 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 		return
 	}
 	lockValue := hex.EncodeToString(lockID)
-	locked, err := manager.cache.SetNX(ctx, key+":lock", lockValue, 110*time.Second).Result()
+	locked, err := manager.cache.SetNX(ctx, key+":lock", lockValue, 310*time.Second).Result()
 	if err != nil {
 		reason = "state cache unavailable"
 		return
@@ -363,22 +439,50 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 		defer releaseCancel()
 		_ = manager.cache.Eval(releaseCtx, "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end", []string{key + ":lock"}, lockValue).Err()
 	}()
-	if cached, readErr := manager.read(ctx, accountID, model); readErr == nil && cached.Identity == accountIdentity(headers) && time.Until(cached.ExpiresAt) > refreshBefore {
+	if cached, readErr := manager.read(ctx, accountID, model); readErr == nil && cached.Options == options && cached.Identity == accountIdentity(headers) && time.Until(cached.ExpiresAt) > refreshBefore {
 		acquired = &cached
 		return
 	}
 	if manager.prepare != nil {
 		var enabled bool
-		headers, enabled = manager.prepare(ctx, accountID, headers)
-		if !enabled {
+		var current Options
+		headers, current, enabled = manager.prepare(ctx, accountID, headers)
+		if !enabled || current.Normalized() != options {
 			reason = "account disabled or unavailable"
 			return
 		}
 	}
+	rotation, rotationErr := manager.readRotation(ctx, key, options)
+	if rotationErr != nil {
+		reason = "cannot read country rotation"
+		return
+	}
 	for attempt := 0; attempt < manager.config.Attempts && ctx.Err() == nil; attempt++ {
-		record, acquireErr := manager.sample(ctx, headers, model)
+		country := ""
+		if options.Source == SourcePurchased {
+			country = manager.config.Countries[rotation.Index%len(manager.config.Countries)]
+		}
+		sampleCtx := context.WithValue(ctx, acquisitionKey{}, acquisitionOptions{Options: options, Country: country})
+		started := time.Now()
+		record, acquireErr := manager.sample(sampleCtx, headers, model)
+		manager.recordAttempt(ctx, accountID, model, options, country, started, record, acquireErr)
 		if acquireErr != nil {
 			reason = acquireErr.Error()
+			if options.Source == SourcePurchased {
+				rotation.Failures++
+				if rotation.Failures >= 3 {
+					rotation.Index = (rotation.Index + 1) % len(manager.config.Countries)
+					rotation.Failures = 0
+				}
+				if manager.saveRotation(ctx, key, options, rotation) != nil {
+					reason = "cannot save country rotation"
+					return
+				}
+			}
+			var rejected *ProbeError
+			if errors.As(acquireErr, &rejected) && (rejected.Status == 401 || rejected.Status == 403 || rejected.Status == 429) {
+				return
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -387,11 +491,12 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 			continue
 		}
 		if manager.prepare != nil {
-			if currentHeaders, enabled := manager.prepare(ctx, accountID, headers); !enabled || accountIdentity(currentHeaders) != accountIdentity(headers) {
+			if currentHeaders, currentOptions, enabled := manager.prepare(ctx, accountID, headers); !enabled || currentOptions.Normalized() != options || accountIdentity(currentHeaders) != accountIdentity(headers) {
 				reason = "account disabled during acquisition"
 				return
 			}
 		}
+		record.Options = options
 		record.Identity = accountIdentity(headers)
 		encoded, marshalErr := json.Marshal(record)
 		if marshalErr != nil {
@@ -402,6 +507,13 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 			reason = "cannot save acquired state"
 			return
 		}
+		rotation.Failures = 0
+		_ = manager.saveRotation(ctx, key, options, rotation)
+		index := accountIndexKey(accountID)
+		pipeline := manager.cache.TxPipeline()
+		pipeline.SAdd(ctx, index, model)
+		pipeline.Expire(ctx, index, 7*24*time.Hour)
+		_, _ = pipeline.Exec(ctx)
 		acquired, reason = &record, ""
 		return
 	}
@@ -436,7 +548,7 @@ func (manager *Manager) poolCall(ctx context.Context, method, path string, outpu
 	return nil
 }
 
-func (manager *Manager) acquire(parent context.Context, headers http.Header, model string) (Record, error) {
+func (manager *Manager) acquireIPv6(parent context.Context, headers http.Header, model string) (Record, error) {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 	var allocated lease
@@ -494,9 +606,16 @@ func (manager *Manager) acquire(parent context.Context, headers http.Header, mod
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return Record{}, fmt.Errorf("sample upstream returned status %d", response.StatusCode)
+		return Record{}, &ProbeError{Message: fmt.Sprintf("sample upstream returned status %d", response.StatusCode), Status: response.StatusCode, SourceIP: allocated.IPv6}
 	}
-	return Parse(response.Header.Get(Header), model, time.Now())
+	value := response.Header.Get(Header)
+	record, err := Parse(value, model, time.Now(), sampleOptions(parent).Profile)
+	record.Options = sampleOptions(parent).Options
+	record.SourceIP = allocated.IPv6
+	if err != nil {
+		return record, &ProbeError{Message: err.Error(), Length: len(value), SourceIP: allocated.IPv6, Status: response.StatusCode}
+	}
+	return record, nil
 }
 
 func (manager *Manager) Snapshot(accountID int64) []Status {

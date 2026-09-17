@@ -27,14 +27,14 @@ func stateValue(issued time.Time, length int) string {
 
 func TestParseLengthAndLifetime(test *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
-	normal := stateValue(now.Add(-40*time.Minute), 217)
-	require.Len(test, normal, 292)
+	normal := stateValue(now.Add(-40*time.Minute), 249)
+	require.Len(test, normal, 332)
 	record, err := Parse(normal, "model-a", now)
 	require.NoError(test, err)
 	require.Equal(test, now.Add(20*time.Minute), record.ExpiresAt)
-	abnormal := stateValue(now, 233)
-	require.Len(test, abnormal, 312)
-	for _, value := range []string{abnormal, "", strings.Repeat("x", 292), stateValue(now.Add(-time.Hour), 217), stateValue(now.Add(time.Minute), 217), normal[:291], normal[:100] + "\n" + normal[101:]} {
+	abnormal := stateValue(now, 265)
+	require.Len(test, abnormal, 356)
+	for _, value := range []string{abnormal, "", strings.Repeat("x", 332), stateValue(now.Add(-time.Hour), 249), stateValue(now.Add(time.Minute), 249), normal[:291], normal[:100] + "\n" + normal[101:]} {
 		_, err := Parse(value, "model-a", now)
 		require.Error(test, err)
 	}
@@ -43,8 +43,8 @@ func TestParseLengthAndLifetime(test *testing.T) {
 }
 
 func TestParseRejectsWrongCiphertextBlockLength(test *testing.T) {
-	value := stateValue(time.Now(), 218)
-	require.Len(test, value, 292)
+	value := stateValue(time.Now(), 248)
+	require.Len(test, value, 332)
 	_, err := Parse(value, "model-a", time.Now())
 	require.ErrorContains(test, err, "format")
 }
@@ -54,7 +54,7 @@ func TestKnownUpstreamIdentityChangeDoesNotReuseState(test *testing.T) {
 	manager.sample = func(context.Context, http.Header, string) (Record, error) {
 		return Record{}, errors.New("test disabled")
 	}
-	value := stateValue(time.Now(), 217)
+	value := stateValue(time.Now(), 249)
 	storeRecord(test, client, 42, "model-a", value)
 	headers := make(http.Header)
 	headers.Set("Chatgpt-Account-Id", "new-upstream-account")
@@ -66,7 +66,7 @@ func TestKnownUpstreamIdentityChangeDoesNotReuseState(test *testing.T) {
 func managerForTest(test *testing.T) (*Manager, *redis.Client) {
 	server := miniredis.RunT(test)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
-	manager, err := New(Config{URL: "https://pool.example:18443", Token: strings.Repeat("a", 48), Attempts: 2, Concurrency: 4}, client, nil)
+	manager, err := New(Config{URL: "https://pool.example:18443", Token: strings.Repeat("a", 48), Attempts: 2, Concurrency: 4, ProxyHost: "proxy.example:1080", ProxyUsername: "test_{country}_{session}", ProxyPassword: "test-password"}, client, nil)
 	require.NoError(test, err)
 	test.Cleanup(func() { manager.Close(); _ = client.Close() })
 	return manager, client
@@ -85,7 +85,7 @@ func TestApplyOverridesButNeverCrossesAccountOrModel(test *testing.T) {
 	manager.sample = func(context.Context, http.Header, string) (Record, error) {
 		return Record{}, errors.New("test disabled")
 	}
-	value := stateValue(time.Now(), 217)
+	value := stateValue(time.Now(), 249)
 	storeRecord(test, client, 42, "model-a", value)
 	headers := http.Header{Header: []string{"old-value"}}
 	require.True(test, manager.Apply(context.Background(), 42, "model-a", headers))
@@ -120,7 +120,7 @@ func TestRefreshDeduplicatedAndPersists(test *testing.T) {
 			return Record{}, ctx.Err()
 		case <-proceed:
 		}
-		return Parse(stateValue(time.Now(), 217), model, time.Now())
+		return Parse(stateValue(time.Now(), 249), model, time.Now())
 	}
 	headers := make(http.Header)
 	headers.Set(Header, "old-state")
@@ -158,11 +158,11 @@ func TestDistributedLockPreventsParallelSampling(test *testing.T) {
 
 func TestRefreshFailureKeepsExistingValidState(test *testing.T) {
 	manager, client := managerForTest(test)
-	value := stateValue(time.Now().Add(-56*time.Minute), 217)
+	value := stateValue(time.Now().Add(-56*time.Minute), 249)
 	storeRecord(test, client, 42, "model-a", value)
 	manager.config.Attempts = 1
 	manager.sample = func(context.Context, http.Header, string) (Record, error) {
-		return Record{}, errors.New("candidate length 312 is not accepted")
+		return Record{}, errors.New("candidate length 356 is not accepted")
 	}
 	headers := make(http.Header)
 	require.True(test, manager.Apply(context.Background(), 42, "model-a", headers))
@@ -176,11 +176,11 @@ func TestRefreshFailureKeepsExistingValidState(test *testing.T) {
 func TestDisableDuringAcquisitionDoesNotPublish(test *testing.T) {
 	manager, client := managerForTest(test)
 	var checks atomic.Int64
-	manager.prepare = func(_ context.Context, _ int64, headers http.Header) (http.Header, bool) {
-		return headers, checks.Add(1) == 1
+	manager.prepare = func(_ context.Context, _ int64, headers http.Header) (http.Header, Options, bool) {
+		return headers, Options{}.Normalized(), checks.Add(1) == 1
 	}
 	manager.sample = func(_ context.Context, _ http.Header, model string) (Record, error) {
-		return Parse(stateValue(time.Now(), 217), model, time.Now())
+		return Parse(stateValue(time.Now(), 249), model, time.Now())
 	}
 	manager.Apply(context.Background(), 42, "model-a", make(http.Header))
 	require.Eventually(test, func() bool {
