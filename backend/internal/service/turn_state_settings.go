@@ -38,6 +38,7 @@ type TurnStateSettingsView struct {
 	RefreshAfterMinutes     int      `json:"refresh_after_minutes"`
 	ExcludedModels          []string `json:"excluded_models"`
 	RefreshOnRejection      *bool    `json:"refresh_on_rejection"`
+	RequireValidState       *bool    `json:"require_valid_state"`
 }
 
 type turnStateStoredSettings struct {
@@ -165,7 +166,7 @@ func turnStateSettingsView(stored turnStateStoredSettings, revision string) Turn
 		ProxyHost: config.ProxyHost, ProxyUsername: config.ProxyUsername, ProxyPasswordConfigured: config.ProxyPassword != "",
 		ProxyUpstreamConfigured: config.ProxyUpstream != "", Countries: countries, IPv6Enabled: stored.IPv6Enabled,
 		PoolURL: config.URL, PoolTokenConfigured: config.Token != "", PoolCA: certificate, Attempts: config.Attempts, Concurrency: config.Concurrency,
-		RefreshAfterMinutes: config.RefreshAfterMinutes, ExcludedModels: config.ExcludedModels, RefreshOnRejection: config.RefreshOnRejection}
+		RefreshAfterMinutes: config.RefreshAfterMinutes, ExcludedModels: config.ExcludedModels, RefreshOnRejection: config.RefreshOnRejection, RequireValidState: config.RequireValidState}
 }
 
 func (gateway *OpenAIGatewayService) GetTurnStateSettings(ctx context.Context) (TurnStateSettingsView, error) {
@@ -216,6 +217,9 @@ func (gateway *OpenAIGatewayService) SaveTurnStateSettings(ctx context.Context, 
 	}
 	if request.RefreshOnRejection != nil {
 		config.RefreshOnRejection = request.RefreshOnRejection
+	}
+	if request.RequireValidState != nil {
+		config.RequireValidState = request.RequireValidState
 	}
 	normalized, err := turnstate.NormalizeAcquisitionPolicy(*config)
 	if err != nil {

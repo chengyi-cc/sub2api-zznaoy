@@ -48,6 +48,7 @@ type Config struct {
 	RefreshAfterMinutes int
 	ExcludedModels      []string
 	RefreshOnRejection  *bool
+	RequireValidState   *bool
 }
 
 func ConfigFromEnv() Config {

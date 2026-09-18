@@ -11,6 +11,13 @@ const DefaultRefreshAfterMinutes = 48
 const DefaultExcludedModels = "codex-auto-review,gpt-5.6-terra,gpt-5.4"
 
 func NormalizeAcquisitionPolicy(config Config) (Config, error) {
+	if config.RequireValidState == nil {
+		enabled := true
+		config.RequireValidState = &enabled
+	} else {
+		enabled := *config.RequireValidState
+		config.RequireValidState = &enabled
+	}
 	if config.RefreshOnRejection == nil {
 		enabled := true
 		config.RefreshOnRejection = &enabled

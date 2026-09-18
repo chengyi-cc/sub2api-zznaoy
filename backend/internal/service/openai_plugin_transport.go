@@ -13,7 +13,9 @@ func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 // doOpenAIUpstream 只在 OpenAI OAuth 能力绑定已启用时把真实请求交给插件。
 // 插件返回标准 http.Response，响应解析、错误映射、SSE 和计费仍由现有核心链处理。
 func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL string, account *Account) (response *http.Response, err error) {
-	s.applyTurnStateAutoRequest(request, account)
+	if err := s.applyTurnStateAutoRequest(request, account); err != nil {
+		return nil, err
+	}
 	if observe := s.turnStateResponseObserver(request, account); observe != nil {
 		defer func() { observe(response) }()
 	}
@@ -41,7 +43,9 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 	useTLSFallback bool,
 ) (response *http.Response, err error) {
 	if s.openaiGatewayService != nil {
-		s.openaiGatewayService.applyTurnStateAutoRequest(request, account)
+		if err := s.openaiGatewayService.applyTurnStateAutoRequest(request, account); err != nil {
+			return nil, err
+		}
 		if observe := s.openaiGatewayService.turnStateResponseObserver(request, account); observe != nil {
 			defer func() { observe(response) }()
 		}

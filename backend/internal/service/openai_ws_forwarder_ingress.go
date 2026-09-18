@@ -867,7 +867,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	var acquireTurnLease func(int, string, bool) (*openAIWSConnLease, error)
 	acquireTurnLease = func(turn int, preferred string, forcePreferredConn bool) (*openAIWSConnLease, error) {
 		req := cloneOpenAIWSAcquireRequest(baseAcquireReq)
-		s.applyTurnStateAuto(ctx, account, autoTurnModel, req.Headers)
+		injected := s.applyTurnStateAuto(ctx, account, autoTurnModel, req.Headers)
+		if err := s.requireTurnStateAuto(account, autoTurnModel, injected); err != nil {
+			return nil, stopTurnStateFailoverAfterFirstTurn(err, turn)
+		}
 		req.PreferredConnID = strings.TrimSpace(preferred)
 		req.ForcePreferredConn = forcePreferredConn
 		// dedicated 模式下每次获取均新建连接，避免跨会话复用残留上下文。
@@ -1490,6 +1493,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			autoTurnModel = model
 			injected := s.applyTurnStateAuto(ctx, account, model, baseAcquireReq.Headers)
+			if err := s.requireTurnStateAuto(account, model, injected); err != nil {
+				return stopTurnStateFailoverAfterFirstTurn(err, turn)
+			}
 			if sessionLease != nil && (injected || autoTurnInjected || modelChanged) &&
 				!sessionLease.conn.matchesHandshakeCompatibility(normalizeOpenAIWSHandshakeCompatibility(account, baseAcquireReq.Headers, baseAcquireReq.TLSProfile)) {
 				resetSessionLease(true)

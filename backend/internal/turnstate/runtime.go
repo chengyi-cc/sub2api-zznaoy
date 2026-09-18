@@ -3,6 +3,7 @@ package turnstate
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -11,12 +12,14 @@ type Runtime struct {
 	updateMu sync.Mutex
 	mu       sync.RWMutex
 	manager  *Manager
+	policy   Config
 	build    func(Config) (*Manager, error)
 	closed   bool
 }
 
 func NewRuntime(build func(Config) (*Manager, error)) *Runtime {
-	return &Runtime{build: build}
+	policy, _ := NormalizeAcquisitionPolicy(Config{})
+	return &Runtime{build: build, policy: policy}
 }
 
 func (runtime *Runtime) Update(config Config, persist func() error) error {
@@ -24,6 +27,10 @@ func (runtime *Runtime) Update(config Config, persist func() error) error {
 	defer runtime.updateMu.Unlock()
 	if runtime.closed {
 		return context.Canceled
+	}
+	policy, err := NormalizeAcquisitionPolicy(config)
+	if err != nil {
+		return err
 	}
 	candidate, err := runtime.build(config)
 	if err != nil {
@@ -63,6 +70,7 @@ func (runtime *Runtime) Update(config Config, persist func() error) error {
 	}
 	runtime.mu.Lock()
 	runtime.manager = candidate
+	runtime.policy = policy
 	runtime.mu.Unlock()
 	return nil
 }
@@ -89,6 +97,23 @@ func (runtime *Runtime) Force(ctx context.Context, accountID int64, model string
 		return false
 	}
 	return runtime.manager.Force(ctx, accountID, model, headers, options)
+}
+
+func (runtime *Runtime) RequiresValidState(model string) bool {
+	if runtime == nil {
+		return false
+	}
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
+	if !*runtime.policy.RequireValidState {
+		return false
+	}
+	for _, excluded := range runtime.policy.ExcludedModels {
+		if strings.EqualFold(strings.TrimSpace(model), excluded) {
+			return false
+		}
+	}
+	return true
 }
 
 func (runtime *Runtime) ObserveResponse(ctx context.Context, accountID int64, model string, sent, received http.Header, status int, options Options) bool {

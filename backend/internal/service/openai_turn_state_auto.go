@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -154,20 +155,52 @@ func requestTurnStateModel(request *http.Request) string {
 	return ""
 }
 
-func (gateway *OpenAIGatewayService) applyTurnStateAutoRequest(request *http.Request, account *Account) {
+func (gateway *OpenAIGatewayService) applyTurnStateAutoRequest(request *http.Request, account *Account) error {
 	if gateway == nil || gateway.turnStateAuto == nil || request == nil || request.URL == nil {
-		return
+		return nil
 	}
 	if !account.IsCodexTurnStateAutoEnabled() {
 		if account != nil {
 			gateway.turnStateAuto.Forget(account.ID)
 		}
-		return
+		return nil
 	}
 	if request.Method != http.MethodPost || request.URL.Hostname() != "chatgpt.com" || !strings.HasPrefix(request.URL.Path, "/backend-api/codex/responses") {
-		return
+		return nil
 	}
-	gateway.applyTurnStateAuto(request.Context(), account, requestTurnStateModel(request), request.Header)
+	model := requestTurnStateModel(request)
+	injected := gateway.applyTurnStateAuto(request.Context(), account, model, request.Header)
+	return gateway.requireTurnStateAuto(account, model, injected)
+}
+
+const OpenAITurnStateUnavailableReason GatewayFailureReason = "turn_state_unavailable"
+const OpenAITurnStateUnavailableMessage = "No eligible account has a valid acquired state for this model. Please retry after acquisition completes."
+
+func (failure *UpstreamFailoverError) IsTurnStateUnavailable() bool {
+	return failure != nil && failure.Reason == OpenAITurnStateUnavailableReason
+}
+
+func isTurnStateUnavailableError(err error) bool {
+	var failure *UpstreamFailoverError
+	return errors.As(err, &failure) && failure.IsTurnStateUnavailable()
+}
+
+func (gateway *OpenAIGatewayService) requireTurnStateAuto(account *Account, model string, injected bool) error {
+	if injected || gateway == nil || !account.IsCodexTurnStateAutoEnabled() || !gateway.turnStateAuto.RequiresValidState(model) {
+		return nil
+	}
+	return &UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable, ClientStatusCode: http.StatusServiceUnavailable,
+		Reason: OpenAITurnStateUnavailableReason, ClientMessage: OpenAITurnStateUnavailableMessage,
+		ResponseHeaders: http.Header{"Retry-After": []string{"5"}}, RequestScopedTransient: true,
+		ResponseBody: []byte(`{"error":{"type":"server_error","code":"turn_state_unavailable","message":"No eligible account has a valid acquired state for this model. Please retry after acquisition completes."}}`)}
+}
+
+func stopTurnStateFailoverAfterFirstTurn(err error, turn int) error {
+	var failure *UpstreamFailoverError
+	if turn > 1 && errors.As(err, &failure) && failure.IsTurnStateUnavailable() {
+		failure.NextAccountAction = NextAccountStop
+	}
+	return err
 }
 
 func (gateway *OpenAIGatewayService) turnStateResponseObserver(request *http.Request, account *Account) func(*http.Response) {
