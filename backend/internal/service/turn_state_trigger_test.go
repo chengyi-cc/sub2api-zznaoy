@@ -34,6 +34,15 @@ func TestTriggerTurnStateAcquisitionChecksSavedSettingsAndInitialHeaders(test *t
 	require.Equal(test, "workspace-a", headers.Get("Chatgpt-Account-Id"))
 	require.Equal(test, turnstate.ProfileTeam, options.Profile)
 	require.ErrorContains(test, gateway.TriggerTurnStateAcquisition(context.Background(), 42, "gpt-6-astra"), "尚未配置")
+	view, err := gateway.GetTurnStateSettings(context.Background())
+	require.NoError(test, err)
+	view.PurchasedEnabled = true
+	view.ProxyHost, view.ProxyUsername, view.ProxyPassword = "proxy.example:7778", "test_{country}_{session}", "test-password"
+	_, err = gateway.SaveTurnStateSettings(context.Background(), view)
+	require.NoError(test, err)
+	for _, model := range []string{"codex-auto-review", "gpt-5.6-terra", "gpt-5.4"} {
+		require.ErrorContains(test, gateway.TriggerTurnStateAcquisition(context.Background(), 42, model), "已关闭请求头采集")
+	}
 	account.Extra[turnstate.EnabledKey] = false
 	require.ErrorContains(test, gateway.TriggerTurnStateAcquisition(context.Background(), 42, "gpt-6-astra"), "先保存账号")
 }

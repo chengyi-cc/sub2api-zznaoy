@@ -43,13 +43,17 @@ func (runtime *Runtime) Update(config Config, persist func() error) error {
 		previous.mu.Lock()
 		candidate.mu.Lock()
 		for key, entry := range previous.targets {
-			if time.Since(entry.lastSeen) <= activeWindow {
+			if time.Since(entry.lastSeen) <= activeWindow && !candidate.ModelExcluded(entry.model) {
 				copy := *entry
 				copy.headers = entry.headers.Clone()
 				copy.running = false
 				copy.retryAt = time.Time{}
 				copy.status.LastError = ""
 				copy.status.RetryAt = nil
+				if copy.status.ExpiresAt != nil {
+					refresh := copy.status.ExpiresAt.Add(-candidate.refreshBefore())
+					copy.status.RefreshAt = &refresh
+				}
 				candidate.targets[key] = &copy
 			}
 		}
@@ -103,6 +107,15 @@ func (runtime *Runtime) Configured(source string) bool {
 	runtime.mu.RLock()
 	defer runtime.mu.RUnlock()
 	return runtime.manager != nil && runtime.manager.Configured(source)
+}
+
+func (runtime *Runtime) ModelExcluded(model string) bool {
+	if runtime == nil {
+		return false
+	}
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
+	return runtime.manager.ModelExcluded(model)
 }
 
 func (runtime *Runtime) Countries() []string {

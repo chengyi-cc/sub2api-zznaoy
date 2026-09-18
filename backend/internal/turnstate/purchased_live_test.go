@@ -85,7 +85,7 @@ func TestLiveConfiguredTurnStateManager(test *testing.T) {
 	if !manager.Apply(ctx, 1, model, outbound, options) || outbound.Get(Header) != record.Value {
 		test.Fatal("cached state was not injected")
 	}
-	test.Logf("manager_verified profile=%s source=%s model=%s length=%d country=%s ip=%s expires_at=%s refresh_at=%s", options.Profile, options.Source, model, len(record.Value), record.Country, record.SourceIP, record.ExpiresAt.Format(time.RFC3339), record.ExpiresAt.Add(-refreshBefore).Format(time.RFC3339))
+	test.Logf("manager_verified profile=%s source=%s model=%s length=%d country=%s ip=%s expires_at=%s refresh_at=%s", options.Profile, options.Source, model, len(record.Value), record.Country, record.SourceIP, record.ExpiresAt.Format(time.RFC3339), record.ExpiresAt.Add(-manager.refreshBefore()).Format(time.RFC3339))
 	if directory := os.Getenv("TURN_STATE_LIVE_SAMPLE_DIR"); directory != "" {
 		identity := sha256.Sum256([]byte(account.AccountID))
 		snapshot, _ := json.MarshalIndent(map[string]any{"model": model, "account_identity_hash": fmt.Sprintf("%x", identity), "state": record.Value, "verified_source_ip": record.SourceIP, "collected_at": time.Now().UTC()}, "", "  ")

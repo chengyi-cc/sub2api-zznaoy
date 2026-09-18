@@ -104,8 +104,8 @@ func (manager *Manager) History(ctx context.Context, accountID int64) ([]Attempt
 	return result, nil
 }
 
-func updateStatusRecord(status *Status, record Record) {
-	issued, expires, refresh := record.IssuedAt, record.ExpiresAt, record.ExpiresAt.Add(-refreshBefore)
+func (manager *Manager) updateStatusRecord(status *Status, record Record) {
+	issued, expires, refresh := record.IssuedAt, record.ExpiresAt, record.ExpiresAt.Add(-manager.refreshBefore())
 	status.Options = record.Options
 	status.IssuedAt, status.ExpiresAt, status.RefreshAt = &issued, &expires, &refresh
 	status.Length, status.Country, status.SourceIP = len(record.Value), record.Country, record.SourceIP
@@ -119,12 +119,15 @@ func (manager *Manager) Inspect(ctx context.Context, accountID int64, options Op
 	options = options.Normalized()
 	byModel := map[string]Status{}
 	for _, status := range manager.Snapshot(accountID) {
-		if status.Options == options {
+		if status.Options == options && !manager.ModelExcluded(status.Model) {
 			byModel[status.Model] = status
 		}
 	}
 	models, _ := manager.cache.SMembers(ctx, accountIndexKey(accountID)).Result()
 	for _, model := range models {
+		if manager.ModelExcluded(model) {
+			continue
+		}
 		if len(byModel) >= 256 {
 			break
 		}
@@ -136,7 +139,7 @@ func (manager *Manager) Inspect(ctx context.Context, accountID int64, options Op
 		if !exists {
 			status = Status{Model: model, State: "ready"}
 		}
-		updateStatusRecord(&status, record)
+		manager.updateStatusRecord(&status, record)
 		byModel[model] = status
 	}
 	for _, status := range byModel {

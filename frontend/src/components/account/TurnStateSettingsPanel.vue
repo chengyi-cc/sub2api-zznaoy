@@ -13,9 +13,16 @@ type Settings = {
   proxy_password?: string; proxy_password_configured: boolean; proxy_upstream?: string
   proxy_upstream_configured: boolean; clear_proxy_upstream?: boolean; countries: string
   ipv6_enabled: boolean; pool_url: string; pool_token?: string; pool_token_configured: boolean
-  pool_ca: string; attempts: number; concurrency: number
+  pool_ca: string; attempts: number; concurrency: number; refresh_after_minutes: number; excluded_models: string[]
 }
+const modelSwitches = ['codex-auto-review', 'gpt-5.6-terra', 'gpt-5.4']
 const settings = ref<Settings | null>(null)
+const excludedModelsText = computed({
+  get: () => settings.value?.excluded_models.join(',') || '',
+  set: (value: string) => {
+    if (settings.value) settings.value.excluded_models = value.split(/[,\n]/).map(model => model.trim().toLowerCase()).filter(Boolean)
+  }
+})
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
@@ -26,12 +33,24 @@ const acquisitionStarted = ref(false)
 const controller = new AbortController()
 const endpoint = '/admin/accounts/turn-state/settings'
 
+function editableSettings(data: Settings): Settings {
+  return { ...data, refresh_after_minutes: data.refresh_after_minutes ?? 48, excluded_models: [...(data.excluded_models ?? modelSwitches)], proxy_password: '', pool_token: '', proxy_upstream: '', clear_proxy_upstream: false }
+}
+
+function setModelEnabled(model: string, event: Event): void {
+  if (!settings.value) return
+  const enabled = (event.target as HTMLInputElement).checked
+  settings.value.excluded_models = settings.value.excluded_models.filter(excluded => excluded !== model)
+  if (!enabled) settings.value.excluded_models.push(model)
+  saved.value = false
+}
+
 async function load(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
     const { data } = await apiClient.get<Settings>(endpoint, { signal: controller.signal })
-    settings.value = { ...data, proxy_password: '', pool_token: '', proxy_upstream: '', clear_proxy_upstream: false }
+    settings.value = editableSettings(data)
   } catch {
     if (!controller.signal.aborted) error.value = label('读取配置失败，请重试。', 'Unable to load settings. Please retry.')
   } finally {
@@ -41,12 +60,16 @@ async function load(): Promise<void> {
 
 async function save(): Promise<void> {
   if (!settings.value || saving.value) return
+  if (!Number.isInteger(settings.value.refresh_after_minutes) || settings.value.refresh_after_minutes < 1 || settings.value.refresh_after_minutes > 59) {
+    error.value = label('刷新时间须为签发后1–59分钟。', 'Refresh age must be an integer from 1 to 59 minutes after issuance.')
+    return
+  }
   saving.value = true
   error.value = ''
   saved.value = false
   try {
     const { data } = await apiClient.put<Settings>(endpoint, settings.value)
-    settings.value = { ...data, proxy_password: '', pool_token: '', proxy_upstream: '', clear_proxy_upstream: false }
+    settings.value = editableSettings(data)
     saved.value = true
     emit('saved')
   } catch (failure: unknown) {
@@ -133,6 +156,14 @@ onBeforeUnmount(() => { controller.abort(); settings.value = null })
       <div class="grid gap-3 border-t border-gray-200 pt-3 dark:border-dark-500 sm:grid-cols-2">
         <label class="text-xs">{{ label('每轮最多尝试次数（1–30）', 'Attempts per round (1–30)') }}<input v-model.number="settings.attempts" type="number" min="1" max="30" class="input mt-1 w-full"></label>
         <label class="text-xs">{{ label('同时采集任务数（1–16）', 'Concurrent acquisition tasks (1–16)') }}<input v-model.number="settings.concurrency" type="number" min="1" max="16" class="input mt-1 w-full"></label>
+      </div>
+      <div class="space-y-2 border-t border-gray-200 pt-3 dark:border-dark-500">
+        <label class="block text-xs">{{ label('请求头签发多少分钟后开始刷新（1–59，默认48）', 'Refresh minutes after header issuance (1–59, default 48)') }}<input v-model.number="settings.refresh_after_minutes" type="number" min="1" max="59" step="1" class="input mt-1 w-full" data-testid="settings-refresh-minutes"></label>
+        <p class="text-xs text-gray-500">{{ label('例如48表示签发后48分钟开始找新头，旧头仍在签发后60分钟过期；修改后重新计算已有头的刷新时间。', '48 starts acquisition 48 minutes after issuance. Existing headers still expire at 60 minutes; saving recalculates their refresh time.') }}</p>
+        <h5 class="text-sm font-medium">{{ label('模型采集开关（所有账号共用）', 'Model acquisition switches (shared by all accounts)') }}</h5>
+        <label v-for="model in modelSwitches" :key="model" class="flex items-center gap-2 text-xs"><input type="checkbox" :checked="!settings.excluded_models.includes(model)" :data-testid="'settings-model-' + model" @change="setModelEnabled(model, $event)">{{ label('采集', 'Acquire for') }} {{ model }}</label>
+        <label class="block text-xs">{{ label('不采集的模型（完整名称，逗号或换行分隔；清空表示全部允许）', 'Excluded models (exact names, comma or newline separated; empty allows all)') }}<textarea v-model="excludedModelsText" rows="2" class="input mt-1 w-full" data-testid="settings-excluded-models" /></label>
+        <p class="text-xs text-gray-500">{{ label('默认关闭上述三个模型。关闭后停止自动及手动采集，也不注入本功能缓存的头，普通请求保持原有流程。开启并保存后，由模型请求或立即采集按钮触发。', 'These three models default to off. Excluded models skip automatic/manual acquisition and cached header injection; normal requests keep their existing behavior. After enabling and saving, model traffic or Acquire now triggers acquisition.') }}</p>
       </div>
       <div class="space-y-2 border-t border-gray-200 pt-3 dark:border-dark-500">
         <h5 class="text-sm font-medium">{{ label('立即采集（立即开始换出口并检测）', 'Acquire now (start rotating and probing immediately)') }}</h5>

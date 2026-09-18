@@ -50,7 +50,7 @@ func TestLegacyProCacheIsAvailableOnlyWhenExplicitlySelected(test *testing.T) {
 	require.Empty(test, teamHeaders.Get(Header))
 }
 
-func TestRefreshStartsAtThirtyMinutesAndKeepsValidOldState(test *testing.T) {
+func TestRefreshStartsAtFortyEightMinutesAndKeepsValidOldState(test *testing.T) {
 	manager, client := managerForTest(test)
 	manager.config.Attempts = 1
 	var calls atomic.Int64
@@ -58,7 +58,7 @@ func TestRefreshStartsAtThirtyMinutesAndKeepsValidOldState(test *testing.T) {
 		calls.Add(1)
 		return Record{}, errors.New("no accepted candidate")
 	}
-	value := stateValue(time.Now().Add(-31*time.Minute), 249)
+	value := stateValue(time.Now().Add(-49*time.Minute), 249)
 	storeRecord(test, client, 42, "model", value)
 	headers := make(http.Header)
 	require.True(test, manager.Apply(context.Background(), 42, "model", headers))
@@ -70,11 +70,11 @@ func TestRefreshStartsAtThirtyMinutesAndKeepsValidOldState(test *testing.T) {
 	require.EqualValues(test, 1, calls.Load())
 	statuses := manager.Snapshot(42)
 	require.Equal(test, "ready", statuses[0].State)
-	require.InDelta(test, 30*time.Minute, statuses[0].ExpiresAt.Sub(*statuses[0].RefreshAt), float64(time.Second))
+	require.InDelta(test, 12*time.Minute, statuses[0].ExpiresAt.Sub(*statuses[0].RefreshAt), float64(time.Second))
 	record, err := manager.read(context.Background(), 42, "model")
 	require.NoError(test, err)
 	require.Equal(test, value, record.Value)
-	storeRecord(test, client, 43, "model", stateValue(time.Now().Add(-29*time.Minute), 249))
+	storeRecord(test, client, 43, "model", stateValue(time.Now().Add(-47*time.Minute), 249))
 	require.True(test, manager.Apply(context.Background(), 43, "model", make(http.Header)))
 	require.EqualValues(test, 1, calls.Load())
 }

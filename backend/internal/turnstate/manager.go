@@ -30,22 +30,23 @@ import (
 const Header = "X-Codex-Turn-State"
 const EnabledKey = "codex_turn_state_auto_enabled"
 const lifetime = time.Hour
-const refreshBefore = 30 * time.Minute
 const retryDelay = 2 * time.Minute
 const activeWindow = 2 * time.Hour
 
 type Config struct {
-	URL           string
-	Token         string
-	CAFile        string
-	CAPEM         string
-	Attempts      int
-	Concurrency   int
-	ProxyHost     string
-	ProxyUsername string
-	ProxyPassword string
-	ProxyUpstream string
-	Countries     []string
+	URL                 string
+	Token               string
+	CAFile              string
+	CAPEM               string
+	Attempts            int
+	Concurrency         int
+	ProxyHost           string
+	ProxyUsername       string
+	ProxyPassword       string
+	ProxyUpstream       string
+	Countries           []string
+	RefreshAfterMinutes int
+	ExcludedModels      []string
 }
 
 func ConfigFromEnv() Config {
@@ -56,6 +57,16 @@ func ConfigFromEnv() Config {
 	}
 	if value, err := strconv.Atoi(os.Getenv("TURN_STATE_POOL_CONCURRENCY")); err == nil && value >= 1 && value <= 16 {
 		config.Concurrency = value
+	}
+	config.RefreshAfterMinutes = DefaultRefreshAfterMinutes
+	if value, err := strconv.Atoi(os.Getenv("TURN_STATE_REFRESH_AFTER_MINUTES")); err == nil && value >= 1 && value <= 59 {
+		config.RefreshAfterMinutes = value
+	}
+	if value, exists := os.LookupEnv("TURN_STATE_EXCLUDED_MODELS"); exists {
+		config.ExcludedModels = []string{}
+		if strings.TrimSpace(value) != "" {
+			config.ExcludedModels = strings.Split(value, ",")
+		}
 	}
 	return config
 }
@@ -121,6 +132,10 @@ type Manager struct {
 }
 
 func New(config Config, cache redis.UniversalClient, prepare Prepare) (*Manager, error) {
+	config, err := NormalizeAcquisitionPolicy(config)
+	if err != nil {
+		return nil, err
+	}
 	if config.URL == "" && config.Token == "" && config.ProxyHost == "" && config.ProxyUsername == "" && config.ProxyPassword == "" {
 		return nil, nil
 	}
@@ -261,7 +276,7 @@ func (manager *Manager) apply(ctx context.Context, accountID int64, model string
 		return false
 	}
 	model = strings.TrimSpace(model)
-	if model == "" || len(model) > 256 {
+	if model == "" || len(model) > 256 || manager.ModelExcluded(model) {
 		return false
 	}
 	options := Options{}.Normalized()
@@ -311,7 +326,7 @@ func (manager *Manager) apply(ctx context.Context, accountID int64, model string
 	entry.headers = sampleHeaders(headers)
 	entry.lastSeen = time.Now()
 	if err == nil {
-		updateStatusRecord(&entry.status, record)
+		manager.updateStatusRecord(&entry.status, record)
 		if !entry.running && !entry.force {
 			entry.status.State = "ready"
 		}
@@ -333,7 +348,7 @@ func (manager *Manager) apply(ctx context.Context, accountID int64, model string
 			}
 			return true
 		}
-		if err != nil || time.Until(record.ExpiresAt) <= refreshBefore {
+		if err != nil || time.Until(record.ExpiresAt) <= manager.refreshBefore() {
 			manager.scheduleLocked(entry)
 		}
 	} else {
@@ -354,7 +369,7 @@ func sampleHeaders(headers http.Header) http.Header {
 }
 
 func (manager *Manager) scheduleLocked(entry *target) {
-	if entry.running || time.Now().Before(entry.retryAt) || manager.closed {
+	if entry.running || time.Now().Before(entry.retryAt) || manager.closed || manager.ModelExcluded(entry.model) {
 		return
 	}
 	if !manager.Configured(entry.options.Source) {
@@ -403,7 +418,7 @@ func (manager *Manager) schedulePendingLocked() {
 			}
 			continue
 		}
-		if entry.force || entry.status.ExpiresAt == nil || time.Until(*entry.status.ExpiresAt) <= refreshBefore {
+		if entry.force || entry.status.ExpiresAt == nil || time.Until(*entry.status.ExpiresAt) <= manager.refreshBefore() {
 			manager.scheduleLocked(entry)
 		}
 	}
@@ -434,7 +449,7 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 		entry.status.RetryAt = &retryAt
 		entry.status.LastError = reason
 		if acquired != nil {
-			updateStatusRecord(&entry.status, *acquired)
+			manager.updateStatusRecord(&entry.status, *acquired)
 			entry.status.State = "ready"
 		} else if entry.status.ExpiresAt != nil && entry.status.ExpiresAt.After(time.Now()) {
 			entry.status.State = "ready"
@@ -466,7 +481,7 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 		_ = manager.cache.Eval(releaseCtx, "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end", []string{key + ":lock"}, lockValue).Err()
 	}()
 	force := len(forced) > 0 && forced[0]
-	if cached, readErr := manager.read(ctx, accountID, model); !force && readErr == nil && cached.Options == options && cached.Identity == accountIdentity(headers) && time.Until(cached.ExpiresAt) > refreshBefore {
+	if cached, readErr := manager.read(ctx, accountID, model); !force && readErr == nil && cached.Options == options && cached.Identity == accountIdentity(headers) && time.Until(cached.ExpiresAt) > manager.refreshBefore() {
 		acquired = &cached
 		return
 	}

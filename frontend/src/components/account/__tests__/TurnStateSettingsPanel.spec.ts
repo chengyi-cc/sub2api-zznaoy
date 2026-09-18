@@ -10,11 +10,41 @@ const configuration = {
   revision: 'first', purchased_enabled: true, proxy_host: 'proxy.example:7778', proxy_username: 'test_{country}_{session}',
   proxy_password_configured: true, proxy_upstream_configured: true, countries: 'US,DE',
   ipv6_enabled: true, pool_url: 'https://pool.example:18443', pool_token_configured: true,
-  pool_ca: 'certificate', attempts: 9, concurrency: 4
+  pool_ca: 'certificate', attempts: 9, concurrency: 4, refresh_after_minutes: 48,
+  excluded_models: ['codex-auto-review', 'gpt-5.6-terra', 'gpt-5.4']
 }
 beforeEach(() => { vi.clearAllMocks(); get.mockResolvedValue({ data: { ...configuration } }); post.mockResolvedValue({ data: { started: true } }) })
 
 describe('TurnStateSettingsPanel', () => {
+  it('saves model switches and custom refresh age and allows clearing exclusions', async () => {
+    put.mockImplementation(async (_endpoint, request) => ({ data: { ...request, revision: 'second' } }))
+    const wrapper = mount(TurnStateSettingsPanel, { props: { accountId: 42 } })
+    await flushPromises()
+    expect((wrapper.get('[data-testid="settings-refresh-minutes"]').element as HTMLInputElement).value).toBe('48')
+    expect((wrapper.get('[data-testid="settings-model-gpt-5.6-terra"]').element as HTMLInputElement).checked).toBe(false)
+    await wrapper.get('[data-testid="settings-model-gpt-5.6-terra"]').setValue(true)
+    await wrapper.get('[data-testid="settings-refresh-minutes"]').setValue('25')
+    await wrapper.get('[data-testid="settings-save"]').trigger('click')
+    await flushPromises()
+    expect(put).toHaveBeenLastCalledWith('/admin/accounts/turn-state/settings', expect.objectContaining({ refresh_after_minutes: 25, excluded_models: ['codex-auto-review', 'gpt-5.4'] }))
+    await wrapper.get('[data-testid="settings-excluded-models"]').setValue('')
+    await wrapper.get('[data-testid="settings-save"]').trigger('click')
+    await flushPromises()
+    expect(put).toHaveBeenLastCalledWith('/admin/accounts/turn-state/settings', expect.objectContaining({ excluded_models: [] }))
+    expect((wrapper.get('[data-testid="settings-model-gpt-5.4"]').element as HTMLInputElement).checked).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('rejects invalid refresh age without sending settings', async () => {
+    const wrapper = mount(TurnStateSettingsPanel, { props: { accountId: 42 } })
+    await flushPromises()
+    await wrapper.get('[data-testid="settings-refresh-minutes"]').setValue('60')
+    await wrapper.get('[data-testid="settings-save"]').trigger('click')
+    expect(put).not.toHaveBeenCalled()
+    expect(wrapper.get('[role="alert"]').text()).toContain('1–59分钟')
+    wrapper.unmount()
+  })
+
   it('loads shared configuration and keeps secrets empty', async () => {
     const wrapper = mount(TurnStateSettingsPanel, { props: { accountId: 42 } })
     await flushPromises()

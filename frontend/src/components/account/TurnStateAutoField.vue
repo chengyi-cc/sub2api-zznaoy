@@ -139,7 +139,7 @@ onBeforeUnmount(() => {
       </label>
     </div>
     <p class="text-xs text-gray-500 dark:text-gray-400">
-      {{ chinese ? '连续 3 次不合格或采集失败后换国家。签发满 30 分钟开始提前刷新；失败时继续使用未过期旧值，满 60 分钟停止使用。' : 'Rotate countries after 3 rejected or failed probes. Refresh after 30 minutes from issuance; keep a valid old state on refresh failure, and stop using it after 60 minutes.' }}
+      {{ chinese ? '连续 3 次不合格或采集失败后换国家。按配置时间开始刷新（默认签发后48分钟）；失败时继续使用未过期旧值，满60分钟停止使用。' : 'Rotate countries after 3 rejected or failed probes. Refresh at the configured age (default 48 minutes after issuance); keep a valid old state on refresh failure, and stop using it after 60 minutes.' }}
     </p>
     <p v-if="source === 'purchased' && status?.countries?.length" class="text-xs text-gray-500">
       {{ chinese ? '候选国家：' : 'Candidate countries: ' }}{{ status.countries.map(countryName).join('、') }}

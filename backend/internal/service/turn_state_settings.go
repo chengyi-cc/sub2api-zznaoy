@@ -18,23 +18,25 @@ import (
 const turnStateSettingsKey = "codex_turn_state_acquisition_encrypted_v1"
 
 type TurnStateSettingsView struct {
-	Revision                string `json:"revision"`
-	PurchasedEnabled        bool   `json:"purchased_enabled"`
-	ProxyHost               string `json:"proxy_host"`
-	ProxyUsername           string `json:"proxy_username"`
-	ProxyPassword           string `json:"proxy_password,omitempty"`
-	ProxyPasswordConfigured bool   `json:"proxy_password_configured"`
-	ProxyUpstream           string `json:"proxy_upstream,omitempty"`
-	ProxyUpstreamConfigured bool   `json:"proxy_upstream_configured"`
-	ClearProxyUpstream      bool   `json:"clear_proxy_upstream,omitempty"`
-	Countries               string `json:"countries"`
-	IPv6Enabled             bool   `json:"ipv6_enabled"`
-	PoolURL                 string `json:"pool_url"`
-	PoolToken               string `json:"pool_token,omitempty"`
-	PoolTokenConfigured     bool   `json:"pool_token_configured"`
-	PoolCA                  string `json:"pool_ca"`
-	Attempts                int    `json:"attempts"`
-	Concurrency             int    `json:"concurrency"`
+	Revision                string   `json:"revision"`
+	PurchasedEnabled        bool     `json:"purchased_enabled"`
+	ProxyHost               string   `json:"proxy_host"`
+	ProxyUsername           string   `json:"proxy_username"`
+	ProxyPassword           string   `json:"proxy_password,omitempty"`
+	ProxyPasswordConfigured bool     `json:"proxy_password_configured"`
+	ProxyUpstream           string   `json:"proxy_upstream,omitempty"`
+	ProxyUpstreamConfigured bool     `json:"proxy_upstream_configured"`
+	ClearProxyUpstream      bool     `json:"clear_proxy_upstream,omitempty"`
+	Countries               string   `json:"countries"`
+	IPv6Enabled             bool     `json:"ipv6_enabled"`
+	PoolURL                 string   `json:"pool_url"`
+	PoolToken               string   `json:"pool_token,omitempty"`
+	PoolTokenConfigured     bool     `json:"pool_token_configured"`
+	PoolCA                  string   `json:"pool_ca"`
+	Attempts                int      `json:"attempts"`
+	Concurrency             int      `json:"concurrency"`
+	RefreshAfterMinutes     int      `json:"refresh_after_minutes"`
+	ExcludedModels          []string `json:"excluded_models"`
 }
 
 type turnStateStoredSettings struct {
@@ -145,6 +147,9 @@ func (settings *turnStateSettings) sync(parent context.Context) {
 
 func turnStateSettingsView(stored turnStateStoredSettings, revision string) TurnStateSettingsView {
 	config := stored.Config
+	if normalized, err := turnstate.NormalizeAcquisitionPolicy(config); err == nil {
+		config = normalized
+	}
 	countries := strings.Join(config.Countries, ",")
 	if strings.Trim(countries, ", ") == "" {
 		countries = turnstate.DefaultCountries
@@ -158,7 +163,8 @@ func turnStateSettingsView(stored turnStateStoredSettings, revision string) Turn
 	return TurnStateSettingsView{Revision: revision, PurchasedEnabled: stored.PurchasedEnabled,
 		ProxyHost: config.ProxyHost, ProxyUsername: config.ProxyUsername, ProxyPasswordConfigured: config.ProxyPassword != "",
 		ProxyUpstreamConfigured: config.ProxyUpstream != "", Countries: countries, IPv6Enabled: stored.IPv6Enabled,
-		PoolURL: config.URL, PoolTokenConfigured: config.Token != "", PoolCA: certificate, Attempts: config.Attempts, Concurrency: config.Concurrency}
+		PoolURL: config.URL, PoolTokenConfigured: config.Token != "", PoolCA: certificate, Attempts: config.Attempts, Concurrency: config.Concurrency,
+		RefreshAfterMinutes: config.RefreshAfterMinutes, ExcludedModels: config.ExcludedModels}
 }
 
 func (gateway *OpenAIGatewayService) GetTurnStateSettings(ctx context.Context) (TurnStateSettingsView, error) {
@@ -201,6 +207,17 @@ func (gateway *OpenAIGatewayService) SaveTurnStateSettings(ctx context.Context, 
 	config.URL = strings.TrimRight(strings.TrimSpace(request.PoolURL), "/")
 	config.Countries = strings.Split(strings.ToUpper(strings.TrimSpace(request.Countries)), ",")
 	config.Attempts, config.Concurrency = request.Attempts, request.Concurrency
+	if request.RefreshAfterMinutes != 0 {
+		config.RefreshAfterMinutes = request.RefreshAfterMinutes
+	}
+	if request.ExcludedModels != nil {
+		config.ExcludedModels = request.ExcludedModels
+	}
+	normalized, err := turnstate.NormalizeAcquisitionPolicy(*config)
+	if err != nil {
+		return TurnStateSettingsView{}, infraerrors.BadRequest("TURN_STATE_CONFIG_INVALID", err.Error())
+	}
+	*config = normalized
 	config.CAFile, config.CAPEM = "", strings.TrimSpace(request.PoolCA)
 	if request.ProxyPassword != "" {
 		config.ProxyPassword = request.ProxyPassword
