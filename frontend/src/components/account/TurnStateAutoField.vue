@@ -17,7 +17,7 @@ type ModelStatus = {
   last_error?: string; length?: number; country?: string; source_ip?: string
 }
 type Attempt = {
-  at: string; model: string; profile: string; source: string; country?: string; actual_country?: string
+  at: string; model: string; profile: string; source: string; country?: string; actual_country?: string; kind?: string
   source_ip?: string; status: number; length: number; accepted: boolean; error?: string; duration_ms: number
 }
 type Snapshot = {
@@ -188,8 +188,8 @@ onBeforeUnmount(() => {
               <p v-if="entry.actual_country && entry.actual_country !== entry.country">{{ chinese ? '实际国家：' : 'Actual country: ' }}{{ countryName(entry.actual_country) }}</p>
             </td>
             <td class="p-2 align-top">
-              <span :class="entry.accepted ? 'text-green-600' : 'text-amber-600'">{{ entry.accepted ? (chinese ? '通过采集规则' : 'Accepted') : (chinese ? '未通过' : 'Rejected') }}</span>
-              · {{ entry.length || '—' }} · {{ entry.duration_ms }} ms
+              <span :class="entry.accepted ? 'text-green-600' : 'text-amber-600'">{{ entry.kind === 'response_rejection' ? (chinese ? '响应触发重采集' : 'Response triggered reacquisition') : entry.accepted ? (chinese ? '通过采集规则' : 'Accepted') : (chinese ? '未通过' : 'Rejected') }}</span>
+              · {{ entry.length || '—' }}<template v-if="entry.kind !== 'response_rejection'"> · {{ entry.duration_ms }} ms</template>
               <p v-if="entry.error" class="mt-1 break-words text-gray-500">{{ entry.error }}</p>
             </td>
           </tr>

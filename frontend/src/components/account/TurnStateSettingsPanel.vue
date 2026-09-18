@@ -13,7 +13,7 @@ type Settings = {
   proxy_password?: string; proxy_password_configured: boolean; proxy_upstream?: string
   proxy_upstream_configured: boolean; clear_proxy_upstream?: boolean; countries: string
   ipv6_enabled: boolean; pool_url: string; pool_token?: string; pool_token_configured: boolean
-  pool_ca: string; attempts: number; concurrency: number; refresh_after_minutes: number; excluded_models: string[]
+  pool_ca: string; attempts: number; concurrency: number; refresh_after_minutes: number; excluded_models: string[]; refresh_on_rejection: boolean
 }
 const modelSwitches = ['codex-auto-review', 'gpt-5.6-terra', 'gpt-5.4']
 const settings = ref<Settings | null>(null)
@@ -34,7 +34,7 @@ const controller = new AbortController()
 const endpoint = '/admin/accounts/turn-state/settings'
 
 function editableSettings(data: Settings): Settings {
-  return { ...data, refresh_after_minutes: data.refresh_after_minutes ?? 48, excluded_models: [...(data.excluded_models ?? modelSwitches)], proxy_password: '', pool_token: '', proxy_upstream: '', clear_proxy_upstream: false }
+  return { ...data, refresh_after_minutes: data.refresh_after_minutes ?? 48, excluded_models: [...(data.excluded_models ?? modelSwitches)], refresh_on_rejection: data.refresh_on_rejection ?? true, proxy_password: '', pool_token: '', proxy_upstream: '', clear_proxy_upstream: false }
 }
 
 function setModelEnabled(model: string, event: Event): void {
@@ -160,6 +160,8 @@ onBeforeUnmount(() => { controller.abort(); settings.value = null })
       <div class="space-y-2 border-t border-gray-200 pt-3 dark:border-dark-500">
         <label class="block text-xs">{{ label('请求头签发多少分钟后开始刷新（1–59，默认48）', 'Refresh minutes after header issuance (1–59, default 48)') }}<input v-model.number="settings.refresh_after_minutes" type="number" min="1" max="59" step="1" class="input mt-1 w-full" data-testid="settings-refresh-minutes"></label>
         <p class="text-xs text-gray-500">{{ label('例如48表示签发后48分钟开始找新头，旧头仍在签发后60分钟过期；修改后重新计算已有头的刷新时间。', '48 starts acquisition 48 minutes after issuance. Existing headers still expire at 60 minutes; saving recalculates their refresh time.') }}</p>
+        <label class="flex items-center gap-2 text-xs"><input v-model="settings.refresh_on_rejection" type="checkbox" data-testid="settings-refresh-on-rejection">{{ label('收到异常响应头立即重新采集（默认开启）', 'Reacquire on a rejected response state (default on)') }}</label>
+        <p class="text-xs text-gray-500">{{ label('Pro请求使用292后收到312，或Team使用332后收到356时，停用本次请求对应的旧头并后台重采集，不等待刷新时间。数字指状态头长度；不重放或中断当前回复。', 'Pro 292 → 312 or Team 332 → 356 invalidates the state used by that request and starts background acquisition immediately. Numbers are state lengths; the current response is neither replayed nor interrupted.') }}</p>
         <h5 class="text-sm font-medium">{{ label('模型采集开关（所有账号共用）', 'Model acquisition switches (shared by all accounts)') }}</h5>
         <label v-for="model in modelSwitches" :key="model" class="flex items-center gap-2 text-xs"><input type="checkbox" :checked="!settings.excluded_models.includes(model)" :data-testid="'settings-model-' + model" @change="setModelEnabled(model, $event)">{{ label('采集', 'Acquire for') }} {{ model }}</label>
         <label class="block text-xs">{{ label('不采集的模型（完整名称，逗号或换行分隔；清空表示全部允许）', 'Excluded models (exact names, comma or newline separated; empty allows all)') }}<textarea v-model="excludedModelsText" rows="2" class="input mt-1 w-full" data-testid="settings-excluded-models" /></label>

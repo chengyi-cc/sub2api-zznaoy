@@ -60,6 +60,8 @@ func TestTurnStateSettingsEncryptedAndHotApplied(test *testing.T) {
 	require.NoError(test, err)
 	require.False(test, view.PurchasedEnabled)
 	require.Equal(test, 48, view.RefreshAfterMinutes)
+	require.NotNil(test, view.RefreshOnRejection)
+	require.True(test, *view.RefreshOnRejection)
 	require.Equal(test, []string{"codex-auto-review", "gpt-5.6-terra", "gpt-5.4"}, view.ExcludedModels)
 	view.PurchasedEnabled = true
 	view.ProxyHost, view.ProxyUsername, view.ProxyPassword = "proxy.example:7778", "account_{country}_{session}", "private-proxy-password"
@@ -80,6 +82,8 @@ func TestTurnStateSettingsEncryptedAndHotApplied(test *testing.T) {
 	}
 	saved.Countries = "US,DE"
 	saved.RefreshAfterMinutes = 25
+	disabled := false
+	saved.RefreshOnRejection = &disabled
 	saved.ExcludedModels = []string{}
 	saved, err = gateway.SaveTurnStateSettings(ctx, saved)
 	require.NoError(test, err)
@@ -90,6 +94,8 @@ func TestTurnStateSettingsEncryptedAndHotApplied(test *testing.T) {
 	restoredView, err := restored.GetTurnStateSettings(ctx)
 	require.NoError(test, err)
 	require.Equal(test, 25, restoredView.RefreshAfterMinutes)
+	require.NotNil(test, restoredView.RefreshOnRejection)
+	require.False(test, *restoredView.RefreshOnRejection)
 	require.NotNil(test, restoredView.ExcludedModels)
 	require.Empty(test, restoredView.ExcludedModels)
 	require.False(test, restored.turnStateAuto.ModelExcluded("gpt-5.6-terra"))

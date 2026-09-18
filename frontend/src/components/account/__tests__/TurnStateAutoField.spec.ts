@@ -11,6 +11,17 @@ beforeEach(() => { vi.useFakeTimers(); getStatus.mockReset() })
 afterEach(() => { vi.useRealTimers() })
 
 describe('TurnStateAutoField', () => {
+  it('distinguishes response-triggered acquisition from probe failures', async () => {
+    getStatus.mockResolvedValue({ data: { configured: true, enabled: true, models: [], history: [{ at: '2026-09-18T01:59:00Z', model: 'model-a', profile: 'pro', source: 'purchased', kind: 'response_rejection', status: 200, length: 312, accepted: false, duration_ms: 0, error: '旧值已停用' }] } })
+    const wrapper = mount(TurnStateAutoField, { props: { accountId: 42, modelValue: true } })
+    await flushPromises()
+    await wrapper.get('[data-testid="turn-state-history"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('响应触发重采集')
+    expect(wrapper.text()).toContain('312')
+    expect(wrapper.text()).not.toContain('0 ms')
+    wrapper.unmount()
+  })
   it('opens configuration next to the switch without changing the account switch', async () => {
     getStatus.mockResolvedValue({ data: { configured: false, enabled: false, models: [] } })
     const wrapper = mount(TurnStateAutoField, { props: { accountId: 42, modelValue: false }, global: { stubs: { TurnStateSettingsPanel: true } } })

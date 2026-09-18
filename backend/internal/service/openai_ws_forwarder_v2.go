@@ -214,6 +214,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	})
 	if err != nil {
 		var agentDialErr *openAIWSDialError
+		if errors.As(err, &agentDialErr) && agentDialErr != nil {
+			s.observeTurnStateAutoResponse(ctx, account, mappedModel, wsHeaders, agentDialErr.ResponseHeaders, agentDialErr.StatusCode)
+		}
 		if s.isAgentIdentityAccount(ctx, account) && errors.As(err, &agentDialErr) && isAgentIdentityTaskInvalidWSDialError(agentDialErr) && agentTaskRecoveryTried != nil && !*agentTaskRecoveryTried {
 			*agentTaskRecoveryTried = true
 			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, account.GetCredential("task_id")); recoveryErr != nil {
@@ -303,6 +306,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	}
 
 	handshakeTurnState := strings.TrimSpace(lease.HandshakeHeader(openAIWSTurnStateHeader))
+	if !lease.Reused() {
+		s.observeTurnStateAutoResponse(ctx, account, mappedModel, wsHeaders, lease.HandshakeHeaders(), http.StatusSwitchingProtocols)
+	}
 	logOpenAIWSModeDebug(
 		"handshake account_id=%d conn_id=%s has_turn_state=%v turn_state_len=%d",
 		account.ID,

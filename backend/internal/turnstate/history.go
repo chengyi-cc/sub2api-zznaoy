@@ -15,6 +15,7 @@ type Attempt struct {
 	Options
 	At            time.Time `json:"at"`
 	Model         string    `json:"model"`
+	Kind          string    `json:"kind,omitempty"`
 	Country       string    `json:"country,omitempty"`
 	ActualCountry string    `json:"actual_country,omitempty"`
 	SourceIP      string    `json:"source_ip,omitempty"`
@@ -75,9 +76,13 @@ func (manager *Manager) recordAttempt(parent context.Context, accountID int64, m
 			entry.Status, entry.Length, entry.SourceIP, entry.ActualCountry = rejected.Status, rejected.Length, rejected.SourceIP, rejected.Country
 		}
 	}
-	data, _ := json.Marshal(entry)
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), 2*time.Second)
 	defer cancel()
+	manager.appendHistory(ctx, accountID, entry)
+}
+
+func (manager *Manager) appendHistory(ctx context.Context, accountID int64, entry Attempt) {
+	data, _ := json.Marshal(entry)
 	key := historyKey(accountID)
 	pipeline := manager.cache.TxPipeline()
 	pipeline.LPush(ctx, key, data)
@@ -132,6 +137,13 @@ func (manager *Manager) Inspect(ctx context.Context, accountID int64, options Op
 			break
 		}
 		record, err := manager.read(ctx, accountID, model)
+		if errors.Is(err, errInvalidated) && record.Options == options {
+			status := byModel[model]
+			status.Options, status.Model = options, model
+			clearInvalidatedStatus(&status)
+			byModel[model] = status
+			continue
+		}
 		if err != nil || record.Options != options {
 			continue
 		}

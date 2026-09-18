@@ -876,6 +876,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		lease, acquireErr := pool.Acquire(acquireCtx, req)
 		acquireCancel()
 		var dialErr *openAIWSDialError
+		if acquireErr != nil && errors.As(acquireErr, &dialErr) && dialErr != nil {
+			s.observeTurnStateAutoResponse(ctx, account, autoTurnModel, req.Headers, dialErr.ResponseHeaders, dialErr.StatusCode)
+		}
 		if acquireErr != nil && s.isAgentIdentityAccount(ctx, account) && errors.As(acquireErr, &dialErr) && isAgentIdentityTaskInvalidWSDialError(dialErr) && !agentTaskRecoveryTried {
 			agentTaskRecoveryTried = true
 			if recoveryErr := s.recoverAgentIdentityTask(ctx, account, account.GetCredential("task_id")); recoveryErr != nil {
@@ -932,6 +935,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			return nil, acquireErr
 		}
 		connID := strings.TrimSpace(lease.ConnID())
+		if !lease.Reused() {
+			s.observeTurnStateAutoResponse(ctx, account, autoTurnModel, req.Headers, lease.HandshakeHeaders(), http.StatusSwitchingProtocols)
+		}
 		if handshakeTurnState := strings.TrimSpace(lease.HandshakeHeader(openAIWSTurnStateHeader)); handshakeTurnState != "" {
 			turnState = handshakeTurnState
 			if stateStore != nil && sessionHash != "" {

@@ -170,6 +170,25 @@ func (gateway *OpenAIGatewayService) applyTurnStateAutoRequest(request *http.Req
 	gateway.applyTurnStateAuto(request.Context(), account, requestTurnStateModel(request), request.Header)
 }
 
+func (gateway *OpenAIGatewayService) turnStateResponseObserver(request *http.Request, account *Account) func(*http.Response) {
+	if gateway == nil || gateway.turnStateAuto == nil || !account.IsCodexTurnStateAutoEnabled() || request == nil || request.URL == nil || request.Method != http.MethodPost || request.URL.Hostname() != "chatgpt.com" || !strings.HasPrefix(request.URL.Path, "/backend-api/codex/responses") {
+		return nil
+	}
+	model, sent := requestTurnStateModel(request), request.Header.Clone()
+	return func(response *http.Response) {
+		if response != nil {
+			gateway.observeTurnStateAutoResponse(request.Context(), account, model, sent, response.Header, response.StatusCode)
+		}
+	}
+}
+
+func (gateway *OpenAIGatewayService) observeTurnStateAutoResponse(ctx context.Context, account *Account, model string, sent, received http.Header, status int) {
+	if gateway == nil || gateway.turnStateAuto == nil || !account.IsCodexTurnStateAutoEnabled() {
+		return
+	}
+	gateway.turnStateAuto.ObserveResponse(ctx, account.ID, model, sent, received, status, turnstate.OptionsFromExtra(account.Extra))
+}
+
 func (gateway *OpenAIGatewayService) TurnStateAutoStatus(ctx context.Context, account *Account, includeHistory bool) map[string]any {
 	options := turnstate.OptionsFromExtra(account.Extra)
 	var manager *turnstate.Runtime

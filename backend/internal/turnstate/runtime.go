@@ -91,6 +91,15 @@ func (runtime *Runtime) Force(ctx context.Context, accountID int64, model string
 	return runtime.manager.Force(ctx, accountID, model, headers, options)
 }
 
+func (runtime *Runtime) ObserveResponse(ctx context.Context, accountID int64, model string, sent, received http.Header, status int, options Options) bool {
+	if runtime == nil {
+		return false
+	}
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
+	return runtime.manager.ObserveResponse(ctx, accountID, model, sent, received, status, options)
+}
+
 func (runtime *Runtime) Forget(accountID int64) {
 	if runtime == nil {
 		return

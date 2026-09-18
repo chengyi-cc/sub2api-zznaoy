@@ -47,6 +47,7 @@ type Config struct {
 	Countries           []string
 	RefreshAfterMinutes int
 	ExcludedModels      []string
+	RefreshOnRejection  *bool
 }
 
 func ConfigFromEnv() Config {
@@ -73,14 +74,15 @@ func ConfigFromEnv() Config {
 
 type Record struct {
 	Options
-	Identity   string    `json:"identity"`
-	Value      string    `json:"value"`
-	Model      string    `json:"model"`
-	IssuedAt   time.Time `json:"issued_at"`
-	ExpiresAt  time.Time `json:"expires_at"`
-	AcquiredAt time.Time `json:"acquired_at"`
-	Country    string    `json:"country,omitempty"`
-	SourceIP   string    `json:"source_ip,omitempty"`
+	Identity    string    `json:"identity"`
+	Value       string    `json:"value"`
+	Model       string    `json:"model"`
+	IssuedAt    time.Time `json:"issued_at"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	AcquiredAt  time.Time `json:"acquired_at"`
+	Country     string    `json:"country,omitempty"`
+	SourceIP    string    `json:"source_ip,omitempty"`
+	Invalidated bool      `json:"invalidated,omitempty"`
 }
 
 type Status struct {
@@ -260,6 +262,9 @@ func (manager *Manager) read(ctx context.Context, accountID int64, model string)
 	if record.Model != model || len(record.Value) != acceptedLength(record.Profile) || !record.ExpiresAt.After(time.Now()) {
 		return Record{}, errors.New("cached state is invalid or expired")
 	}
+	if record.Invalidated {
+		return record, errInvalidated
+	}
 	return record, nil
 }
 
@@ -285,10 +290,13 @@ func (manager *Manager) apply(ctx context.Context, accountID int64, model string
 	}
 	readCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	record, err := manager.read(readCtx, accountID, model)
-	cancel()
 	if err == nil && (record.Identity != accountIdentity(headers) || record.Options != options) {
 		err = errors.New("cached state is invalid or expired")
 	}
+	if err != nil {
+		manager.stripRejectedValue(readCtx, accountID, model, headers, options)
+	}
+	cancel()
 	if err == nil {
 		for name := range headers {
 			if strings.EqualFold(name, Header) {
@@ -325,6 +333,9 @@ func (manager *Manager) apply(ctx context.Context, accountID int64, model string
 	}
 	entry.headers = sampleHeaders(headers)
 	entry.lastSeen = time.Now()
+	if errors.Is(err, errInvalidated) {
+		clearInvalidatedStatus(&entry.status)
+	}
 	if err == nil {
 		manager.updateStatusRecord(&entry.status, record)
 		if !entry.running && !entry.force {
@@ -336,8 +347,11 @@ func (manager *Manager) apply(ctx context.Context, accountID int64, model string
 		entry.status.LastError = "selected acquisition source is not configured"
 		return !force && err == nil
 	}
-	if errors.Is(err, redis.Nil) || err == nil || (err != nil && err.Error() == "cached state is invalid or expired") {
+	if errors.Is(err, redis.Nil) || errors.Is(err, errInvalidated) || err == nil || (err != nil && err.Error() == "cached state is invalid or expired") {
 		if force {
+			if entry.running && errors.Is(err, errInvalidated) {
+				entry.force = true
+			}
 			if !entry.running {
 				entry.force = true
 				entry.retryAt = time.Time{}
@@ -432,6 +446,15 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 	reason := ""
 	var acquired *Record
 	defer func() {
+		invalidated := false
+		if acquired != nil {
+			checkCtx, checkCancel := context.WithTimeout(manager.ctx, 250*time.Millisecond)
+			_, checkErr := manager.read(checkCtx, accountID, model)
+			checkCancel()
+			if errors.Is(checkErr, errInvalidated) {
+				acquired, reason, invalidated = nil, errInvalidated.Error(), true
+			}
+		}
 		manager.mu.Lock()
 		defer manager.mu.Unlock()
 		<-manager.slots
@@ -448,13 +471,22 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 		retryAt := entry.retryAt
 		entry.status.RetryAt = &retryAt
 		entry.status.LastError = reason
+		if invalidated {
+			clearInvalidatedStatus(&entry.status)
+			entry.force = true
+		}
 		if acquired != nil {
+			entry.force = false
 			manager.updateStatusRecord(&entry.status, *acquired)
 			entry.status.State = "ready"
 		} else if entry.status.ExpiresAt != nil && entry.status.ExpiresAt.After(time.Now()) {
 			entry.status.State = "ready"
 		} else {
 			entry.status.State = "unavailable"
+		}
+		if entry.force {
+			entry.retryAt = time.Time{}
+			entry.status.RetryAt = nil
 		}
 		if reason != "" {
 			slog.Warn("turn-state acquisition deferred", "account_id", accountID, "model", model, "reason", reason)
@@ -507,6 +539,17 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 		sampleCtx := context.WithValue(ctx, acquisitionKey{}, acquisitionOptions{Options: options, Country: country})
 		started := time.Now()
 		record, acquireErr := manager.sample(sampleCtx, headers, model)
+		if acquireErr == nil {
+			if manager.prepare != nil {
+				if currentHeaders, currentOptions, enabled := manager.prepare(ctx, accountID, headers); !enabled || currentOptions.Normalized() != options || accountIdentity(currentHeaders) != accountIdentity(headers) {
+					reason = "account disabled during acquisition"
+					return
+				}
+			}
+			record.Options = options
+			record.Identity = accountIdentity(headers)
+			acquireErr = manager.saveAcquiredRecord(ctx, accountID, record)
+		}
 		manager.recordAttempt(ctx, accountID, model, options, country, started, record, acquireErr)
 		if acquireErr != nil {
 			reason = acquireErr.Error()
@@ -531,23 +574,6 @@ func (manager *Manager) refresh(accountID int64, model string, headers http.Head
 			case <-time.After(time.Second):
 			}
 			continue
-		}
-		if manager.prepare != nil {
-			if currentHeaders, currentOptions, enabled := manager.prepare(ctx, accountID, headers); !enabled || currentOptions.Normalized() != options || accountIdentity(currentHeaders) != accountIdentity(headers) {
-				reason = "account disabled during acquisition"
-				return
-			}
-		}
-		record.Options = options
-		record.Identity = accountIdentity(headers)
-		encoded, marshalErr := json.Marshal(record)
-		if marshalErr != nil {
-			reason = "cannot encode acquired state"
-			return
-		}
-		if err := manager.cache.Set(ctx, key, encoded, time.Until(record.ExpiresAt)).Err(); err != nil {
-			reason = "cannot save acquired state"
-			return
 		}
 		rotation.Failures = 0
 		_ = manager.saveRotation(ctx, key, options, rotation)
