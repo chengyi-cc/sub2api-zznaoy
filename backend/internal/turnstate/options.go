@@ -12,7 +12,7 @@ const ProfileTeam = "team"
 const ProfilePro = "pro"
 const SourcePurchased = "purchased"
 const SourceIPv6 = "ipv6_pool"
-const DefaultCountries = "DE,GB,FR,SG,ZA,BR,AE,US,JP"
+const DefaultCountries = "DE,GB,FR,SG,ZA,BR,AE,US,JP,NL,CA,AU,IT,ES,SE,NO,CH,PL,KR,IN"
 
 type Options struct {
 	Profile string `json:"profile"`

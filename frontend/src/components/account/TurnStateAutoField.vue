@@ -45,7 +45,7 @@ function stateText(value: string): string {
 
 function countryName(value?: string): string {
   if (!value) return '—'
-  const names: Record<string, string> = { US: '美国', SG: '新加坡', JP: '日本', ZA: '南非', BR: '巴西', AE: '阿联酋', DE: '德国', GB: '英国', FR: '法国', NL: '荷兰', AU: '澳大利亚', CA: '加拿大' }
+  const names: Record<string, string> = { US: '美国', SG: '新加坡', JP: '日本', ZA: '南非', BR: '巴西', AE: '阿联酋', DE: '德国', GB: '英国', FR: '法国', NL: '荷兰', AU: '澳大利亚', CA: '加拿大', IT: '意大利', ES: '西班牙', SE: '瑞典', NO: '挪威', CH: '瑞士', PL: '波兰', KR: '韩国', IN: '印度' }
   return chinese.value ? names[value] || value : value
 }
 
