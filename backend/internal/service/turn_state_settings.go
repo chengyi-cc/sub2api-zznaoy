@@ -147,7 +147,7 @@ func turnStateSettingsView(stored turnStateStoredSettings, revision string) Turn
 	config := stored.Config
 	countries := strings.Join(config.Countries, ",")
 	if strings.Trim(countries, ", ") == "" {
-		countries = "SG,ZA,BR,AE,US,JP"
+		countries = turnstate.DefaultCountries
 	}
 	certificate := config.CAPEM
 	if certificate == "" && config.CAFile != "" {

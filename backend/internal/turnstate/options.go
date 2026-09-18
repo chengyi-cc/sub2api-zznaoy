@@ -12,6 +12,7 @@ const ProfileTeam = "team"
 const ProfilePro = "pro"
 const SourcePurchased = "purchased"
 const SourceIPv6 = "ipv6_pool"
+const DefaultCountries = "DE,GB,FR,SG,ZA,BR,AE,US,JP"
 
 type Options struct {
 	Profile string `json:"profile"`
@@ -70,7 +71,7 @@ func sampleOptions(ctx context.Context) acquisitionOptions {
 
 func parseCountries(value string) ([]string, error) {
 	if strings.TrimSpace(value) == "" {
-		value = "SG,ZA,BR,AE,US,JP"
+		value = DefaultCountries
 	}
 	countries := []string{}
 	seen := map[string]bool{}
