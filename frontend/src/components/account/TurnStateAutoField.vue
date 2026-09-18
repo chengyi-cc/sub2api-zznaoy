@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'
 import TurnStateSettingsPanel from './TurnStateSettingsPanel.vue'
 
-const props = withDefaults(defineProps<{ accountId: number; modelValue: boolean; profile?: string; source?: string }>(), { profile: 'team', source: 'purchased' })
+const props = withDefaults(defineProps<{ accountId: number; modelValue: boolean; profile?: string; source?: string; initialSettings?: boolean }>(), { profile: 'team', source: 'purchased', initialSettings: false })
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   'update:profile': [value: string]
@@ -94,7 +94,7 @@ watch(() => props.accountId, () => {
   clearTimeout(timer)
   status.value = null
   showHistory.value = false
-  showSettings.value = false
+  showSettings.value = props.initialSettings
   serverOffset.value = 0
   void refresh(generation)
 }, { immediate: true })
@@ -105,6 +105,7 @@ onBeforeUnmount(() => {
   clearInterval(clockTimer)
   controller?.abort()
 })
+defineExpose({ refreshStatus: settingsSaved })
 </script>
 
 <template>
@@ -121,7 +122,6 @@ onBeforeUnmount(() => {
         <input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-primary-600" :aria-label="chinese ? '自动采集并注入轮次状态' : 'Automatic turn-state acquisition'" :checked="modelValue" @change="emit('update:modelValue', ($event.target as HTMLInputElement).checked)">
       </div>
     </div>
-    <TurnStateSettingsPanel v-if="showSettings" :account-id="accountId" @saved="settingsSaved" />
     <div class="grid gap-3 sm:grid-cols-2">
       <label class="text-sm">
         <span class="input-label">{{ chinese ? '账号采集规则' : 'Account acquisition rules' }}</span>
@@ -150,7 +150,7 @@ onBeforeUnmount(() => {
     </p>
     <template v-if="status">
       <p class="text-xs text-gray-500">{{ chinese ? '生效状态：' : 'Saved state: ' }}{{ status.enabled ? (chinese ? '开启' : 'enabled') : (chinese ? '关闭' : 'disabled') }}</p>
-      <p v-if="status.enabled && !status.models.length" class="text-xs text-gray-500">{{ chinese ? '等待该账号的模型请求。首次采集在后台进行，未准备好时保留原有请求流程。' : 'Waiting for model traffic. Original forwarding remains active until a state is ready.' }}</p>
+      <p v-if="status.enabled && !status.models.length" class="text-xs text-gray-500">{{ chinese ? '等待模型请求或点击立即采集。尚无合格头时，按配置尝试其他账号或放行请求。' : 'Waiting for model traffic or manual acquisition. Without a valid state, requests switch accounts or proceed according to settings.' }}</p>
       <ul v-if="status.enabled" class="space-y-2 text-xs">
         <li v-for="model in status.models" :key="model.model" class="rounded bg-gray-50 p-2 dark:bg-dark-700">
           <span class="font-mono">{{ model.model }}</span> · {{ stateText(model.state) }}
@@ -196,5 +196,6 @@ onBeforeUnmount(() => {
         </tbody>
       </table>
     </div>
+    <TurnStateSettingsPanel v-if="showSettings" :account-id="accountId" @saved="settingsSaved" />
   </section>
 </template>

@@ -113,6 +113,7 @@ function mountView(stubActionMenu = true) {
         TLSFingerprintProfilesModal: true,
         CreateAccountModal: true,
         EditAccountModal: EditAccountModalStub,
+        TurnStateAccountModal: true,
         BulkEditAccountModal: true,
         PlatformTypeBadge: true,
         AccountCapacityCell: true,
@@ -152,6 +153,16 @@ const fullAccount = {
 }
 
 describe('admin AccountsView lite account list', () => {
+  it('opens the dedicated acquisition panel using full account details', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="account-turn-state-action"]').trigger('click')
+    await flushPromises()
+    expect(getById).toHaveBeenCalledWith(42)
+    expect(wrapper.getComponent({ name: 'TurnStateAccountModal' }).props('account')).toEqual(fullAccount)
+    expect(wrapper.get('[data-test="edit-account"]').text()).toBe('')
+    wrapper.unmount()
+  })
   beforeEach(() => {
     localStorage.clear()
     listAccounts.mockReset().mockResolvedValue({ items: [listRow], total: 1, page: 1, page_size: 20, pages: 1 })

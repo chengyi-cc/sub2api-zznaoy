@@ -429,8 +429,15 @@
               </div>
             </div>
           </template>
+          <template #cell-turn_state="{ row }">
+            <TurnStateSummaryCell :account="row" :summary="turnStateSummaries[row.id]" :now="turnStateNow" @open="handleTurnState(row)" />
+          </template>
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
+              <button v-if="supportsTurnState(row)" type="button" @click="handleTurnState(row)" :title="t('admin.accounts.columns.turnState')" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400" data-testid="account-turn-state-action">
+                <Icon name="refresh" size="md" />
+                <span class="text-xs">{{ t('admin.accounts.columns.turnState') }}</span>
+              </button>
               <button @click="handleEdit(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
                 <span class="text-xs">{{ t('common.edit') }}</span>
@@ -452,6 +459,7 @@
     </TablePageLayout>
     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
+    <TurnStateAccountModal v-if="turnStateAccount" :key="turnStateAccount.id" :account="turnStateAccount" @close="turnStateAccount = null" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
@@ -493,6 +501,9 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
+import { supportsTurnState, useTurnStateSummaries } from '@/composables/useTurnStateSummaries'
+import TurnStateSummaryCell from '@/components/account/TurnStateSummaryCell.vue'
+import TurnStateAccountModal from '@/components/account/TurnStateAccountModal.vue'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { useStepUp, isStepUpBlocked, isStepUpCancelled, stepUpBlockReason } from '@/composables/useStepUp'
@@ -604,6 +615,7 @@ const showStats = ref(false)
 const showErrorPassthrough = ref(false)
 const showTLSFingerprintProfiles = ref(false)
 const edAcc = ref<Account | null>(null)
+const turnStateAccount = ref<Account | null>(null)
 const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
 const creatingShadowAcc = ref<Account | null>(null)
@@ -1358,6 +1370,7 @@ const isAnyModalOpen = computed(() => {
   return (
     showCreate.value ||
     showEdit.value ||
+    turnStateAccount.value !== null ||
     showSync.value ||
     showImportData.value ||
     showExportDataDialog.value ||
@@ -1787,6 +1800,7 @@ const allColumns = computed(() => {
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
+    { key: 'turn_state', label: t('admin.accounts.columns.turnState'), sortable: false },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }
   ]
@@ -1821,6 +1835,7 @@ const cols = computed(() =>
   )
 )
 
+const { summaries: turnStateSummaries, now: turnStateNow } = useTurnStateSummaries(accounts, computed(() => !hiddenColumns.has('turn_state') && !isAnyModalOpen.value))
 const accountDetailLoading = new Set<number>()
 const loadAccountDetails = async (account: Pick<AccountListItem, 'id'>): Promise<Account | null> => {
   if (accountDetailLoading.has(account.id)) return null
@@ -1841,6 +1856,10 @@ const handleEdit = async (a: AccountListItem) => {
   if (!account) return
   edAcc.value = account
   showEdit.value = true
+}
+const handleTurnState = async (account: AccountListItem) => {
+  const detail = await loadAccountDetails(account)
+  if (detail) turnStateAccount.value = detail
 }
 const openMenu = (a: Account, e: MouseEvent) => {
   menu.acc = a
