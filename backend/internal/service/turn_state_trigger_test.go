@@ -41,7 +41,7 @@ func TestTriggerTurnStateAcquisitionChecksSavedSettingsAndInitialHeaders(test *t
 	_, err = gateway.SaveTurnStateSettings(context.Background(), view)
 	require.NoError(test, err)
 	for _, model := range []string{"codex-auto-review", "gpt-5.6-terra", "gpt-5.4"} {
-		require.ErrorContains(test, gateway.TriggerTurnStateAcquisition(context.Background(), 42, model), "已关闭请求头采集")
+		require.ErrorContains(test, gateway.TriggerTurnStateAcquisition(context.Background(), 42, model), "不在采集名单内")
 	}
 	account.Extra[turnstate.EnabledKey] = false
 	require.ErrorContains(test, gateway.TriggerTurnStateAcquisition(context.Background(), 42, "gpt-6-astra"), "先保存账号")

@@ -11,12 +11,30 @@ const configuration = {
   proxy_password_configured: true, proxy_upstream_configured: true, countries: 'US,DE',
   ipv6_enabled: true, pool_url: 'https://pool.example:18443', pool_token_configured: true,
   pool_ca: 'certificate', attempts: 9, concurrency: 4, refresh_after_minutes: 48,
-  excluded_models: ['codex-auto-review', 'gpt-5.6-terra', 'gpt-5.4']
+  included_models: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5']
 }
 beforeEach(() => { vi.clearAllMocks(); get.mockResolvedValue({ data: { ...configuration } }); post.mockResolvedValue({ data: { started: true } }) })
 
 describe('TurnStateSettingsPanel', () => {
-  it('saves model switches and custom refresh age and allows clearing exclusions', async () => {
+  it('adds exact custom models and preserves an explicitly empty list on reload', async () => {
+    put.mockImplementation(async (_endpoint, request) => ({ data: { ...request, revision: 'second' } }))
+    const wrapper = mount(TurnStateSettingsPanel, { props: { accountId: 42 } })
+    await flushPromises()
+    await wrapper.get('[data-testid="settings-included-models"]').setValue('gpt-6-astra, Future-Model')
+    await wrapper.get('[data-testid="settings-save"]').trigger('click')
+    await flushPromises()
+    expect(put).toHaveBeenLastCalledWith('/admin/accounts/turn-state/settings', expect.objectContaining({ included_models: ['gpt-6-astra', 'future-model'] }))
+    expect(put.mock.calls[0][1]).not.toHaveProperty('excluded_models')
+    wrapper.unmount()
+    get.mockResolvedValue({ data: { ...configuration, included_models: [] } })
+    const empty = mount(TurnStateSettingsPanel, { props: { accountId: 42 } })
+    await flushPromises()
+    expect((empty.get('[data-testid="settings-included-models"]').element as HTMLTextAreaElement).value).toBe('')
+    expect((empty.get('[data-testid="settings-model-gpt-6-astra"]').element as HTMLInputElement).checked).toBe(false)
+    empty.unmount()
+  })
+
+  it('saves model switches and custom refresh age and allows clearing the inclusion list', async () => {
     put.mockImplementation(async (_endpoint, request) => ({ data: { ...request, revision: 'second' } }))
     const wrapper = mount(TurnStateSettingsPanel, { props: { accountId: 42 } })
     await flushPromises()
@@ -25,17 +43,17 @@ describe('TurnStateSettingsPanel', () => {
     expect((wrapper.get('[data-testid="settings-require-valid-state"]').element as HTMLInputElement).checked).toBe(true)
     await wrapper.get('[data-testid="settings-require-valid-state"]').setValue(false)
     await wrapper.get('[data-testid="settings-refresh-on-rejection"]').setValue(false)
-    expect((wrapper.get('[data-testid="settings-model-gpt-5.6-terra"]').element as HTMLInputElement).checked).toBe(false)
-    await wrapper.get('[data-testid="settings-model-gpt-5.6-terra"]').setValue(true)
+    expect((wrapper.get('[data-testid="settings-model-gpt-5.6-sol"]').element as HTMLInputElement).checked).toBe(true)
+    await wrapper.get('[data-testid="settings-model-gpt-5.6-sol"]').setValue(false)
     await wrapper.get('[data-testid="settings-refresh-minutes"]').setValue('25')
     await wrapper.get('[data-testid="settings-save"]').trigger('click')
     await flushPromises()
-    expect(put).toHaveBeenLastCalledWith('/admin/accounts/turn-state/settings', expect.objectContaining({ refresh_after_minutes: 25, refresh_on_rejection: false, require_valid_state: false, excluded_models: ['codex-auto-review', 'gpt-5.4'] }))
-    await wrapper.get('[data-testid="settings-excluded-models"]').setValue('')
+    expect(put).toHaveBeenLastCalledWith('/admin/accounts/turn-state/settings', expect.objectContaining({ refresh_after_minutes: 25, refresh_on_rejection: false, require_valid_state: false, included_models: ['gpt-6-astra', 'gpt-5.5'] }))
+    await wrapper.get('[data-testid="settings-included-models"]').setValue('')
     await wrapper.get('[data-testid="settings-save"]').trigger('click')
     await flushPromises()
-    expect(put).toHaveBeenLastCalledWith('/admin/accounts/turn-state/settings', expect.objectContaining({ excluded_models: [] }))
-    expect((wrapper.get('[data-testid="settings-model-gpt-5.4"]').element as HTMLInputElement).checked).toBe(true)
+    expect(put).toHaveBeenLastCalledWith('/admin/accounts/turn-state/settings', expect.objectContaining({ included_models: [] }))
+    expect((wrapper.get('[data-testid="settings-model-gpt-5.5"]').element as HTMLInputElement).checked).toBe(false)
     wrapper.unmount()
   })
 

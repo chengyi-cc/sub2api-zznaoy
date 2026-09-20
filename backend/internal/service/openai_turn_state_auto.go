@@ -35,7 +35,7 @@ func (gateway *OpenAIGatewayService) TriggerTurnStateAcquisition(ctx context.Con
 		return infraerrors.BadRequest("TURN_STATE_UNCONFIGURED", "所选采集出口尚未配置，请先保存采集配置")
 	}
 	if gateway.turnStateAuto.ModelExcluded(model) {
-		return infraerrors.BadRequest("TURN_STATE_MODEL_EXCLUDED", "该模型已关闭请求头采集，请在采集配置中开启并保存后重试")
+		return infraerrors.BadRequest("TURN_STATE_MODEL_NOT_INCLUDED", "该模型不在采集名单内，请在采集配置中添加并保存后重试")
 	}
 	headers := make(http.Header)
 	headers.Set("User-Agent", codexCLIUserAgent)

@@ -66,7 +66,7 @@ func TestKnownUpstreamIdentityChangeDoesNotReuseState(test *testing.T) {
 func managerForTest(test *testing.T) (*Manager, *redis.Client) {
 	server := miniredis.RunT(test)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
-	manager, err := New(Config{URL: "https://pool.example:18443", Token: strings.Repeat("a", 48), Attempts: 2, Concurrency: 4, ProxyHost: "proxy.example:1080", ProxyUsername: "test_{country}_{session}", ProxyPassword: "test-password"}, client, nil)
+	manager, err := New(Config{IncludedModels: []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.5", "model", "model-a", "model-b", "first", "second"}, URL: "https://pool.example:18443", Token: strings.Repeat("a", 48), Attempts: 2, Concurrency: 4, ProxyHost: "proxy.example:1080", ProxyUsername: "test_{country}_{session}", ProxyPassword: "test-password"}, client, nil)
 	require.NoError(test, err)
 	test.Cleanup(func() { manager.Close(); _ = client.Close() })
 	return manager, client

@@ -64,7 +64,7 @@ func TestTurnStateSettingsEncryptedAndHotApplied(test *testing.T) {
 	require.True(test, *view.RefreshOnRejection)
 	require.NotNil(test, view.RequireValidState)
 	require.True(test, *view.RequireValidState)
-	require.Equal(test, []string{"codex-auto-review", "gpt-5.6-terra", "gpt-5.4"}, view.ExcludedModels)
+	require.Equal(test, []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.5"}, view.IncludedModels)
 	view.PurchasedEnabled = true
 	view.ProxyHost, view.ProxyUsername, view.ProxyPassword = "proxy.example:7778", "account_{country}_{session}", "private-proxy-password"
 	view.ProxyUpstream = "socks5://user:upstream-secret@localhost:7897"
@@ -87,7 +87,7 @@ func TestTurnStateSettingsEncryptedAndHotApplied(test *testing.T) {
 	disabled := false
 	saved.RefreshOnRejection = &disabled
 	saved.RequireValidState = &disabled
-	saved.ExcludedModels = []string{}
+	saved.IncludedModels = []string{}
 	saved, err = gateway.SaveTurnStateSettings(ctx, saved)
 	require.NoError(test, err)
 	require.True(test, saved.ProxyPasswordConfigured)
@@ -102,9 +102,10 @@ func TestTurnStateSettingsEncryptedAndHotApplied(test *testing.T) {
 	require.NotNil(test, restoredView.RequireValidState)
 	require.False(test, *restoredView.RequireValidState)
 	require.False(test, restored.turnStateAuto.RequiresValidState("gpt-6-astra"))
-	require.NotNil(test, restoredView.ExcludedModels)
-	require.Empty(test, restoredView.ExcludedModels)
-	require.False(test, restored.turnStateAuto.ModelExcluded("gpt-5.6-terra"))
+	require.NotNil(test, restoredView.IncludedModels)
+	require.Empty(test, restoredView.IncludedModels)
+	require.True(test, restored.turnStateAuto.ModelExcluded("gpt-5.6-terra"))
+	require.True(test, restored.turnStateAuto.ModelExcluded("gpt-6-astra"))
 	saved.ClearProxyUpstream = true
 	saved, err = gateway.SaveTurnStateSettings(ctx, saved)
 	require.NoError(test, err)
@@ -144,7 +145,7 @@ func TestTurnStateSettingsRejectsInvalidAndPreservesPrevious(test *testing.T) {
 	require.ErrorContains(test, err, "1–59")
 	require.Equal(test, oldValue, repo.value)
 	invalid = first
-	invalid.ExcludedModels = []string{"bad\nmodel"}
+	invalid.IncludedModels = []string{"bad\nmodel"}
 	_, err = gateway.SaveTurnStateSettings(ctx, invalid)
 	require.ErrorContains(test, err, "完整模型名称")
 	require.Equal(test, oldValue, repo.value)

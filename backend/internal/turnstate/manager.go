@@ -46,7 +46,7 @@ type Config struct {
 	ProxyUpstream       string
 	Countries           []string
 	RefreshAfterMinutes int
-	ExcludedModels      []string
+	IncludedModels      []string
 	RefreshOnRejection  *bool
 	RequireValidState   *bool
 }
@@ -64,10 +64,10 @@ func ConfigFromEnv() Config {
 	if value, err := strconv.Atoi(os.Getenv("TURN_STATE_REFRESH_AFTER_MINUTES")); err == nil && value >= 1 && value <= 59 {
 		config.RefreshAfterMinutes = value
 	}
-	if value, exists := os.LookupEnv("TURN_STATE_EXCLUDED_MODELS"); exists {
-		config.ExcludedModels = []string{}
+	if value, exists := os.LookupEnv("TURN_STATE_INCLUDED_MODELS"); exists {
+		config.IncludedModels = []string{}
 		if strings.TrimSpace(value) != "" {
-			config.ExcludedModels = strings.Split(value, ",")
+			config.IncludedModels = strings.Split(value, ",")
 		}
 	}
 	return config

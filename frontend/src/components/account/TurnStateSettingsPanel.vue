@@ -13,14 +13,14 @@ type Settings = {
   proxy_password?: string; proxy_password_configured: boolean; proxy_upstream?: string
   proxy_upstream_configured: boolean; clear_proxy_upstream?: boolean; countries: string
   ipv6_enabled: boolean; pool_url: string; pool_token?: string; pool_token_configured: boolean
-  pool_ca: string; attempts: number; concurrency: number; refresh_after_minutes: number; excluded_models: string[]; refresh_on_rejection: boolean; require_valid_state: boolean
+  pool_ca: string; attempts: number; concurrency: number; refresh_after_minutes: number; included_models: string[]; refresh_on_rejection: boolean; require_valid_state: boolean
 }
-const modelSwitches = ['codex-auto-review', 'gpt-5.6-terra', 'gpt-5.4']
+const modelSwitches = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5']
 const settings = ref<Settings | null>(null)
-const excludedModelsText = computed({
-  get: () => settings.value?.excluded_models.join(',') || '',
+const includedModelsText = computed({
+  get: () => settings.value?.included_models.join(',') || '',
   set: (value: string) => {
-    if (settings.value) settings.value.excluded_models = value.split(/[,\n]/).map(model => model.trim().toLowerCase()).filter(Boolean)
+    if (settings.value) settings.value.included_models = value.split(/[,\n]/).map(model => model.trim().toLowerCase()).filter(Boolean)
   }
 })
 const loading = ref(true)
@@ -34,14 +34,14 @@ const controller = new AbortController()
 const endpoint = '/admin/accounts/turn-state/settings'
 
 function editableSettings(data: Settings): Settings {
-  return { ...data, refresh_after_minutes: data.refresh_after_minutes ?? 48, excluded_models: [...(data.excluded_models ?? modelSwitches)], refresh_on_rejection: data.refresh_on_rejection ?? true, require_valid_state: data.require_valid_state ?? true, proxy_password: '', pool_token: '', proxy_upstream: '', clear_proxy_upstream: false }
+  return { ...data, refresh_after_minutes: data.refresh_after_minutes ?? 48, included_models: [...(data.included_models ?? modelSwitches)], refresh_on_rejection: data.refresh_on_rejection ?? true, require_valid_state: data.require_valid_state ?? true, proxy_password: '', pool_token: '', proxy_upstream: '', clear_proxy_upstream: false }
 }
 
 function setModelEnabled(model: string, event: Event): void {
   if (!settings.value) return
   const enabled = (event.target as HTMLInputElement).checked
-  settings.value.excluded_models = settings.value.excluded_models.filter(excluded => excluded !== model)
-  if (!enabled) settings.value.excluded_models.push(model)
+  settings.value.included_models = settings.value.included_models.filter(included => included !== model)
+  if (enabled) settings.value.included_models.push(model)
   saved.value = false
 }
 
@@ -162,12 +162,12 @@ onBeforeUnmount(() => { controller.abort(); settings.value = null })
         <p class="text-xs text-gray-500">{{ label('例如48表示签发后48分钟开始找新头，旧头仍在签发后60分钟过期；修改后重新计算已有头的刷新时间。', '48 starts acquisition 48 minutes after issuance. Existing headers still expire at 60 minutes; saving recalculates their refresh time.') }}</p>
         <label class="flex items-center gap-2 text-xs"><input v-model="settings.refresh_on_rejection" type="checkbox" data-testid="settings-refresh-on-rejection">{{ label('收到异常响应头立即重新采集（默认开启）', 'Reacquire on a rejected response state (default on)') }}</label>
         <label class="flex items-center gap-2 text-xs"><input v-model="settings.require_valid_state" type="checkbox" data-testid="settings-require-valid-state">{{ label('无合格请求头时换账号（默认开启）', 'Switch accounts when no valid acquired state is available (default on)') }}</label>
-        <p class="text-xs text-gray-500">{{ label('开启：未采集到、已过期或被停用时，先尝试其它账号；候选尝试耗尽返回503（暂不可用）。关闭：没有合格头也按原流程放行。仅对开启自动采集且未排除的模型生效；不会重放已输出的回复。', 'On: missing, expired or invalidated states trigger account failover; exhausted candidates return 503. Off: requests proceed without a valid acquired state. Applies only to enabled accounts and non-excluded models; replies already sent are not replayed.') }}</p>
+        <p class="text-xs text-gray-500">{{ label('开启：未采集到、已过期或被停用时，先尝试其它账号；候选尝试耗尽返回503（暂不可用）。关闭：没有合格头也按原流程放行。仅对开启自动采集且采集名单内模型生效；不会重放已输出的回复。', 'On: missing, expired or invalidated states trigger account failover; exhausted candidates return 503. Off: requests proceed without a valid acquired state. Applies only to enabled accounts and included models; replies already sent are not replayed.') }}</p>
         <p class="text-xs text-gray-500">{{ label('Pro请求使用292后收到312，或Team使用332后收到356时，停用本次请求对应的旧头并后台重采集，不等待刷新时间。数字指状态头长度；不重放或中断当前回复。', 'Pro 292 → 312 or Team 332 → 356 invalidates the state used by that request and starts background acquisition immediately. Numbers are state lengths; the current response is neither replayed nor interrupted.') }}</p>
-        <h5 class="text-sm font-medium">{{ label('模型采集开关（所有账号共用）', 'Model acquisition switches (shared by all accounts)') }}</h5>
-        <label v-for="model in modelSwitches" :key="model" class="flex items-center gap-2 text-xs"><input type="checkbox" :checked="!settings.excluded_models.includes(model)" :data-testid="'settings-model-' + model" @change="setModelEnabled(model, $event)">{{ label('采集', 'Acquire for') }} {{ model }}</label>
-        <label class="block text-xs">{{ label('不采集的模型（完整名称，逗号或换行分隔；清空表示全部允许）', 'Excluded models (exact names, comma or newline separated; empty allows all)') }}<textarea v-model="excludedModelsText" rows="2" class="input mt-1 w-full" data-testid="settings-excluded-models" /></label>
-        <p class="text-xs text-gray-500">{{ label('默认关闭上述三个模型。关闭后停止自动及手动采集，也不注入本功能缓存的头，普通请求保持原有流程。开启并保存后，由模型请求或立即采集按钮触发。', 'These three models default to off. Excluded models skip automatic/manual acquisition and cached header injection; normal requests keep their existing behavior. After enabling and saving, model traffic or Acquire now triggers acquisition.') }}</p>
+        <h5 class="text-sm font-medium">{{ label('只采集指定模型（所有账号共用）', 'Acquire only specified models (shared by all accounts)') }}</h5>
+        <label v-for="model in modelSwitches" :key="model" class="flex items-center gap-2 text-xs"><input type="checkbox" :checked="settings.included_models.includes(model)" :data-testid="'settings-model-' + model" @change="setModelEnabled(model, $event)">{{ label('采集', 'Acquire for') }} {{ model }}</label>
+        <label class="block text-xs">{{ label('只采集这些模型（完整名称，逗号或换行分隔；清空表示全部不采集）', 'Included models (exact names, comma or newline separated; empty disables all acquisition)') }}<textarea v-model="includedModelsText" rows="2" class="input mt-1 w-full" data-testid="settings-included-models" /></label>
+        <p class="text-xs text-gray-500">{{ label('默认只采集上述三个模型。可在名单里新增其他完整模型名称。名单外模型不自动或手动采集、不注入缓存头，也不因缺少采集头被拦截；仍正常转发。修改并保存后生效。', 'Only these three models are acquired by default. Add exact model names to the list. Unlisted models skip acquisition, cached injection and missing-state blocking; normal forwarding remains unchanged. Save to apply.') }}</p>
       </div>
       <div class="space-y-2 border-t border-gray-200 pt-3 dark:border-dark-500">
         <h5 class="text-sm font-medium">{{ label('立即采集（立即开始换出口并检测）', 'Acquire now (start rotating and probing immediately)') }}</h5>

@@ -3,7 +3,6 @@ package turnstate
 import (
 	"context"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -108,12 +107,7 @@ func (runtime *Runtime) RequiresValidState(model string) bool {
 	if !*runtime.policy.RequireValidState {
 		return false
 	}
-	for _, excluded := range runtime.policy.ExcludedModels {
-		if strings.EqualFold(strings.TrimSpace(model), excluded) {
-			return false
-		}
-	}
-	return true
+	return modelIncluded(runtime.policy, model)
 }
 
 func (runtime *Runtime) ObserveResponse(ctx context.Context, accountID int64, model string, sent, received http.Header, status int, options Options) bool {
@@ -149,7 +143,7 @@ func (runtime *Runtime) ModelExcluded(model string) bool {
 	}
 	runtime.mu.RLock()
 	defer runtime.mu.RUnlock()
-	return runtime.manager.ModelExcluded(model)
+	return !modelIncluded(runtime.policy, model)
 }
 
 func (runtime *Runtime) Countries() []string {
