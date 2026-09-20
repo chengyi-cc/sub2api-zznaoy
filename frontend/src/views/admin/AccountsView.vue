@@ -430,7 +430,7 @@
             </div>
           </template>
           <template #cell-turn_state="{ row }">
-            <TurnStateSummaryCell :account="row" :summary="turnStateSummaries[row.id]" :now="turnStateNow" @open="handleTurnState(row)" />
+            <TurnStateSummaryCell :account="row" :summary="turnStateSummaries[row.id]" :now="turnStateNow" @open="handleTurnState(row)" @queued="refreshTurnStateSummaries" />
           </template>
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
@@ -1835,7 +1835,7 @@ const cols = computed(() =>
   )
 )
 
-const { summaries: turnStateSummaries, now: turnStateNow } = useTurnStateSummaries(accounts, computed(() => !hiddenColumns.has('turn_state') && !isAnyModalOpen.value))
+const { summaries: turnStateSummaries, now: turnStateNow, refresh: refreshTurnStateSummaries } = useTurnStateSummaries(accounts, computed(() => !hiddenColumns.has('turn_state') && !isAnyModalOpen.value))
 const accountDetailLoading = new Set<number>()
 const loadAccountDetails = async (account: Pick<AccountListItem, 'id'>): Promise<Account | null> => {
   if (accountDetailLoading.has(account.id)) return null

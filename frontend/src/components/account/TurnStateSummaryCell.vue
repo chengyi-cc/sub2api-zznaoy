@@ -3,9 +3,10 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { supportsTurnState, type TurnStateSummary, type TurnStateModelSummary } from '@/composables/useTurnStateSummaries'
 import type { AccountListItem } from '@/types'
+import TurnStateAcquireButton from './TurnStateAcquireButton.vue'
 
 const props = defineProps<{ account: AccountListItem; summary?: TurnStateSummary; now: number }>()
-defineEmits<{ open: [] }>()
+defineEmits<{ open: []; queued: [] }>()
 const { locale } = useI18n()
 const chinese = computed(() => locale.value.startsWith('zh'))
 const label = (zh: string, en: string) => chinese.value ? zh : en
@@ -34,19 +35,22 @@ const tooltip = computed(() => models.value.map(model => {
 
 <template>
   <span v-if="!supportsTurnState(account)" class="text-xs text-gray-400">—</span>
-  <button v-else type="button" class="block max-w-[12rem] text-left text-[11px] leading-4 text-gray-500 dark:text-dark-400" :title="tooltip || label('查看请求头采集状态', 'View acquired state')" @click="$emit('open')">
-    <span v-if="!enabled">{{ label('未开启', 'Disabled') }}</span>
-    <span v-else-if="summary?.failed" class="text-amber-600">{{ label('读取失败', 'Unavailable') }}</span>
-    <span v-else-if="!summary">{{ label('读取中…', 'Loading…') }}</span>
+  <div v-else class="max-w-[13rem] text-left text-[11px] leading-4 text-gray-500 dark:text-dark-400">
+    <button v-if="!enabled" type="button" @click="$emit('open')">{{ label('未开启', 'Disabled') }}</button>
+    <button v-else-if="summary?.failed" type="button" class="text-amber-600" @click="$emit('open')">{{ label('读取失败', 'Unavailable') }}</button>
+    <button v-else-if="!summary" type="button" @click="$emit('open')">{{ label('读取中…', 'Loading…') }}</button>
     <template v-else-if="models.length">
       <span v-for="(model, index) in models.slice(0, 2)" :key="model.model" class="flex items-center gap-1 whitespace-nowrap" data-testid="turn-state-summary-model">
+        <button type="button" class="flex min-w-0 items-center gap-1 text-left" :title="tooltip" @click="$emit('open')">
         <span class="max-w-[6rem] truncate font-mono">{{ model.model }}</span>
         <span class="text-gray-300 dark:text-gray-600">·</span>
         <span :class="details(model).valid ? '' : 'text-amber-600 dark:text-amber-400'">{{ details(model).text }}</span>
         <span class="font-mono tabular-nums">{{ details(model).ttl }}</span>
         <span v-if="index === 1 && models.length > 2" class="text-[10px]">+{{ models.length - 2 }}</span>
+        </button>
+        <TurnStateAcquireButton :account-id="account.id" :model="model.model" :disabled="!summary.configured" compact @queued="$emit('queued')" />
       </span>
     </template>
-    <span v-else>{{ summary.configured ? label('待采集', 'Pending') : label('未配置', 'Not configured') }}</span>
-  </button>
+    <button v-else type="button" @click="$emit('open')">{{ summary.configured ? label('待采集', 'Pending') : label('未配置', 'Not configured') }}</button>
+  </div>
 </template>

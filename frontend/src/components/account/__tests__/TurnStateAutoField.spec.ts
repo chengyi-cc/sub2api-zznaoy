@@ -3,14 +3,27 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { ref } from 'vue'
 import TurnStateAutoField from '../TurnStateAutoField.vue'
 
-const { getStatus } = vi.hoisted(() => ({ getStatus: vi.fn() }))
-vi.mock('@/api/client', () => ({ apiClient: { get: getStatus } }))
+const { getStatus, post } = vi.hoisted(() => ({ getStatus: vi.fn(), post: vi.fn() }))
+vi.mock('@/api/client', () => ({ apiClient: { get: getStatus, post } }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: ref('zh-CN') }) }))
 
-beforeEach(() => { vi.useFakeTimers(); getStatus.mockReset() })
+beforeEach(() => { vi.useFakeTimers(); getStatus.mockReset(); post.mockReset() })
 afterEach(() => { vi.useRealTimers() })
 
 describe('TurnStateAutoField', () => {
+  it('reacquires one listed model and refreshes its status without changing the account settings', async () => {
+    getStatus.mockResolvedValue({ data: { configured: true, enabled: true, models: [{ model: 'gpt-6-astra', state: 'ready' }, { model: 'gpt-5.5', state: 'unavailable' }] } })
+    post.mockResolvedValue({ data: { queued: true } })
+    const wrapper = mount(TurnStateAutoField, { props: { accountId: 42, modelValue: true } })
+    await flushPromises()
+    await wrapper.get('[data-testid="turn-state-reacquire-gpt-5.5"]').trigger('click')
+    await flushPromises()
+    expect(post).toHaveBeenCalledOnce()
+    expect(post).toHaveBeenCalledWith('/admin/accounts/42/turn-state/acquire', { model: 'gpt-5.5' }, expect.anything())
+    expect(getStatus).toHaveBeenCalledTimes(2)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    wrapper.unmount()
+  })
   it('distinguishes response-triggered acquisition from probe failures', async () => {
     getStatus.mockResolvedValue({ data: { configured: true, enabled: true, models: [], history: [{ at: '2026-09-18T01:59:00Z', model: 'model-a', profile: 'pro', source: 'purchased', kind: 'response_rejection', status: 200, length: 312, accepted: false, duration_ms: 0, error: '旧值已停用' }] } })
     const wrapper = mount(TurnStateAutoField, { props: { accountId: 42, modelValue: true } })

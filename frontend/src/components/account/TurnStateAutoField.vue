@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'
 import TurnStateSettingsPanel from './TurnStateSettingsPanel.vue'
+import TurnStateAcquireButton from './TurnStateAcquireButton.vue'
 
 const props = withDefaults(defineProps<{ accountId: number; modelValue: boolean; profile?: string; source?: string; initialSettings?: boolean }>(), { profile: 'team', source: 'purchased', initialSettings: false })
 const emit = defineEmits<{
@@ -153,9 +154,13 @@ defineExpose({ refreshStatus: settingsSaved })
       <p v-if="status.enabled && !status.models.length" class="text-xs text-gray-500">{{ chinese ? '等待模型请求或点击立即采集。尚无合格头时，按配置尝试其他账号或放行请求。' : 'Waiting for model traffic or manual acquisition. Without a valid state, requests switch accounts or proceed according to settings.' }}</p>
       <ul v-if="status.enabled" class="space-y-2 text-xs">
         <li v-for="model in status.models" :key="model.model" class="rounded bg-gray-50 p-2 dark:bg-dark-700">
-          <span class="font-mono">{{ model.model }}</span> · {{ stateText(model.state) }}
-          <span v-if="model.length"> · {{ model.length }}</span>
-          <span v-if="model.country"> · {{ countryName(model.country) }}</span>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span><span class="font-mono">{{ model.model }}</span> · {{ stateText(model.state) }}
+              <span v-if="model.length"> · {{ model.length }}</span>
+              <span v-if="model.country"> · {{ countryName(model.country) }}</span>
+            </span>
+            <TurnStateAcquireButton :account-id="accountId" :model="model.model" :disabled="error || !status.enabled || !status.configured" @queued="settingsSaved" />
+          </div>
           <p v-if="model.expires_at" class="mt-1">
             {{ chinese ? '剩余有效期：' : 'Time remaining: ' }}<strong class="font-mono" data-testid="turn-state-ttl">{{ remaining(model.expires_at) }}</strong>
             · {{ chinese ? '到期：' : 'Expires: ' }}{{ new Date(model.expires_at).toLocaleString() }}
