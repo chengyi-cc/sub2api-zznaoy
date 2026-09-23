@@ -45,6 +45,12 @@
       @submit.prevent="handleSubmit"
       class="space-y-5"
     >
+      <OpenAIAccountTemplateBar
+        v-if="show && form.platform === 'openai'"
+        :kind="accountCategory === 'apikey' ? 'apikey' : 'oauth'"
+        :bindings="openaiTemplateBindings"
+        :proxies="proxies" :groups="groups" :profiles="tlsFingerprintProfiles"
+      />
       <div>
         <label class="input-label">{{ t('admin.accounts.accountName') }}</label>
         <input
@@ -3935,6 +3941,8 @@ import type {
   OpenAIEndpointCapability
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import OpenAIAccountTemplateBar from './OpenAIAccountTemplateBar.vue'
+import { bindTemplateValue, templateProperty, templateGroup, type TemplateBindings } from '@/utils/openaiAccountTemplate'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
@@ -4451,7 +4459,7 @@ const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OF
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'machine' | 'session' | 'full'
-const codexFingerprintMode = ref<CodexFingerprintMode>('machine')
+const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
@@ -4743,6 +4751,37 @@ const form = reactive({
   group_ids: [] as number[],
   expires_at: null as number | null
 })
+
+const openaiTemplateBindings: TemplateBindings = {
+  concurrency: templateProperty(form, 'concurrency'),
+  load_factor: templateProperty(form, 'load_factor'),
+  priority: templateProperty(form, 'priority'),
+  rate_multiplier: templateProperty(form, 'rate_multiplier'),
+  proxy_id: templateProperty(form, 'proxy_id'),
+  group_ids: templateProperty(form, 'group_ids'),
+  autoPauseOnExpired: bindTemplateValue(autoPauseOnExpired),
+  codexFingerprintMode: bindTemplateValue(codexFingerprintMode),
+  openaiPassthroughEnabled: bindTemplateValue(openaiPassthroughEnabled),
+  openaiFlattenNamespacesEnabled: bindTemplateValue(openaiFlattenNamespacesEnabled),
+  openaiResponsesWebSocketV2Mode: bindTemplateValue(openaiResponsesWebSocketV2Mode),
+  openAICompactMode: bindTemplateValue(openAICompactMode),
+  openAICompactModelMappings: bindTemplateValue(openAICompactModelMappings),
+  openAIResponsesMode: bindTemplateValue(openAIResponsesMode),
+  openAIImagesUrlToB64JsonEnabled: bindTemplateValue(openAIImagesUrlToB64JsonEnabled),
+  openAIEndpointCapabilities: bindTemplateValue(openAIEndpointCapabilities),
+  editQuotaLimit: bindTemplateValue(editQuotaLimit),
+  editQuotaDailyLimit: bindTemplateValue(editQuotaDailyLimit),
+  editQuotaWeeklyLimit: bindTemplateValue(editQuotaWeeklyLimit),
+  tls: templateGroup({ enabled: bindTemplateValue(tlsFingerprintEnabled), profile_id: bindTemplateValue(tlsFingerprintProfileId) }),
+  codexCLI: templateGroup({ enabled: bindTemplateValue(codexCLIOnlyEnabled), allow_app_server: bindTemplateValue(codexCLIOnlyAppServerEnabled) }),
+  modelConfig: templateGroup({ mode: bindTemplateValue(modelRestrictionMode), allowed_models: bindTemplateValue(allowedModels), mappings: bindTemplateValue(modelMappings) }),
+  poolConfig: templateGroup({ enabled: bindTemplateValue(poolModeEnabled), retry_count: bindTemplateValue(poolModeRetryCount), status_codes: bindTemplateValue(poolModeRetryStatusCodesInput) }),
+  openAILongContextBillingEnabled: {
+    read: () => openAILongContextBillingEnabled.value,
+    write: value => { openAILongContextBillingEnabled.value = value === true; openAILongContextBillingTouched.value = true }
+  }
+}
+
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
@@ -5373,7 +5412,7 @@ const resetForm = () => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
-  codexFingerprintMode.value = 'machine'
+  codexFingerprintMode.value = 'off'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
@@ -5473,8 +5512,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   } else {
     delete extra.codex_cli_only_allow_app_server
   }
-  // 收敛是显式 opt-in：off 即默认值，不落键；device/session/full 必须显式写入，
-  // 否则管理员的选择会被当成默认而丢失（#5610）。
+  // 新建账号明确记录 off；其他模式只有管理员选择或应用模板后才启用。
   if (accountCategory.value === 'oauth-based') {
     extra.codex_fingerprint_mode = codexFingerprintMode.value
     extra.enable_tls_fingerprint = tlsFingerprintEnabled.value

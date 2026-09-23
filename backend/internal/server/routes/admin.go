@@ -567,6 +567,8 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	adminSettings := admin.Group("/settings")
+	adminSettings.GET("/openai-account-template", h.Admin.Setting.GetOpenAIAccountTemplate)
+	adminSettings.PUT("/openai-account-template", h.Admin.Setting.SaveOpenAIAccountTemplate)
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)

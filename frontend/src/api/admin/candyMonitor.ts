@@ -30,6 +30,11 @@ export interface CandyResult {
   finished_at?: string
 }
 export interface CandyAccount extends CandyConfig {
+  total_tests: number
+  answer_21_count: number
+  answer_29_count: number
+  other_answer_count: number
+  inconclusive_count: number
   account_id: number
   name: string
   platform: string

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   createAccountMock,
+  getAccountTemplateMock,
   probeUpstreamBillingMock,
   syncUpstreamModelsMock,
   showWarningMock,
@@ -12,6 +13,7 @@ const {
   authIsSimpleMode,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
+  getAccountTemplateMock: vi.fn(),
   probeUpstreamBillingMock: vi.fn(),
   syncUpstreamModelsMock: vi.fn(),
   showWarningMock: vi.fn(),
@@ -19,6 +21,8 @@ const {
   createOpenAICodexPATMock: vi.fn(),
   authIsSimpleMode: { value: true },
 }))
+
+vi.mock('@/api/admin/openaiAccountTemplate', () => ({ openaiAccountTemplateAPI: { get: getAccountTemplateMock, save: vi.fn() } }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
@@ -662,7 +666,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)
   })
 
-  it('defaults new Codex imports to machine and saves OpenAI TLS selection', async () => {
+  it('defaults new Codex imports to off and saves OpenAI TLS selection', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')
     await wrapper.get('[data-testid="create-openai-tls-fingerprint-toggle"]').setValue(true)
@@ -670,7 +674,24 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
     await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
     await flushPromises()
-    expect(importCodexSessionMock.mock.lastCall?.[0]?.extra).toMatchObject({ codex_fingerprint_mode: 'machine', enable_tls_fingerprint: true })
+    expect(importCodexSessionMock.mock.lastCall?.[0]?.extra).toMatchObject({ codex_fingerprint_mode: 'off', enable_tls_fingerprint: true })
+    wrapper.unmount()
+  })
+
+  it('applies selected template fields to Codex imports and preserves untouched defaults', async () => {
+    getAccountTemplateMock.mockResolvedValue({ version: 1, fields: { concurrency: 4, codexFingerprintMode: 'machine', openAILongContextBillingEnabled: true } })
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="apply-template"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('template import')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+    const payload = importCodexSessionMock.mock.lastCall?.[0]
+    expect(payload.concurrency).toBe(4)
+    expect(payload.extra).toMatchObject({ codex_fingerprint_mode: 'machine', openai_long_context_billing_enabled: true })
+    expect(payload.priority).toBe(1)
     wrapper.unmount()
   })
 

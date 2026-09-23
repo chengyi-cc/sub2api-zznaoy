@@ -10,7 +10,7 @@ vi.mock('vue-i18n', async () => {
   return { ...actual, useI18n: () => ({ t: (key: string) => key }) }
 })
 const defaults = { enabled: true, model_id: 'gpt-6-astra', interval_minutes: 60, max_results: 50 }
-const account = { account_id: 42, name: 'Custom account', platform: 'openai', status: 'active', enabled: true, use_defaults: false, model_id: 'custom-model', interval_minutes: 17, latest: null }
+const account = { account_id: 42, name: 'Custom account', platform: 'openai', status: 'active', enabled: true, use_defaults: false, model_id: 'custom-model', interval_minutes: 17, latest: null, total_tests: 100, answer_21_count: 75, answer_29_count: 20, other_answer_count: 3, inconclusive_count: 2 }
 function setup() {
   return mount(CandyMonitorView, { global: { stubs: {
     AppLayout: { template: '<div><slot /></div>' },
@@ -30,6 +30,8 @@ describe('CandyMonitorView', () => {
   afterEach(() => vi.useRealTimers())
   it('filters by group and applies the saved template to selected accounts', async () => {
     const wrapper = setup(); await flushPromises()
+    expect(wrapper.get('[data-testid="candy-counts"]').text()).toContain('21: 75')
+    expect(wrapper.get('[data-testid="candy-counts"]').text()).toContain('29: 20')
     await wrapper.get('[data-testid="group-filter"]').setValue('8'); await flushPromises()
     expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ group_id: 8, page: 1 }))
     await wrapper.get('input[aria-label="Custom account"]').setValue(true)

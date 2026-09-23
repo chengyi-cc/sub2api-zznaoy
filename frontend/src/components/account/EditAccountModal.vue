@@ -11,6 +11,13 @@
       @submit.prevent="handleSubmit"
       class="space-y-5"
     >
+      <OpenAIAccountTemplateBar
+        v-if="show && account.platform === 'openai' && !account.parent_account_id"
+        :key="account.id"
+        :kind="account.type === 'apikey' ? 'apikey' : 'oauth'"
+        :bindings="openaiTemplateBindings"
+        :proxies="proxies" :groups="groups" :profiles="tlsFingerprintProfiles"
+      />
       <div>
         <label class="input-label">{{ t('common.name') }}</label>
         <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
@@ -3138,6 +3145,8 @@ import type {
   OpenCodeGoUsageWindow
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import OpenAIAccountTemplateBar from './OpenAIAccountTemplateBar.vue'
+import { bindTemplateValue, templateProperty, templateGroup, type TemplateBindings } from '@/utils/openaiAccountTemplate'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
@@ -4036,6 +4045,34 @@ const form = reactive({
   group_ids: [] as number[],
   expires_at: null as number | null
 })
+
+const openaiTemplateBindings: TemplateBindings = {
+  concurrency: templateProperty(form, 'concurrency'),
+  load_factor: templateProperty(form, 'load_factor'),
+  priority: templateProperty(form, 'priority'),
+  rate_multiplier: templateProperty(form, 'rate_multiplier'),
+  proxy_id: templateProperty(form, 'proxy_id'),
+  group_ids: templateProperty(form, 'group_ids'),
+  autoPauseOnExpired: bindTemplateValue(autoPauseOnExpired),
+  codexFingerprintMode: bindTemplateValue(codexFingerprintMode),
+  openaiPassthroughEnabled: bindTemplateValue(openaiPassthroughEnabled),
+  openaiFlattenNamespacesEnabled: bindTemplateValue(openaiFlattenNamespacesEnabled),
+  openaiResponsesWebSocketV2Mode: bindTemplateValue(openaiResponsesWebSocketV2Mode),
+  openAICompactMode: bindTemplateValue(openAICompactMode),
+  openAICompactModelMappings: bindTemplateValue(openAICompactModelMappings),
+  openAIResponsesMode: bindTemplateValue(openAIResponsesMode),
+  openAIImagesUrlToB64JsonEnabled: bindTemplateValue(openAIImagesUrlToB64JsonEnabled),
+  openAIEndpointCapabilities: bindTemplateValue(openAIEndpointCapabilities),
+  editQuotaLimit: bindTemplateValue(editQuotaLimit),
+  editQuotaDailyLimit: bindTemplateValue(editQuotaDailyLimit),
+  editQuotaWeeklyLimit: bindTemplateValue(editQuotaWeeklyLimit),
+  tls: templateGroup({ enabled: bindTemplateValue(tlsFingerprintEnabled), profile_id: bindTemplateValue(tlsFingerprintProfileId) }),
+  codexCLI: templateGroup({ enabled: bindTemplateValue(codexCLIOnlyEnabled), allow_app_server: bindTemplateValue(codexCLIOnlyAppServerEnabled) }),
+  modelConfig: templateGroup({ mode: bindTemplateValue(modelRestrictionMode), allowed_models: bindTemplateValue(allowedModels), mappings: bindTemplateValue(modelMappings) }),
+  poolConfig: templateGroup({ enabled: bindTemplateValue(poolModeEnabled), retry_count: bindTemplateValue(poolModeRetryCount), status_codes: bindTemplateValue(poolModeRetryStatusCodesInput) }),
+  openAILongContextBillingEnabled: bindTemplateValue(openAILongContextBillingEnabled)
+}
+
 
 const handleUpstreamBillingRateSyncChange = (enabled: boolean) => {
   upstreamBillingRateSyncEnabled.value = enabled

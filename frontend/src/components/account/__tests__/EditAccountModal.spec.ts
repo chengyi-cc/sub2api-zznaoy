@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, getAccountTemplateMock } = vi.hoisted(() => ({
+  getAccountTemplateMock: vi.fn(),
   updateAccountMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
+
+vi.mock('@/api/admin/openaiAccountTemplate', () => ({ openaiAccountTemplateAPI: { get: getAccountTemplateMock, save: vi.fn() } }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
@@ -324,6 +327,26 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('applies a template to the existing account without replacing unselected settings or identity', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.priority = 9
+    account.extra = { codex_fingerprint_mode: 'machine', openai_passthrough: true, custom_marker: 'keep' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    getAccountTemplateMock.mockResolvedValue({ version: 1, fields: { concurrency: 5, openaiPassthroughEnabled: false } })
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="apply-template"]').trigger('click')
+    await flushPromises()
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const payload = updateAccountMock.mock.lastCall?.[1]
+    expect(payload.concurrency).toBe(5)
+    expect(payload.priority).toBe(9)
+    expect(payload.extra).toMatchObject({ codex_fingerprint_mode: 'machine', custom_marker: 'keep' })
+    expect(payload.extra.openai_passthrough).not.toBe(true)
+    expect(payload.credentials?.access_token).toBe(account.credentials.access_token)
+    wrapper.unmount()
+  })
   it('preserves legacy off and saves machine mode with OpenAI TLS', async () => {
     const account = buildOpenAIOAuthParentAccount()
     const wrapper = mountModal(account)

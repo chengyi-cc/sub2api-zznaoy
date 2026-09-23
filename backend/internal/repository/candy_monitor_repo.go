@@ -47,7 +47,8 @@ const candyAccountFrom = ` FROM accounts a CROSS JOIN candy_monitor_settings s
 const candyAccountColumns = `a.id,a.name,a.platform,a.status,COALESCE(m.enabled,FALSE),COALESCE(m.use_defaults,TRUE),
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.model_id ELSE m.model_id END,
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.interval_minutes ELSE m.interval_minutes END,
- m.last_run_at,m.next_run_at,m.lease_until,COALESCE(to_jsonb(latest),'null'::jsonb)`
+ m.last_run_at,m.next_run_at,m.lease_until,COALESCE(to_jsonb(latest),'null'::jsonb),
+ COALESCE(m.total_tests,0),COALESCE(m.answer_21_count,0),COALESCE(m.answer_29_count,0),COALESCE(m.other_answer_count,0),COALESCE(m.inconclusive_count,0)`
 const candyEligible = `a.deleted_at IS NULL AND a.platform IN ('openai','anthropic','gemini') AND COALESCE(a.extra->>'synthetic_ui_test','false')<>'true' AND a.parent_account_id IS NULL`
 
 func scanCandyAccounts(rows *sql.Rows) ([]service.CandyMonitorAccount, error) {
@@ -55,7 +56,7 @@ func scanCandyAccounts(rows *sql.Rows) ([]service.CandyMonitorAccount, error) {
 	for rows.Next() {
 		var a service.CandyMonitorAccount
 		var raw []byte
-		if err := rows.Scan(&a.AccountID, &a.Name, &a.Platform, &a.Status, &a.Enabled, &a.UseDefaults, &a.ModelID, &a.IntervalMinutes, &a.LastRunAt, &a.NextRunAt, &a.RunningUntil, &raw); err != nil {
+		if err := rows.Scan(&a.AccountID, &a.Name, &a.Platform, &a.Status, &a.Enabled, &a.UseDefaults, &a.ModelID, &a.IntervalMinutes, &a.LastRunAt, &a.NextRunAt, &a.RunningUntil, &raw, &a.TotalTests, &a.Answer21Count, &a.Answer29Count, &a.OtherAnswerCount, &a.InconclusiveCount); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(raw, &a.Latest); err != nil {
@@ -101,7 +102,14 @@ func (r *candyMonitorRepository) Configure(ctx context.Context, ids []int64, c s
 }
 func (r *candyMonitorRepository) Due(ctx context.Context, limit int) ([]service.CandyMonitorAccount, error) {
 	// Recover bounded leases after crashes; old workers cannot overwrite a newer run.
-	if _, err := r.db.ExecContext(ctx, `UPDATE candy_monitor_results SET verdict='inconclusive',reason='interrupted',error_message='Test interrupted; retry required',finished_at=NOW() WHERE verdict='running' AND started_at<NOW()-INTERVAL '4 minutes'`); err != nil {
+	if _, err := r.db.ExecContext(ctx, `WITH locked AS (
+ SELECT m.account_id FROM candy_monitor_accounts m WHERE EXISTS (
+ SELECT 1 FROM candy_monitor_results r WHERE r.account_id=m.account_id AND r.verdict='running' AND r.started_at<NOW()-INTERVAL '4 minutes') FOR UPDATE OF m SKIP LOCKED
+ ), expired AS (
+ UPDATE candy_monitor_results SET verdict='inconclusive',reason='interrupted',error_message='Test interrupted; retry required',finished_at=NOW()
+ WHERE verdict='running' AND started_at<NOW()-INTERVAL '4 minutes' AND account_id IN (SELECT account_id FROM locked) RETURNING account_id
+ ), counts AS (SELECT account_id,COUNT(*) AS n FROM expired GROUP BY account_id)
+ UPDATE candy_monitor_accounts m SET total_tests=m.total_tests+c.n,inconclusive_count=m.inconclusive_count+c.n FROM counts c WHERE m.account_id=c.account_id`); err != nil {
 		return nil, err
 	}
 	rows, err := r.db.QueryContext(ctx, `SELECT `+candyAccountColumns+candyAccountFrom+` WHERE `+candyEligible+` AND s.enabled AND m.enabled AND m.next_run_at<=NOW() AND (m.lease_until IS NULL OR m.lease_until<=NOW()) ORDER BY m.next_run_at LIMIT $1`, limit)
@@ -177,8 +185,22 @@ func (r *candyMonitorRepository) Finish(ctx context.Context, v *service.CandyMon
 	if !current.Valid || current.Int64 != v.ID {
 		return nil
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE candy_monitor_results SET verdict=$2,reason=$3,actual=$4,expected=$5,duration_ms=$6,response_text=$7,error_message=$8,finished_at=$9 WHERE id=$1 AND verdict='running'`, v.ID, v.Verdict, v.Reason, v.Actual, v.Expected, v.DurationMs, v.ResponseText, v.ErrorMessage, v.FinishedAt); err != nil {
+	updated, err := tx.ExecContext(ctx, `UPDATE candy_monitor_results SET verdict=$2,reason=$3,actual=$4,expected=$5,duration_ms=$6,response_text=$7,error_message=$8,finished_at=$9 WHERE id=$1 AND verdict='running'`, v.ID, v.Verdict, v.Reason, v.Actual, v.Expected, v.DurationMs, v.ResponseText, v.ErrorMessage, v.FinishedAt)
+	if err != nil {
 		return err
+	}
+	n, err := updated.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		if _, err = tx.ExecContext(ctx, `UPDATE candy_monitor_accounts SET total_tests=total_tests+1,
+ answer_21_count=answer_21_count+CASE WHEN $2='pass' AND $3::bigint=21 THEN 1 ELSE 0 END,
+ answer_29_count=answer_29_count+CASE WHEN $2='incorrect' AND $3::bigint=29 THEN 1 ELSE 0 END,
+ other_answer_count=other_answer_count+CASE WHEN $2='incorrect' AND $3::bigint<>29 THEN 1 ELSE 0 END,
+ inconclusive_count=inconclusive_count+CASE WHEN $2 IN ('inconclusive','invalid_format') THEN 1 ELSE 0 END WHERE account_id=$1`, v.AccountID, v.Verdict, v.Actual); err != nil {
+			return err
+		}
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE candy_monitor_accounts SET lease_until=NULL,running_result_id=NULL WHERE account_id=$1 AND running_result_id=$2`, v.AccountID, v.ID); err != nil {
 		return err

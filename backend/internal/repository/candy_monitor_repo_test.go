@@ -111,6 +111,8 @@ func TestCandyMonitorPostgres(t *testing.T) {
 	require.Equal(t, "updated-text", scheduled.ModelID)
 	require.Equal(t, "scheduled", scheduled.Source)
 	scheduled.Verdict = "pass"
+	answer21 := 21
+	scheduled.Actual = &answer21
 	scheduled.FinishedAt = &now
 	require.NoError(t, r.Finish(ctx, scheduled))
 	due, err = r.Due(ctx, 4)
@@ -136,12 +138,14 @@ func TestCandyMonitorPostgres(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "running", stillRunning.Verdict)
 	current.Verdict = "pass"
+	current.Actual = &answer21
 	current.FinishedAt = &now
 	require.NoError(t, r.Finish(ctx, current))
 	for i := 0; i < 12; i++ {
 		v, e := r.Begin(ctx, first, "updated-text", false)
 		require.NoError(t, e)
 		v.Verdict = "pass"
+		v.Actual = &answer21
 		v.FinishedAt = &now
 		require.NoError(t, r.Finish(ctx, v))
 	}
@@ -149,6 +153,25 @@ func TestCandyMonitorPostgres(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, history, 10)
 	require.Greater(t, history[0].ID, history[9].ID)
+	// Lifetime counters survive retention and idempotent/stale Finish calls.
+	require.NoError(t, r.Finish(ctx, current))
+	_, err = r.Due(ctx, 4)
+	require.NoError(t, err)
+	list, _, err = r.List(ctx, service.CandyMonitorFilter{Page: 1, PageSize: 30, GroupID: group})
+	require.NoError(t, err)
+	require.EqualValues(t, 16, list[0].TotalTests)
+	require.EqualValues(t, 14, list[0].Answer21Count)
+	require.EqualValues(t, 1, list[0].Answer29Count)
+	require.EqualValues(t, 1, list[0].InconclusiveCount)
+	large, err := r.Begin(ctx, first, "updated-text", false)
+	require.NoError(t, err)
+	largeAnswer := 9999999999
+	large.Actual, large.Verdict, large.FinishedAt = &largeAnswer, "incorrect", &now
+	require.NoError(t, r.Finish(ctx, large))
+	list, _, err = r.List(ctx, service.CandyMonitorFilter{Page: 1, PageSize: 30, GroupID: group})
+	require.NoError(t, err)
+	require.EqualValues(t, 17, list[0].TotalTests)
+	require.EqualValues(t, 1, list[0].OtherAnswerCount)
 	// Account deletion cascades only its monitor data.
 	_, err = db.ExecContext(ctx, `DELETE FROM accounts WHERE id=$1`, first)
 	require.NoError(t, err)

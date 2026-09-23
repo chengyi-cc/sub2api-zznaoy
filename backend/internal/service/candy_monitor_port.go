@@ -44,10 +44,15 @@ type CandyMonitorAccount struct {
 	Platform  string `json:"platform"`
 	Status    string `json:"status"`
 	CandyMonitorConfig
-	LastRunAt    *time.Time          `json:"last_run_at"`
-	NextRunAt    *time.Time          `json:"next_run_at"`
-	RunningUntil *time.Time          `json:"running_until"`
-	Latest       *CandyMonitorResult `json:"latest"`
+	LastRunAt         *time.Time          `json:"last_run_at"`
+	NextRunAt         *time.Time          `json:"next_run_at"`
+	RunningUntil      *time.Time          `json:"running_until"`
+	Latest            *CandyMonitorResult `json:"latest"`
+	TotalTests        int64               `json:"total_tests"`
+	Answer21Count     int64               `json:"answer_21_count"`
+	Answer29Count     int64               `json:"answer_29_count"`
+	OtherAnswerCount  int64               `json:"other_answer_count"`
+	InconclusiveCount int64               `json:"inconclusive_count"`
 }
 type CandyMonitorFilter struct {
 	GroupID     int64

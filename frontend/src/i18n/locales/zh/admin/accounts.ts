@@ -1,6 +1,22 @@
 export default {
     accounts: {
+      accountTemplate: {
+        title: 'OpenAI 账号设置模板', hint: '只覆盖模板中勾选的项目，其余设置保持不变。', edit: '修改模板', apply: '一键应用模板', editTitle: '编辑 OpenAI 账号模板',
+        editorHint: '勾选代表应用时覆盖该项；不勾选则保留账号当前设置。模板保存在服务器，保存模板不会立即修改账号。当前显示适用于此账号类型的项目。账号名称、密钥和身份凭据不纳入模板。',
+        selected: '已选择覆盖 {count} 项', capture: '从当前表单读取已选项', clearSelection: '取消全部勾选', cover: '覆盖：{field}', willCover: '应用时覆盖此项', keepCurrent: '不覆盖，保留原设置', save: '保存模板',
+        saved: '模板已保存，可点击“一键应用模板”填入当前表单。', applied: '已应用 {count} 项设置到当前表单，保存账号后生效。', empty: '模板尚未选择适用的覆盖项，请先修改模板。', failed: '模板操作失败，请重试。',
+        emptyDefault: '留空使用默认值或不限制', enabled: '开启', noProxy: '不使用代理', unavailable: '已不可用，请重新选择', emptyGroups: '不选择分组表示清空账号分组。', defaultProfile: '默认指纹配置',
+        onlyCLI: '仅允许 Codex 命令行客户端', allowAppServer: '同时允许 App Server（桌面客户端连接服务）', retryCount: '重试次数', statusCodes: '需要重试的状态码，用逗号分隔；留空使用默认值', modelList: '允许的模型名称，每行一个；留空不限制', sourceModel: '请求模型', targetModel: '上游模型', remove: '移除此映射', addMapping: '添加模型映射',
+        fields: {
+          concurrency: '并发数', load_factor: '负载系数', priority: '优先级', rate_multiplier: '计费倍率', proxy_id: '代理', group_ids: '所属分组', autoPauseOnExpired: '账号到期自动暂停',
+          codexFingerprintMode: 'Codex 指纹收敛（设备与会话标识处理）', tls: 'TLS 指纹（连接握手特征）', openaiPassthroughEnabled: 'OpenAI 请求透传', openaiResponsesWebSocketV2Mode: 'WebSocket 模式（持续连接的请求方式）',
+          codexCLI: 'Codex 客户端限制', openaiFlattenNamespacesEnabled: '工具命名空间摊平（兼容工具调用）', openAILongContextBillingEnabled: '长上下文计费', openAICompactMode: '上下文压缩能力', openAICompactModelMappings: '上下文压缩模型映射',
+          modelConfig: '模型白名单与映射', openAIResponsesMode: '文字请求接口模式', openAIImagesUrlToB64JsonEnabled: '图片地址自动转内嵌图片数据', openAIEndpointCapabilities: '账号接口能力', poolConfig: '号池模式与重试', editQuotaLimit: '总额度上限（美元）', editQuotaDailyLimit: '每日额度上限（美元）', editQuotaWeeklyLimit: '每周额度上限（美元）'
+        },
+        options: { off: '关闭（不收敛 / 不启用）', device: '仅统一设备标识', machine: '单机多窗口', session: '统一设备与会话标识', full: '完全收敛', auto: '自动判断', force_on: '强制支持', force_off: '强制不支持', ctx_pool: '上下文连接池', passthrough: '直通上游连接', http_bridge: 'HTTP 桥接（转换为普通请求）', force_responses: 'Responses 接口（统一响应接口）', force_chat_completions: 'Chat Completions 接口（聊天补全接口）', whitelist: '模型白名单', mapping: '模型映射', chat_completions: '文字生成', embeddings: '文本向量', seedance: 'Seedance 视频生成' }
+      },
       candyMonitor: {
+        counts: '累计检测', totalTests: '已完成 {count} 次', otherAnswers: '其他答案 {count}', inconclusiveCount: '待复测 {count}',
         title: '降智检测', description: '用固定糖果题持续监测账号，按分组选择账号，并保留每次检测的答案与记录。',
         quickTest: '降智检测', quickHint: '立即发送糖果题，默认使用 gpt-6-astra',
         rule: '检测规则：21 为正常，29 及其他数值为异常；超时、请求失败或格式不符为待复测。这是固定题目的检测规则。',
@@ -827,7 +843,7 @@ export default {
         codexCLIOnlyAppServer: '允许 Codex app-server 客户端',
         codexCLIOnlyAppServerDesc: '仅在上方开关开启时生效。开启后本账号额外放行内嵌 Codex 引擎、经 app-server 协议接入的第三方客户端（如 Claude Code 的 codex 插件），仍需通过全局引擎指纹门；与全局 app-server 开关取 OR（任一开即放行）。',
         codexFingerprintMode: 'Codex 指纹收敛',
-        codexFingerprintModeDesc: '将同一账号的设备标识统一。新建界面默认单机多窗口：按账号种子稳定映射已有会话标识，保留不同原始会话与窗口后缀，不补造缺失标识；移除旧会话头中的重复信息。旧账号保持原设置，关闭则不做这一层收敛。效果请按实测判断。',
+        codexFingerprintModeDesc: '将同一账号的设备标识统一。新建账号默认关闭（不收敛），原样透传客户端标识。选择单机多窗口时，按账号种子稳定映射已有会话标识，保留不同原始会话与窗口后缀，不补造缺失标识；移除旧会话头中的重复信息。旧账号保持原设置。效果请按实测判断。',
         codexFingerprintOff: '关闭（不收敛）',
         codexFingerprintMachine: '单机多窗口',
         tlsFingerprintHint: '为 OpenAI 登录授权账号的常规 HTTP 转发模拟 TLS（加密连接握手）特征。内置模板来自 Node.js/Claude Code，不等同于 Codex 官方指纹；插件和 WebSocket 长连接不由此开关接管。',

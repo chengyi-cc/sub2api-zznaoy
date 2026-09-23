@@ -1,6 +1,22 @@
 export default {
     accounts: {
+      accountTemplate: {
+        title: 'OpenAI account template', hint: 'Only selected template fields override the current settings.', edit: 'Edit template', apply: 'Apply template', editTitle: 'Edit OpenAI account template',
+        editorHint: 'Checked fields overwrite the current form; unchecked fields stay unchanged. The template is saved on the server. Saving it does not modify accounts. Only fields applicable to this account type are shown. Account names, keys and identity credentials are excluded.',
+        selected: '{count} fields selected', capture: 'Read selected fields from current form', clearSelection: 'Deselect all', cover: 'Override: {field}', willCover: 'Overwrite this setting', keepCurrent: 'Keep the current setting', save: 'Save template',
+        saved: 'Template saved. Apply it to fill the current form.', applied: 'Applied {count} settings to this form. Save the account to take effect.', empty: 'No applicable fields are selected. Edit the template first.', failed: 'Template operation failed. Please retry.',
+        emptyDefault: 'Empty uses the default or no limit', enabled: 'Enabled', noProxy: 'No proxy', unavailable: 'Unavailable; select again', emptyGroups: 'An empty selection clears account groups.', defaultProfile: 'Default fingerprint profile',
+        onlyCLI: 'Only allow the Codex CLI client', allowAppServer: 'Also allow App Server clients', retryCount: 'Retry count', statusCodes: 'Retry status codes, separated by commas; empty uses defaults', modelList: 'Allowed models, one per line; empty allows all', sourceModel: 'Requested model', targetModel: 'Upstream model', remove: 'Remove mapping', addMapping: 'Add model mapping',
+        fields: {
+          concurrency: 'Concurrency', load_factor: 'Load factor', priority: 'Priority', rate_multiplier: 'Billing multiplier', proxy_id: 'Proxy', group_ids: 'Groups', autoPauseOnExpired: 'Pause on expiration',
+          codexFingerprintMode: 'Codex fingerprint convergence', tls: 'TLS connection fingerprint', openaiPassthroughEnabled: 'OpenAI request passthrough', openaiResponsesWebSocketV2Mode: 'WebSocket connection mode',
+          codexCLI: 'Codex client restrictions', openaiFlattenNamespacesEnabled: 'Flatten tool namespaces', openAILongContextBillingEnabled: 'Long context billing', openAICompactMode: 'Context compaction support', openAICompactModelMappings: 'Compaction model mappings',
+          modelConfig: 'Model allowlist and mappings', openAIResponsesMode: 'Text endpoint mode', openAIImagesUrlToB64JsonEnabled: 'Convert image URLs to embedded data', openAIEndpointCapabilities: 'Endpoint capabilities', poolConfig: 'Account pool and retries', editQuotaLimit: 'Total quota (USD)', editQuotaDailyLimit: 'Daily quota (USD)', editQuotaWeeklyLimit: 'Weekly quota (USD)'
+        },
+        options: { off: 'Off', device: 'Device only', machine: 'Single machine, multi-window', session: 'Device and session', full: 'Full convergence', auto: 'Automatic', force_on: 'Force supported', force_off: 'Force unsupported', ctx_pool: 'Context connection pool', passthrough: 'Upstream passthrough', http_bridge: 'HTTP bridge', force_responses: 'Responses endpoint', force_chat_completions: 'Chat Completions endpoint', whitelist: 'Model allowlist', mapping: 'Model mapping', chat_completions: 'Text generation', embeddings: 'Embeddings', seedance: 'Seedance video' }
+      },
       candyMonitor: {
+        counts: 'Lifetime tests', totalTests: '{count} completed', otherAnswers: 'Other answers: {count}', inconclusiveCount: 'Inconclusive: {count}',
         title: 'Candy Monitor', description: 'Monitor accounts with the fixed candy puzzle. Select accounts by group and retain their answers and test history.',
         quickTest: 'Candy test', quickHint: 'Send the candy puzzle now using gpt-6-astra by default',
         rule: 'Detection rule: 21 is normal; 29 and other numeric answers are abnormal. Timeouts, request failures and invalid formats require a retest. This is a fixed-puzzle detection rule.',
@@ -718,7 +734,7 @@ export default {
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
         codexFingerprintMode: 'Codex fingerprint convergence',
-        codexFingerprintModeDesc: 'Converge device identifiers per account. New accounts in this form default to Single machine, multi-window: account-seeded pseudonyms preserve distinct original sessions and window suffixes without synthesizing missing identifiers; redundant legacy session headers are removed. Existing settings stay unchanged. Off disables this convergence layer. Validate results with your own measurements.',
+        codexFingerprintModeDesc: 'New accounts default to Off and forward client identifiers unchanged. Single machine, multi-window uses account-seeded pseudonyms to preserve distinct original sessions and window suffixes without synthesizing missing identifiers; redundant legacy session headers are removed. Existing settings stay unchanged. Validate results with your own measurements.',
         codexFingerprintOff: 'Off (no convergence)',
         codexFingerprintMachine: 'Single machine, multi-window',
         tlsFingerprintHint: 'Simulate TLS handshake characteristics for ordinary HTTP forwarding with OpenAI OAuth accounts. The built-in Node.js/Claude Code profile is not a verified Codex fingerprint. Plugins and WebSocket connections are not controlled by this switch.',

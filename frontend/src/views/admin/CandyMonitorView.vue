@@ -45,7 +45,7 @@
           <table class="w-full text-left text-sm">
             <thead class="border-b border-gray-200 text-xs text-gray-500 dark:border-dark-700"><tr>
               <th class="p-4"><input type="checkbox" :checked="allSelected" :aria-label="tr('selectPage')" @change="selectPage" /></th>
-              <th class="p-3">{{ tr('account') }}</th><th class="p-3">{{ tr('configuration') }}</th><th class="p-3">{{ tr('latest') }}</th><th class="p-3">{{ tr('nextRun') }}</th><th class="p-3">{{ tr('actions') }}</th>
+              <th class="p-3">{{ tr('account') }}</th><th class="p-3">{{ tr('configuration') }}</th><th class="p-3">{{ tr('latest') }}</th><th class="p-3">{{ tr('counts') }}</th><th class="p-3">{{ tr('nextRun') }}</th><th class="p-3">{{ tr('actions') }}</th>
             </tr></thead>
             <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
               <tr v-for="account in accounts" :key="account.account_id" :data-account-id="account.account_id">
@@ -53,6 +53,11 @@
                 <td class="p-3"><div class="max-w-56 truncate font-medium" :title="account.name">{{ account.name }}</div><div class="mt-1 text-xs text-gray-500">#{{ account.account_id }} · {{ account.platform }} · {{ account.status }}</div></td>
                 <td class="p-3"><div :class="account.enabled ? 'text-emerald-600' : 'text-gray-500'">{{ account.enabled ? tr('enabled') : tr('paused') }} · {{ account.use_defaults ? tr('inherited') : tr('custom') }}</div><div class="mt-1 max-w-60 truncate text-xs text-gray-500" :title="account.model_id">{{ account.model_id }} · {{ tr('minutes', { count: account.interval_minutes }) }}</div></td>
                 <td class="p-3"><CandyVerdictBadge :verdict="account.latest?.verdict" :actual="account.latest?.actual" /><div v-if="account.latest" class="mt-1 whitespace-nowrap text-xs text-gray-500">{{ date(account.latest.started_at) }}</div></td>
+                <td class="space-y-1 whitespace-nowrap p-3 text-xs" data-testid="candy-counts">
+                  <div class="font-medium">{{ tr('totalTests', { count: account.total_tests || 0 }) }}</div>
+                  <div><span class="text-emerald-600">21: {{ account.answer_21_count || 0 }}</span><span class="ml-3 text-red-600">29: {{ account.answer_29_count || 0 }}</span></div>
+                  <div class="text-gray-500">{{ tr('otherAnswers', { count: account.other_answer_count || 0 }) }} ? {{ tr('inconclusiveCount', { count: account.inconclusive_count || 0 }) }}</div>
+                </td>
                 <td class="whitespace-nowrap p-3 text-xs text-gray-500">{{ !schedulerEnabled ? tr('globalPaused') : account.enabled ? date(account.next_run_at) : '—' }}</td>
                 <td class="p-3"><div class="flex items-center gap-2 whitespace-nowrap">
                   <button class="btn btn-secondary btn-sm" :disabled="account.latest?.verdict === 'running'" @click="runAccount = account">🍬 {{ tr('run') }}</button>
@@ -60,7 +65,7 @@
                   <button class="btn btn-ghost btn-sm" @click="showHistory(account)">{{ tr('history') }}</button>
                 </div></td>
               </tr>
-              <tr v-if="!accounts.length && !loading"><td colspan="6" class="p-10 text-center text-gray-500">{{ tr('empty') }}</td></tr>
+              <tr v-if="!accounts.length && !loading"><td colspan="7" class="p-10 text-center text-gray-500">{{ tr('empty') }}</td></tr>
             </tbody>
           </table>
         </div>
