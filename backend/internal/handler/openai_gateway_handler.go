@@ -1583,11 +1583,6 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 
 // handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
 func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
-	if failoverErr.IsTurnStateUnavailable() {
-		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
-		h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", service.OpenAITurnStateUnavailableMessage, streamStarted)
-		return
-	}
 	if failoverErr != nil {
 		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
 	}
@@ -3319,11 +3314,6 @@ func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error,
 }
 
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
-	if failoverErr.IsTurnStateUnavailable() {
-		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
-		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "turn_state_unavailable", service.OpenAITurnStateUnavailableMessage, streamStarted)
-		return
-	}
 	if failoverErr == nil {
 		h.handleFailoverExhaustedSimple(c, http.StatusBadGateway, streamStarted)
 		return
@@ -3780,11 +3770,7 @@ func closeOpenAIWSFailoverExhausted(c *gin.Context, conn *coderws.Conn, failover
 		if reason := strings.TrimSpace(string(failoverErr.Reason)); reason != "" {
 			errorCode = reason
 		}
-		if failoverErr.IsTurnStateUnavailable() {
-			intendedStatus = http.StatusServiceUnavailable
-			message = service.OpenAITurnStateUnavailableMessage
-			closeStatus = coderws.StatusTryAgainLater
-		} else if failoverErr.Stage == service.GatewayFailureStageAccountAuth {
+		if failoverErr.Stage == service.GatewayFailureStageAccountAuth {
 			intendedStatus = http.StatusServiceUnavailable
 			errorType = "api_error"
 			message = service.GrokCredentialUnavailableClientMessage

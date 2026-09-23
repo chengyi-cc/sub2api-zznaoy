@@ -124,7 +124,6 @@ export default {
         upstreamBillingRate: '上游声明倍率',
         weight: '权重',
         schedulerScore: '调度权值',
-        turnState: '请求头',
         status: '状态',
         schedulable: '调度',
         todayStats: '今日统计',

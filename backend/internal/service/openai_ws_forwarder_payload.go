@@ -195,10 +195,6 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		"soft_routing_hint",
 	)
 
-	injected := s.applyTurnStateAuto(ctx, account, routingModel, headers)
-	if err := s.requireTurnStateAuto(account, routingModel, injected); err != nil {
-		return nil, sessionResolution, err
-	}
 	return headers, sessionResolution, nil
 }
 

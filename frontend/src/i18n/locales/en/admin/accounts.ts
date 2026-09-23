@@ -229,7 +229,6 @@ export default {
         upstreamBillingRate: 'Upstream Declared Rate',
         weight: 'Weight',
         schedulerScore: 'Scheduler Score',
-        turnState: 'State',
         status: 'Status',
         schedulable: 'Schedulable',
         todayStats: 'Today Stats',

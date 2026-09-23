@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -84,7 +83,6 @@ type openAIWSAcquireRequest struct {
 }
 
 type openAIWSHandshakeCompatibilityKey struct {
-	turnState           string
 	betaFeatures        string
 	codexInstallationID string
 	sessionIDHyphen     string
@@ -2041,10 +2039,6 @@ func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
 func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Header, profiles ...*tlsfingerprint.Profile) openAIWSHandshakeCompatibilityKey {
 	key := openAIWSHandshakeCompatibilityKey{
 		betaFeatures: normalizeOpenAIWSBetaFeatures(headers),
-	}
-	if account.IsCodexTurnStateAutoEnabled() {
-		digest := sha256.Sum256([]byte(headers.Get(openAICodexTurnStateHeader)))
-		key.turnState = fmt.Sprintf("%x", digest)
 	}
 	if len(profiles) > 0 && profiles[0] != nil {
 		if encoded, err := json.Marshal(profiles[0]); err == nil {

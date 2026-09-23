@@ -136,7 +136,6 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	if account == nil {
 		return service.ErrAccountNilInput
 	}
-	account.InitializeCodexTurnStateAuto()
 
 	builder := client.Account.Create().
 		SetName(account.Name).

@@ -2139,13 +2139,6 @@
         </div>
       </div>
 
-      <TurnStateAutoField
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token')"
-        v-model="turnStateAutoEnabled"
-        v-model:profile="turnStateProfile"
-        v-model:source="turnStateSource"
-        :account-id="account.id"
-      />
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3005,7 +2998,6 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
-import TurnStateAutoField from '@/components/account/TurnStateAutoField.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -3449,9 +3441,6 @@ const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_comple
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
-const turnStateAutoEnabled = ref(false)
-const turnStateProfile = ref('team')
-const turnStateSource = ref('purchased')
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'machine' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
@@ -3935,9 +3924,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
-  turnStateAutoEnabled.value = false
-  turnStateProfile.value = 'team'
-  turnStateSource.value = 'purchased'
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
   codexImageToolMode.value = 'inherit'
@@ -3988,9 +3974,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     })
     if (newAccount.type === 'oauth' || newAccount.type === 'setup-token') {
       codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
-      turnStateAutoEnabled.value = extra?.codex_turn_state_auto_enabled === true
-      turnStateProfile.value = extra?.codex_turn_state_profile === 'pro' ? 'pro' : 'team'
-      turnStateSource.value = extra?.codex_turn_state_source === 'ipv6_pool' ? 'ipv6_pool' : 'purchased'
       codexCLIOnlyAppServerEnabled.value =
         extra?.codex_cli_only_allow_app_server === true
     }
@@ -5414,11 +5397,6 @@ const handleSubmit = async () => {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
-      if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
-        newExtra.codex_turn_state_auto_enabled = turnStateAutoEnabled.value
-        newExtra.codex_turn_state_profile = turnStateProfile.value
-        newExtra.codex_turn_state_source = turnStateSource.value
-      }
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
         newExtra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)

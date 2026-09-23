@@ -316,7 +316,6 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
         Select: SelectStub,
         Icon: true,
         ProxySelector: true,
-        TurnStateAutoField: true,
         GroupSelector: renderGroupSelector ? false : GroupSelectorStub,
         ModelWhitelistSelector: ModelWhitelistSelectorStub
       }
@@ -325,25 +324,6 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
-  it('loads and explicitly saves the account turn-state switch', async () => {
-    const account = buildOpenAIOAuthParentAccount()
-    account.extra = { codex_turn_state_auto_enabled: true }
-    updateAccountMock.mockReset().mockResolvedValue(account)
-    const wrapper = mountModal(account)
-    const field = wrapper.findComponent({ name: 'TurnStateAutoField' })
-    expect(field.props('modelValue')).toBe(true)
-    expect(field.props('profile')).toBe('team')
-    expect(field.props('source')).toBe('purchased')
-    field.vm.$emit('update:modelValue', false)
-    field.vm.$emit('update:profile', 'pro')
-    field.vm.$emit('update:source', 'ipv6_pool')
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(updateAccountMock.mock.lastCall?.[1]?.extra?.codex_turn_state_auto_enabled).toBe(false)
-    expect(updateAccountMock.mock.lastCall?.[1]?.extra?.codex_turn_state_profile).toBe('pro')
-    expect(updateAccountMock.mock.lastCall?.[1]?.extra?.codex_turn_state_source).toBe('ipv6_pool')
-    wrapper.unmount()
-  })
   it('preserves legacy off and saves machine mode with OpenAI TLS', async () => {
     const account = buildOpenAIOAuthParentAccount()
     const wrapper = mountModal(account)

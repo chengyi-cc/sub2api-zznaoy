@@ -1,6 +1,0 @@
-services:
-  sub2api:
-    env_file:
-      - /etc/sub2api-turn-state-egress/sub2api.env
-    volumes:
-      - /etc/sub2api-turn-state-egress/ca.crt:/etc/sub2api-turn-state-egress/ca.crt:ro
