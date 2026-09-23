@@ -538,6 +538,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/candy-monitor',
+    name: 'AdminCandyMonitor',
+    component: () => import('@/views/admin/CandyMonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Candy Monitor',
+      titleKey: 'admin.accounts.candyMonitor.title',
+      descriptionKey: 'admin.accounts.candyMonitor.description'
+    }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),

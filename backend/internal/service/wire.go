@@ -670,6 +670,12 @@ func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Co
 	return svc
 }
 
+func ProvideCandyMonitorService(repo CandyMonitorRepository, accounts AccountRepository, tester *AccountTestService) *CandyMonitorService {
+	svc := NewCandyMonitorService(repo, accounts, tester)
+	svc.Start()
+	return svc
+}
+
 // ProvideScheduledTestService creates ScheduledTestService.
 func ProvideScheduledTestService(
 	planRepo ScheduledTestPlanRepository,
@@ -988,6 +994,7 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCoordinator,
 	ProvideSystemOperationLockService,
 	ProvideIdempotencyCleanupService,
+	ProvideCandyMonitorService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,

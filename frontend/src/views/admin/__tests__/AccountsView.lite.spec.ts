@@ -67,6 +67,7 @@ const DataTableStub = defineComponent({
     <div>
       <div v-for="row in data" :key="row.id" :data-account-name="row.name">
         <slot name="cell-groups" :row="row" />
+        <slot name="cell-status" :row="row" />
         <slot name="cell-actions" :row="row" />
       </div>
     </div>
@@ -110,6 +111,7 @@ function mountView(stubActionMenu = true) {
         ImportDataModal: true,
         ReAuthAccountModal: true,
         AccountTestModal: AccountTestModalStub,
+        CandyMonitorRunDialog: { props: ['show', 'account'], template: '<div data-test="candy-account">{{ show ? account?.name : "" }}</div>' },
         AccountStatsModal: AccountStatsModalStub,
         ScheduledTestsPanel: true,
         SyncFromCrsModal: true,
@@ -186,6 +188,29 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ lite: '1' }),
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+    wrapper.unmount()
+  })
+
+  it('opens candy detection beside status without requiring account details', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const button = wrapper.findAll('button').find(b => b.text().includes('admin.accounts.candyMonitor.quickTest'))
+    expect(button).toBeTruthy()
+    await button!.trigger('click')
+    expect(wrapper.get('[data-test="candy-account"]').text()).toBe('compact row')
+    expect(getById).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each([
+    { platform: 'grok' },
+    { parent_account_id: 1 },
+    { extra: { synthetic_ui_test: true } }
+  ])('hides candy detection for unsupported accounts: %o', async overrides => {
+    listAccounts.mockResolvedValue({ items: [{ ...listRow, ...overrides }], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.findAll('button').some(b => b.text().includes('admin.accounts.candyMonitor.quickTest'))).toBe(false)
     wrapper.unmount()
   })
 

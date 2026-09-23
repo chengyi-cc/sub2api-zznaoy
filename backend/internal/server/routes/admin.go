@@ -111,6 +111,7 @@ func RegisterAdminRoutes(
 
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
+		registerCandyMonitorRoutes(admin, h)
 
 		// 渠道管理
 		registerChannelRoutes(admin, h)
@@ -913,4 +914,16 @@ func channelMonitorModeV2Guard(settingService *service.SettingService) gin.Handl
 		}
 		c.Next()
 	}
+}
+
+func registerCandyMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	candy := admin.Group("/candy-monitor")
+	candy.GET("/settings", h.Admin.CandyMonitor.Settings)
+	candy.PUT("/settings", h.Admin.CandyMonitor.SaveSettings)
+	candy.GET("/accounts", h.Admin.CandyMonitor.List)
+	candy.PUT("/accounts", h.Admin.CandyMonitor.Configure)
+	candy.PUT("/accounts/enabled", h.Admin.CandyMonitor.SetEnabled)
+	candy.POST("/accounts/:id/run", h.Admin.CandyMonitor.Run)
+	candy.GET("/accounts/:id/results", h.Admin.CandyMonitor.History)
+	candy.GET("/results/:id", h.Admin.CandyMonitor.Result)
 }

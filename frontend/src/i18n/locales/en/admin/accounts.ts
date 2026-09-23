@@ -1,5 +1,20 @@
 export default {
     accounts: {
+      candyMonitor: {
+        title: 'Candy Monitor', description: 'Monitor accounts with the fixed candy puzzle. Select accounts by group and retain their answers and test history.',
+        quickTest: 'Candy test', quickHint: 'Send the candy puzzle now using gpt-6-astra by default',
+        rule: 'Detection rule: 21 is normal; 29 and other numeric answers are abnormal. Timeouts, request failures and invalid formats require a retest. This is a fixed-puzzle detection rule.',
+        template: 'Default test template', schedulerEnabled: 'Enable scheduled monitoring', model: 'Test model', interval: 'Interval (minutes)', retention: 'Results retained per account',
+        templateHint: 'Defaults to gpt-6-astra every 60 minutes. Allowed interval: 5–10080 minutes; retention: 10–500 results. Saved changes apply to accounts inheriting the template. Custom settings are preserved.',
+        saveTemplate: 'Save default template', scheduleHint: 'Only enabled accounts are monitored; due tests are checked every 30 seconds. Tests consume account usage and continue after closing this page. Results do not disable or recover accounts.',
+        group: 'Group', allGroups: 'All groups', account: 'Account', search: 'Search account name or ID', enabledOnly: 'Enabled only', refresh: 'Refresh',
+        selected: '{count} accounts selected (current page)', applyDefaults: 'Apply saved template and enable', pauseSelected: 'Pause selected', selectPage: 'Select current page',
+        configuration: 'Configuration', latest: 'Latest result', nextRun: 'Next test', actions: 'Actions', enabled: 'Enabled', paused: 'Paused', inherited: 'Default template', custom: 'Custom', minutes: 'Every {count} min', globalPaused: 'Globally paused',
+        run: 'Test now', configure: 'Configure', history: 'History', empty: 'No matching accounts', accountEnabled: 'Enable scheduled tests for this account', useDefaults: 'Inherit default test template', inheritHint: 'Uses the template saved on the server and follows future template changes.',
+        historyHint: 'Shows the latest 50 results. Expand a record to view the original model response.', noHistory: 'No test history yet', response: 'View original model response', manual: 'Manual', scheduled: 'Scheduled',
+        loading: 'Loading…', failed: 'Operation failed. Please retry.', saved: 'Saved', runningHint: 'Testing in the background, usually up to 3 minutes. You may close this dialog and view the result on the monitor page later.', openMonitor: 'Open Candy Monitor', runAgain: 'Test again',
+        verdict: { pass: 'Normal', incorrect: 'Abnormal', invalid_format: 'Retest · invalid format', inconclusive: 'Retest required', running: 'Running', untested: 'Not tested' }
+      },
       candy: {
         mode: 'Candy reasoning test',
         hint: 'Send a fixed candy puzzle through this account and the selected text model, then grade the answer on the server. Uses real quota; allow up to 3 minutes.',

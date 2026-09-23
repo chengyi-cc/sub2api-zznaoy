@@ -33,6 +33,7 @@ type AdminHandlers struct {
 	TLSFingerprintProfile  *admin.TLSFingerprintProfileHandler
 	Plugin                 *admin.PluginHandler
 	APIKey                 *admin.AdminAPIKeyHandler
+	CandyMonitor           *admin.CandyMonitorHandler
 	ScheduledTest          *admin.ScheduledTestHandler
 	Channel                *admin.ChannelHandler
 	ChannelMonitor         *admin.ChannelMonitorHandler

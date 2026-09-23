@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +38,7 @@ type candyTestState struct {
 	completed bool
 	overflow  bool
 	graded    bool
+	result    *CandyTestResult
 }
 
 func candyState(c *gin.Context) *candyTestState {
@@ -139,6 +142,28 @@ func (s *AccountTestService) observeCandyTestEvent(c *gin.Context, event TestEve
 	}
 	if event.Type == "test_complete" || event.Type == "error" {
 		state.graded = true
-		s.sendEvent(c, TestEvent{Type: "candy_result", Data: evaluateCandyTest(state, event.Type == "test_complete" && event.Success)})
+		result := evaluateCandyTest(state, event.Type == "test_complete" && event.Success)
+		state.result = &result
+		s.sendEvent(c, TestEvent{Type: "candy_result", Data: result})
 	}
 }
+
+// RunCandyTestBackground reuses the exact interactive probe and grading. The
+// response writer discards transport events; only the bounded puzzle output remains.
+func (s *AccountTestService) RunCandyTestBackground(ctx context.Context, accountID int64, model string) (CandyTestResult, string, error) {
+	w := &candyDiscardWriter{header: make(http.Header)}
+	c, _ := gin.CreateTestContext(w)
+	c.Request = (&http.Request{}).WithContext(ctx)
+	err := s.TestAccountConnection(c, accountID, model, "", AccountTestModeCandy)
+	if state := candyState(c); state != nil && state.result != nil {
+		return *state.result, state.output.String(), err
+	}
+	return CandyTestResult{CaseID: "candy-shape-v1", Verdict: "inconclusive", Reason: "incomplete", Expected: 21}, "", err
+}
+
+type candyDiscardWriter struct{ header http.Header }
+
+func (w *candyDiscardWriter) Header() http.Header       { return w.header }
+func (*candyDiscardWriter) WriteHeader(int)             {}
+func (*candyDiscardWriter) Write(p []byte) (int, error) { return len(p), nil }
+func (*candyDiscardWriter) Flush()                      {}

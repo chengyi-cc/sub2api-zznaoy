@@ -1,5 +1,20 @@
 export default {
     accounts: {
+      candyMonitor: {
+        title: '降智检测', description: '用固定糖果题持续监测账号，按分组选择账号，并保留每次检测的答案与记录。',
+        quickTest: '降智检测', quickHint: '立即发送糖果题，默认使用 gpt-6-astra',
+        rule: '检测规则：21 为正常，29 及其他数值为异常；超时、请求失败或格式不符为待复测。这是固定题目的检测规则。',
+        template: '默认检测模板', schedulerEnabled: '启用后台定时检测', model: '检测模型', interval: '检测间隔（分钟）', retention: '每账号保留记录数',
+        templateHint: '默认 gpt-6-astra，每 60 分钟一次。间隔可设为 5–10080 分钟，保留 10–500 条记录。保存后，继承模板的账号使用新设置；自定义账号不受影响。',
+        saveTemplate: '保存默认模板', scheduleHint: '只检测已启用的账号，每 30 秒检查一次到期任务。检测会消耗账号调用额度；关闭页面后仍继续。结果不会自动停用或恢复账号。',
+        group: '分组', allGroups: '全部分组', account: '账号', search: '搜索账号名称或 ID', enabledOnly: '仅看已启用', refresh: '刷新',
+        selected: '已选 {count} 个账号（当前页）', applyDefaults: '应用已保存模板并启用', pauseSelected: '暂停所选', selectPage: '选择当前页',
+        configuration: '检测设置', latest: '最近结果', nextRun: '下次检测', actions: '操作', enabled: '已启用', paused: '已暂停', inherited: '默认模板', custom: '单独设置', minutes: '每 {count} 分钟', globalPaused: '全局已暂停',
+        run: '立即检测', configure: '设置', history: '历史', empty: '没有符合条件的账号', accountEnabled: '启用此账号的定时检测', useDefaults: '继承默认检测模板', inheritHint: '使用服务器上已保存的模板；将来修改模板时，此账号会同步更新。',
+        historyHint: '显示最近 50 条记录，可展开查看模型原始回答。', noHistory: '还没有检测记录', response: '查看模型原始回答', manual: '手动检测', scheduled: '定时检测',
+        loading: '加载中…', failed: '操作失败，请重试', saved: '已保存', runningHint: '正在后台检测，通常最多 3 分钟。可关闭此窗口，之后在监控页面查看结果。', openMonitor: '打开降智检测监控页', runAgain: '重新检测',
+        verdict: { pass: '正常', incorrect: '异常', invalid_format: '待复测 · 格式不符', inconclusive: '待复测', running: '检测中', untested: '未检测' }
+      },
       candy: {
         mode: '糖果推理测试',
         hint: '使用固定糖果题测试当前账号和所选文字模型，由后台自动核对答案。会消耗实际调用额度，最多等待 3 分钟。',
