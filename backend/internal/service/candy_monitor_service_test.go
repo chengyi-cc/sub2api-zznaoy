@@ -45,6 +45,56 @@ type candyMonitorStub struct {
 	active     map[int64]bool
 	finished   chan CandyMonitorResult
 	due        []CandyMonitorAccount
+	states     []CandyMonitorAccountState
+	monitoring map[int64]bool
+}
+
+func (r *candyMonitorStub) AccountStates(_ context.Context, ids []int64) ([]CandyMonitorAccountState, error) {
+	items := []CandyMonitorAccountState{}
+	for _, item := range r.states {
+		for _, id := range ids {
+			if item.AccountID == id {
+				if enabled, ok := r.monitoring[id]; ok {
+					item.Enabled = enabled
+				}
+				items = append(items, item)
+			}
+		}
+	}
+	return items, nil
+}
+func (r *candyMonitorStub) SetMonitoring(_ context.Context, id int64, enabled bool) error {
+	if r.monitoring == nil {
+		r.monitoring = map[int64]bool{}
+	}
+	r.monitoring[id] = enabled
+	return nil
+}
+
+func TestCandyMonitorAccountRowToggle(t *testing.T) {
+	s, r, accounts := newCandyMonitorTestService(t)
+	answer := 29
+	r.states = []CandyMonitorAccountState{{AccountID: 1, CandyMonitorConfig: CandyMonitorConfig{ModelID: "custom-text", IntervalMinutes: 17}, LastValidAnswer: &answer}}
+	r.settings.Enabled = false
+	state, err := s.SetMonitoring(context.Background(), 1, true)
+	require.NoError(t, err)
+	require.True(t, state.Items[0].Enabled)
+	require.Equal(t, "custom-text", state.Items[0].ModelID)
+	require.Equal(t, 17, state.Items[0].IntervalMinutes)
+	require.Equal(t, 29, *state.Items[0].LastValidAnswer)
+	require.False(t, state.SchedulerEnabled, "the row switch must not enable monitoring for all accounts")
+	state, err = s.SetMonitoring(context.Background(), 1, false)
+	require.NoError(t, err)
+	require.False(t, state.Items[0].Enabled)
+	require.Equal(t, 17, state.Items[0].IntervalMinutes)
+	accounts.items[1].Platform = PlatformGrok
+	_, err = s.SetMonitoring(context.Background(), 1, true)
+	require.ErrorIs(t, err, ErrCandyMonitorInvalid)
+	require.False(t, r.monitoring[1])
+	for _, ids := range [][]int64{nil, {-1}, make([]int64, 501)} {
+		_, err = s.AccountStates(context.Background(), ids)
+		require.ErrorIs(t, err, ErrCandyMonitorInvalid)
+	}
 }
 
 func (r *candyMonitorStub) Settings(context.Context) (*CandyMonitorSettings, error) {

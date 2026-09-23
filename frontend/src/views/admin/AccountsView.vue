@@ -289,12 +289,15 @@
           <template #cell-status="{ row }">
             <div class="flex items-center gap-1.5">
               <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
-              <button
+              <AccountCandyControls
                 v-if="supportsAccountCandyTest(row, CANDY_DEFAULT_MODEL) && !row.parent_account_id && !row.extra?.synthetic_ui_test"
-                class="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-950/40"
-                :title="t('admin.accounts.candyMonitor.quickHint')"
-                @click.stop="candyAccount = { id: row.id, name: row.name }"
-              >🍬 {{ t('admin.accounts.candyMonitor.quickTest') }}</button>
+                :state="candyStates[row.id]"
+                :pending="candyPending.has(row.id)"
+                :scheduler-enabled="candySchedulerEnabled"
+                :load-error="candyLoadError"
+                @test="candyAccount = { id: row.id, name: row.name }"
+                @toggle="toggleCandyMonitoring(row.id, $event)"
+              />
             </div>
           </template>
           <template #cell-schedulable="{ row }">
@@ -460,7 +463,7 @@
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
-    <CandyMonitorRunDialog :show="!!candyAccount" :account="candyAccount" @close="candyAccount = null" />
+    <CandyMonitorRunDialog :show="!!candyAccount" :account="candyAccount" @close="candyAccount = null; refreshCandyStates()" @completed="refreshCandyStates" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
@@ -523,6 +526,8 @@ import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import CandyMonitorRunDialog from '@/components/account/CandyMonitorRunDialog.vue'
+import AccountCandyControls from '@/components/account/AccountCandyControls.vue'
+import { useAccountCandyMonitoring } from '@/composables/useAccountCandyMonitoring'
 import { supportsAccountCandyTest } from '@/utils/accountCandyTest'
 import { CANDY_DEFAULT_MODEL } from '@/api/admin/candyMonitor'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
@@ -1102,6 +1107,17 @@ const {
     sort_order: sortState.sort_order
   }
 })
+
+const candyAccountIDs = computed(() => accounts.value.filter(account => supportsAccountCandyTest(account, CANDY_DEFAULT_MODEL) && !account.parent_account_id && !account.extra?.synthetic_ui_test).map(account => account.id))
+const { states: candyStates, pending: candyPending, schedulerEnabled: candySchedulerEnabled, loadError: candyLoadError, refresh: refreshCandyStates, setEnabled: setCandyMonitoring } = useAccountCandyMonitoring(candyAccountIDs)
+async function toggleCandyMonitoring(id: number, enabled: boolean) {
+  try {
+    const result = await setCandyMonitoring(id, enabled)
+    if (result && enabled && !result.scheduler_enabled) appStore.showWarning(t('admin.accounts.candyMonitor.enabledWhilePaused'))
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.candyMonitor.failed')))
+  }
+}
 
 const {
   selectedSet,

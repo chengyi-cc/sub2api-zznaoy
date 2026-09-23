@@ -70,7 +70,19 @@ type CandyMonitorFilter struct {
 	Page        int
 	PageSize    int
 }
+type CandyMonitorAccountState struct {
+	AccountID int64 `json:"account_id"`
+	CandyMonitorConfig
+	LastValidAnswer *int       `json:"last_valid_answer"`
+	LastValidAt     *time.Time `json:"last_valid_at"`
+}
+type CandyMonitorStates struct {
+	SchedulerEnabled bool                       `json:"scheduler_enabled"`
+	Items            []CandyMonitorAccountState `json:"items"`
+}
 type CandyMonitorRepository interface {
+	AccountStates(context.Context, []int64) ([]CandyMonitorAccountState, error)
+	SetMonitoring(context.Context, int64, bool) error
 	Settings(context.Context) (*CandyMonitorSettings, error)
 	SaveSettings(context.Context, *CandyMonitorSettings) error
 	List(context.Context, CandyMonitorFilter) ([]CandyMonitorAccount, int64, error)

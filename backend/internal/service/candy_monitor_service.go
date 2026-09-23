@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -95,6 +96,48 @@ func (s *CandyMonitorService) SaveSettings(ctx context.Context, c *CandyMonitorS
 }
 func (s *CandyMonitorService) List(ctx context.Context, f CandyMonitorFilter) ([]CandyMonitorAccount, int64, error) {
 	return s.repo.List(ctx, f)
+}
+func (s *CandyMonitorService) AccountStates(ctx context.Context, ids []int64) (*CandyMonitorStates, error) {
+	if len(ids) == 0 || len(ids) > 500 {
+		return nil, ErrCandyMonitorInvalid
+	}
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, ErrCandyMonitorInvalid
+		}
+	}
+	settings, err := s.repo.Settings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items, err := s.repo.AccountStates(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	return &CandyMonitorStates{SchedulerEnabled: settings.Enabled, Items: items}, nil
+}
+
+func (s *CandyMonitorService) SetMonitoring(ctx context.Context, id int64, enabled bool) (*CandyMonitorStates, error) {
+	state, err := s.AccountStates(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	if len(state.Items) != 1 {
+		return nil, sql.ErrNoRows
+	}
+	if enabled {
+		account, err := s.accounts.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if err = validateCandyTest(account, state.Items[0].ModelID, AccountTestOptions{}); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrCandyMonitorInvalid, err)
+		}
+	}
+	if err = s.repo.SetMonitoring(ctx, id, enabled); err != nil {
+		return nil, err
+	}
+	return s.AccountStates(ctx, []int64{id})
 }
 func (s *CandyMonitorService) Configure(ctx context.Context, ids []int64, c CandyMonitorConfig) error {
 	if len(ids) == 0 || len(ids) > 500 {

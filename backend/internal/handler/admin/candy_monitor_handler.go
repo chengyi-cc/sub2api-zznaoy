@@ -113,6 +113,47 @@ func (h *CandyMonitorHandler) Configure(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"updated": true})
 }
+func (h *CandyMonitorHandler) AccountStates(c *gin.Context) {
+	parts := strings.Split(c.Query("account_ids"), ",")
+	if len(parts) > 500 {
+		response.BadRequest(c, "Too many account IDs")
+		return
+	}
+	ids := make([]int64, 0, len(parts))
+	for _, part := range parts {
+		id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid account IDs")
+			return
+		}
+		ids = append(ids, id)
+	}
+	v, err := h.svc.AccountStates(c.Request.Context(), ids)
+	if err != nil {
+		candyMonitorError(c, err)
+		return
+	}
+	response.Success(c, v)
+}
+func (h *CandyMonitorHandler) SetMonitoring(c *gin.Context) {
+	id, ok := candyMonitorID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+		response.BadRequest(c, "Invalid enabled state")
+		return
+	}
+	v, err := h.svc.SetMonitoring(c.Request.Context(), id, *req.Enabled)
+	if err != nil {
+		candyMonitorError(c, err)
+		return
+	}
+	response.Success(c, v)
+}
 func (h *CandyMonitorHandler) Run(c *gin.Context) {
 	id, ok := candyMonitorID(c)
 	if !ok {

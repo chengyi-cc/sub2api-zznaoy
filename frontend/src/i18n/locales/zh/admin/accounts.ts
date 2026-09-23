@@ -20,6 +20,10 @@ export default {
         options: { off: '关闭（不收敛 / 不启用）', device: '仅统一设备标识', machine: '单机多窗口', session: '统一设备与会话标识', full: '完全收敛', auto: '自动判断', force_on: '强制支持', force_off: '强制不支持', ctx_pool: '上下文连接池', passthrough: '直通上游连接', http_bridge: 'HTTP 桥接（转换为普通请求）', force_responses: 'Responses 接口（统一响应接口）', force_chat_completions: 'Chat Completions 接口（聊天补全接口）', whitelist: '模型白名单', mapping: '模型映射', chat_completions: '文字生成', embeddings: '文本向量', seedance: 'Seedance 视频生成' }
       },
       candyMonitor: {
+        autoDetect: '自动检测', lastValidAnswer: '最近有效答案：{answer}（不计请求失败或格式错误）',
+        autoDetectOnHint: '已启用：{model}，每 {minutes} 分钟。取消勾选可暂停，保留原设置。',
+        autoDetectOffHint: '勾选后自动检测：{model}，每 {minutes} 分钟；首次检测通常在 30 秒内开始，会消耗调用额度。',
+        enabledWhilePaused: '已启用此账号的自动检测，但全局定时检测已暂停，请在降智检测页面开启全局开关。', stateLoadFailed: '检测状态读取失败，正在自动重试。',
         counts: '总次数', count21: '21 · 正常', count29: '29 · 异常', totalTests: '已完成 {count} 次', otherAnswers: '其他答案 {count}', inconclusiveCount: '待复测 {count}',
         accountCount: '{count} 个账号', allResults: '全部检测结果', noRecord: '暂无检测记录', schedulerPausedHint: '后台定时检测已暂停，可在默认检测模板中重新启用。',
         title: '降智检测', description: '用固定糖果题持续监测账号，按分组选择账号，并保留每次检测的答案与记录。',

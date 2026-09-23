@@ -60,8 +60,19 @@ export interface CandyFilter {
   platform?: string
   status?: string
 }
+export interface CandyAccountState extends CandyConfig {
+  account_id: number
+  last_valid_answer: number | null
+  last_valid_at: string | null
+}
+export interface CandyAccountStates {
+  scheduler_enabled: boolean
+  items: CandyAccountState[]
+}
 const base = '/admin/candy-monitor'
 export const candyMonitorAPI = {
+  async states(account_ids: number[]) { return (await apiClient.get<CandyAccountStates>(`${base}/accounts/states`, { params: { account_ids: account_ids.join(',') } })).data },
+  async setMonitoring(id: number, enabled: boolean) { return (await apiClient.put<CandyAccountStates>(`${base}/accounts/${id}/monitoring`, { enabled })).data },
   async settings() { return (await apiClient.get<CandySettings>(`${base}/settings`)).data },
   async saveSettings(settings: CandySettings) { return (await apiClient.put<CandySettings>(`${base}/settings`, settings)).data },
   async list(params: CandyFilter) { return (await apiClient.get<PaginatedResponse<CandyAccount>>(`${base}/accounts`, { params })).data },

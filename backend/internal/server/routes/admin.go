@@ -925,6 +925,8 @@ func registerCandyMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	candy.GET("/accounts", h.Admin.CandyMonitor.List)
 	candy.PUT("/accounts", h.Admin.CandyMonitor.Configure)
 	candy.PUT("/accounts/enabled", h.Admin.CandyMonitor.SetEnabled)
+	candy.GET("/accounts/states", h.Admin.CandyMonitor.AccountStates)
+	candy.PUT("/accounts/:id/monitoring", h.Admin.CandyMonitor.SetMonitoring)
 	candy.POST("/accounts/:id/run", h.Admin.CandyMonitor.Run)
 	candy.GET("/accounts/:id/results", h.Admin.CandyMonitor.History)
 	candy.GET("/results/:id", h.Admin.CandyMonitor.Result)

@@ -239,6 +239,76 @@ func TestCandyMonitorPostgres(t *testing.T) {
 		require.Empty(t, items)
 	}
 	// Account deletion cascades only its monitor data.
+	states, err := r.AccountStates(ctx, []int64{first, second, third})
+	require.NoError(t, err)
+	require.Len(t, states, 3)
+	require.Equal(t, largeAnswer, *states[0].LastValidAnswer)
+	require.Nil(t, states[1].LastValidAnswer)
+	// New opt-in is immediately due, re-enabling preserves custom model/interval.
+	require.NoError(t, r.SetMonitoring(ctx, third, true))
+	require.NoError(t, r.SetMonitoring(ctx, second, true))
+	states, err = r.AccountStates(ctx, []int64{second, third})
+	require.NoError(t, err)
+	require.True(t, states[0].Enabled)
+	require.False(t, states[0].UseDefaults)
+	require.Equal(t, "custom-text", states[0].ModelID)
+	require.Equal(t, 17, states[0].IntervalMinutes)
+	require.True(t, states[1].UseDefaults)
+	require.Equal(t, settings.ModelID, states[1].ModelID)
+	var dueNow bool
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT next_run_at<=NOW() FROM candy_monitor_accounts WHERE account_id=$1`, third).Scan(&dueNow))
+	require.True(t, dueNow)
+	_, err = db.ExecContext(ctx, `UPDATE candy_monitor_accounts SET next_run_at=NOW()+INTERVAL '1 hour' WHERE account_id=$1`, third)
+	require.NoError(t, err)
+	require.NoError(t, r.SetMonitoring(ctx, third, true))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT next_run_at<=NOW() FROM candy_monitor_accounts WHERE account_id=$1`, third).Scan(&dueNow))
+	require.False(t, dueNow, "retrying enabled=true must not trigger extra tests")
+	require.NoError(t, r.SetMonitoring(ctx, second, false))
+	// A valid 29 remains red through failures, lease recovery, and retention.
+	last29, err := r.Begin(ctx, first, settings.ModelID, false)
+	require.NoError(t, err)
+	last29.Actual, last29.Verdict, last29.FinishedAt = &answer, "incorrect", &now
+	require.NoError(t, r.Finish(ctx, last29))
+	for i := 0; i < 12; i++ {
+		v, err := r.Begin(ctx, first, settings.ModelID, false)
+		require.NoError(t, err)
+		v.Verdict, v.FinishedAt = "inconclusive", &now
+		if i%2 == 0 {
+			v.Verdict = "invalid_format"
+		}
+		require.NoError(t, r.Finish(ctx, v))
+	}
+	states, err = r.AccountStates(ctx, []int64{first})
+	require.NoError(t, err)
+	require.Equal(t, 29, *states[0].LastValidAnswer)
+	require.WithinDuration(t, last29.StartedAt, *states[0].LastValidAt, time.Millisecond)
+	history, err = r.History(ctx, first, 50)
+	require.NoError(t, err)
+	for _, item := range history {
+		require.NotEqual(t, last29.ID, item.ID)
+	}
+	valid21, err := r.Begin(ctx, first, settings.ModelID, false)
+	require.NoError(t, err)
+	valid21.Actual, valid21.Verdict, valid21.FinishedAt = &answer21, "pass", &now
+	require.NoError(t, r.Finish(ctx, valid21))
+	states, err = r.AccountStates(ctx, []int64{first})
+	require.NoError(t, err)
+	require.Equal(t, 21, *states[0].LastValidAnswer)
+	// Exercise the migration against pre-existing valid and failed records.
+	failed, err := r.Begin(ctx, first, settings.ModelID, false)
+	require.NoError(t, err)
+	failed.Verdict, failed.FinishedAt = "inconclusive", &now
+	require.NoError(t, r.Finish(ctx, failed))
+	_, err = db.ExecContext(ctx, `ALTER TABLE candy_monitor_accounts DROP COLUMN last_valid_answer, DROP COLUMN last_valid_at`)
+	require.NoError(t, err)
+	migration, err := os.ReadFile("../../migrations/243_candy_monitor_last_valid.sql")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(migration))
+	require.NoError(t, err)
+	states, err = r.AccountStates(ctx, []int64{first, second})
+	require.NoError(t, err)
+	require.Equal(t, 21, *states[0].LastValidAnswer)
+	require.Nil(t, states[1].LastValidAnswer)
 	_, err = db.ExecContext(ctx, `DELETE FROM accounts WHERE id=$1`, first)
 	require.NoError(t, err)
 	history, err = r.History(ctx, first, 50)

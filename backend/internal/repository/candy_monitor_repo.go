@@ -173,6 +173,47 @@ func (r *candyMonitorRepository) SetEnabled(ctx context.Context, ids []int64, en
  FROM candy_monitor_settings s WHERE m.account_id=ANY($1)`, pq.Array(ids), enabled)
 	return err
 }
+func (r *candyMonitorRepository) AccountStates(ctx context.Context, ids []int64) ([]service.CandyMonitorAccountState, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT a.id,COALESCE(m.enabled,FALSE),COALESCE(m.use_defaults,TRUE),
+ CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.model_id ELSE m.model_id END,
+ CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.interval_minutes ELSE m.interval_minutes END,
+ m.last_valid_answer,m.last_valid_at
+ FROM accounts a CROSS JOIN candy_monitor_settings s LEFT JOIN candy_monitor_accounts m ON m.account_id=a.id
+ WHERE `+candyEligible+` AND a.id=ANY($1) ORDER BY a.id`, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]service.CandyMonitorAccountState, 0)
+	for rows.Next() {
+		var item service.CandyMonitorAccountState
+		if err := rows.Scan(&item.AccountID, &item.Enabled, &item.UseDefaults, &item.ModelID, &item.IntervalMinutes, &item.LastValidAnswer, &item.LastValidAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *candyMonitorRepository) SetMonitoring(ctx context.Context, id int64, enabled bool) error {
+	// First-time opt-in inherits defaults. Re-enabling preserves custom settings
+	// and makes the plan due; retries of an already enabled switch are idempotent.
+	result, err := r.db.ExecContext(ctx, `INSERT INTO candy_monitor_accounts AS m(account_id,enabled,use_defaults,model_id,interval_minutes,next_run_at)
+ SELECT a.id,$2,TRUE,s.model_id,s.interval_minutes,NOW() FROM accounts a CROSS JOIN candy_monitor_settings s WHERE a.id=$1 AND `+candyEligible+`
+ ON CONFLICT(account_id) DO UPDATE SET enabled=EXCLUDED.enabled,
+ next_run_at=CASE WHEN EXCLUDED.enabled AND NOT m.enabled THEN NOW() ELSE m.next_run_at END,updated_at=NOW()`, id, enabled)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
 func (r *candyMonitorRepository) Begin(ctx context.Context, accountID int64, model string, scheduled bool) (*service.CandyMonitorResult, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -246,7 +287,10 @@ func (r *candyMonitorRepository) Finish(ctx context.Context, v *service.CandyMon
  answer_21_count=answer_21_count+CASE WHEN $2='pass' AND $3::bigint=21 THEN 1 ELSE 0 END,
  answer_29_count=answer_29_count+CASE WHEN $2='incorrect' AND $3::bigint=29 THEN 1 ELSE 0 END,
  other_answer_count=other_answer_count+CASE WHEN $2='incorrect' AND $3::bigint<>29 THEN 1 ELSE 0 END,
- inconclusive_count=inconclusive_count+CASE WHEN $2 IN ('inconclusive','invalid_format') THEN 1 ELSE 0 END WHERE account_id=$1`, v.AccountID, v.Verdict, v.Actual); err != nil {
+ inconclusive_count=inconclusive_count+CASE WHEN $2 IN ('inconclusive','invalid_format') THEN 1 ELSE 0 END,
+ last_valid_answer=CASE WHEN $2 IN ('pass','incorrect') AND $3::bigint IS NOT NULL THEN $3::bigint ELSE last_valid_answer END,
+ last_valid_at=CASE WHEN $2 IN ('pass','incorrect') AND $3::bigint IS NOT NULL THEN $4 ELSE last_valid_at END
+ WHERE account_id=$1`, v.AccountID, v.Verdict, v.Actual, v.StartedAt); err != nil {
 			return err
 		}
 	}

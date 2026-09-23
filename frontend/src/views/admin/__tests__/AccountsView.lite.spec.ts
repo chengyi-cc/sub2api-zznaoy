@@ -4,6 +4,8 @@ import { defineComponent } from 'vue'
 
 import AccountsView from '../AccountsView.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+const candyAPI = vi.hoisted(() => ({ states: vi.fn(), setMonitoring: vi.fn() }))
+vi.mock('@/api/admin/candyMonitor', () => ({ candyMonitorAPI: candyAPI, CANDY_DEFAULT_MODEL: 'gpt-6-astra' }))
 
 const {
   listAccounts,
@@ -160,6 +162,8 @@ const fullAccount = {
 
 describe('admin AccountsView lite account list', () => {
   beforeEach(() => {
+    candyAPI.states.mockReset().mockImplementation(async (ids: number[]) => ({ scheduler_enabled: true, items: ids.map(account_id => ({ account_id, enabled: false, use_defaults: true, model_id: 'gpt-6-astra', interval_minutes: 60, last_valid_answer: 29, last_valid_at: null })) }))
+    candyAPI.setMonitoring.mockReset()
     localStorage.clear()
     listAccounts.mockReset().mockResolvedValue({ items: [listRow], total: 1, page: 1, page_size: 20, pages: 1 })
     listWithEtag.mockReset().mockResolvedValue({ notModified: true, etag: 'compact-etag', data: null })
@@ -196,9 +200,32 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
     const button = wrapper.findAll('button').find(b => b.text().includes('admin.accounts.candyMonitor.quickTest'))
     expect(button).toBeTruthy()
+    expect(button!.text()).not.toContain('🍬')
+    expect(button!.classes()).toContain('text-red-600')
     await button!.trigger('click')
     expect(wrapper.get('[data-test="candy-account"]').text()).toBe('compact row')
     expect(getById).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('enables automatic detection beside the account and warns if the global scheduler is paused', async () => {
+    const wrapper = mountView(); await flushPromises()
+    const item = { account_id: listRow.id, enabled: true, use_defaults: true, model_id: 'gpt-6-astra', interval_minutes: 60, last_valid_answer: 29, last_valid_at: null }
+    candyAPI.setMonitoring.mockResolvedValue({ scheduler_enabled: false, items: [item] })
+    candyAPI.states.mockResolvedValue({ scheduler_enabled: false, items: [item] })
+    await wrapper.get('[data-testid="candy-auto"]').setValue(true); await flushPromises()
+    expect(candyAPI.setMonitoring).toHaveBeenCalledWith(listRow.id, true)
+    expect((wrapper.get('[data-testid="candy-auto"]').element as HTMLInputElement).checked).toBe(true)
+    expect(showWarning).toHaveBeenCalledWith('admin.accounts.candyMonitor.enabledWhilePaused')
+    wrapper.unmount()
+  })
+
+  it('keeps automatic detection unchecked when saving fails', async () => {
+    const wrapper = mountView(); await flushPromises()
+    candyAPI.setMonitoring.mockRejectedValue(new Error('offline'))
+    await wrapper.get('[data-testid="candy-auto"]').setValue(true); await flushPromises()
+    expect((wrapper.get('[data-testid="candy-auto"]').element as HTMLInputElement).checked).toBe(false)
+    expect(showError).toHaveBeenCalled()
     wrapper.unmount()
   })
 
