@@ -76,7 +76,22 @@ func (h *CandyMonitorHandler) List(c *gin.Context) {
 		response.BadRequest(c, "Search is too long")
 		return
 	}
-	items, total, err := h.svc.List(c.Request.Context(), service.CandyMonitorFilter{GroupID: group, Search: search, EnabledOnly: c.Query("enabled_only") == "true", Page: page, PageSize: size})
+	var enabled *bool
+	if raw, exists := c.GetQuery("enabled"); exists {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid enabled filter")
+			return
+		}
+		enabled = &value
+	}
+	items, total, err := h.svc.List(c.Request.Context(), service.CandyMonitorFilter{
+		GroupID: group, Ungrouped: c.Query("ungrouped") == "true", Search: search,
+		EnabledOnly: c.Query("enabled_only") == "true", Enabled: enabled,
+		Platform: strings.TrimSpace(c.Query("platform")), Status: strings.TrimSpace(c.Query("status")),
+		Type: strings.TrimSpace(c.Query("type")), PrivacyMode: strings.TrimSpace(c.Query("privacy_mode")),
+		Verdict: strings.TrimSpace(c.Query("verdict")), Page: page, PageSize: size,
+	})
 	if err != nil {
 		candyMonitorError(c, err)
 		return

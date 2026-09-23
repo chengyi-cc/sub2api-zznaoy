@@ -39,10 +39,12 @@ export interface CandyAccount extends CandyConfig {
   name: string
   platform: string
   status: string
+  type: string
   last_run_at: string | null
   next_run_at: string | null
   running_until: string | null
   latest: CandyResult | null
+  history: CandyResult[]
 }
 export interface CandyFilter {
   page: number
@@ -50,6 +52,13 @@ export interface CandyFilter {
   group_id?: number
   search?: string
   enabled_only?: boolean
+  enabled?: boolean
+  ungrouped?: boolean
+  type?: string
+  privacy_mode?: string
+  verdict?: string
+  platform?: string
+  status?: string
 }
 const base = '/admin/candy-monitor'
 export const candyMonitorAPI = {

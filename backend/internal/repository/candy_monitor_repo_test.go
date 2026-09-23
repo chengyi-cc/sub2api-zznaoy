@@ -51,6 +51,8 @@ func TestCandyMonitorPostgres(t *testing.T) {
 	require.EqualValues(t, 1, total)
 	require.Len(t, list, 1)
 	require.Nil(t, list[0].Latest)
+	require.Empty(t, list[0].History)
+	require.NotNil(t, list[0].History)
 	require.False(t, list[0].Enabled)
 	// An ad-hoc test must not enable a scheduled plan.
 	result, err := r.Begin(ctx, first, settings.ModelID, false)
@@ -61,6 +63,7 @@ func TestCandyMonitorPostgres(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, list[0].Enabled)
 	require.Equal(t, "running", list[0].Latest.Verdict)
+	require.Empty(t, list[0].History, "history dots only represent completed tests")
 	now := time.Now()
 	answer := 29
 	result.Verdict = "incorrect"
@@ -172,6 +175,69 @@ func TestCandyMonitorPostgres(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 17, list[0].TotalTests)
 	require.EqualValues(t, 1, list[0].OtherAnswerCount)
+	require.Len(t, list[0].History, 10)
+	require.Equal(t, large.ID, list[0].History[0].ID)
+	require.Equal(t, largeAnswer, *list[0].History[0].Actual)
+	for i, item := range list[0].History {
+		require.Empty(t, item.ResponseText, "list results must not include large model responses")
+		if i > 0 {
+			require.Greater(t, list[0].History[i-1].ID, item.ID)
+		}
+	}
+	// Filters apply to the database result and total, not just the current page.
+	var third int64
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO accounts(name,platform,type,status,credentials,extra) VALUES('candy three','anthropic','oauth','inactive','{}','{}') RETURNING id`).Scan(&third))
+	_, err = db.ExecContext(ctx, `UPDATE accounts SET extra='{"privacy_mode":"training_off"}' WHERE id=$1`, first)
+	require.NoError(t, err)
+	enabled, paused := true, false
+	for _, tc := range []struct {
+		name   string
+		filter service.CandyMonitorFilter
+		ids    []int64
+	}{
+		{"combined", service.CandyMonitorFilter{GroupID: group, Platform: "openai", Type: "apikey", Status: "active", Enabled: &enabled, Verdict: "incorrect", PrivacyMode: "training_off", Search: "one"}, []int64{first}},
+		{"paused includes never configured", service.CandyMonitorFilter{Enabled: &paused}, []int64{third, second}},
+		{"enabled", service.CandyMonitorFilter{Enabled: &enabled}, []int64{first}},
+		{"legacy enabled", service.CandyMonitorFilter{EnabledOnly: true}, []int64{first}},
+		{"ungrouped", service.CandyMonitorFilter{Ungrouped: true}, []int64{third, second}},
+		{"platform and type", service.CandyMonitorFilter{Platform: "anthropic", Type: "oauth"}, []int64{third}},
+		{"inactive", service.CandyMonitorFilter{Status: "inactive"}, []int64{third}},
+		{"privacy unset", service.CandyMonitorFilter{PrivacyMode: "__unset__"}, []int64{third, second}},
+		{"untested", service.CandyMonitorFilter{Verdict: "untested"}, []int64{third, second}},
+		{"no match", service.CandyMonitorFilter{Platform: "gemini"}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.filter.Page, tc.filter.PageSize = 1, 100
+			items, total, err := r.List(ctx, tc.filter)
+			require.NoError(t, err)
+			require.EqualValues(t, len(tc.ids), total)
+			require.Len(t, items, len(tc.ids))
+			for i, id := range tc.ids {
+				require.Equal(t, id, items[i].AccountID)
+			}
+		})
+	}
+	items, total, err := r.List(ctx, service.CandyMonitorFilter{Page: 2, PageSize: 1, Enabled: &paused})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.Len(t, items, 1)
+	require.Equal(t, second, items[0].AccountID)
+	// Availability uses the same precedence as the official account list.
+	for _, tc := range []struct{ update, status string }{
+		{`schedulable=FALSE`, "unschedulable"},
+		{`rate_limit_reset_at=NOW()+INTERVAL '1 hour'`, "rate_limited"},
+		{`temp_unschedulable_until=NOW()+INTERVAL '1 hour'`, "temp_unschedulable"},
+	} {
+		_, err = db.ExecContext(ctx, `UPDATE accounts SET `+tc.update+` WHERE id=$1`, first)
+		require.NoError(t, err)
+		items, total, err = r.List(ctx, service.CandyMonitorFilter{Page: 1, PageSize: 30, Status: tc.status})
+		require.NoError(t, err)
+		require.EqualValues(t, 1, total)
+		require.Equal(t, first, items[0].AccountID)
+		items, _, err = r.List(ctx, service.CandyMonitorFilter{Page: 1, PageSize: 30, Status: "active", GroupID: group})
+		require.NoError(t, err)
+		require.Empty(t, items)
+	}
 	// Account deletion cascades only its monitor data.
 	_, err = db.ExecContext(ctx, `DELETE FROM accounts WHERE id=$1`, first)
 	require.NoError(t, err)

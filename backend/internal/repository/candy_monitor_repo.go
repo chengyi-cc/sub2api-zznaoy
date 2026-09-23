@@ -44,7 +44,8 @@ func (r *candyMonitorRepository) SaveSettings(ctx context.Context, s *service.Ca
 const candyAccountFrom = ` FROM accounts a CROSS JOIN candy_monitor_settings s
  LEFT JOIN candy_monitor_accounts m ON m.account_id=a.id
  LEFT JOIN LATERAL (SELECT id,account_id,model_id,source,verdict,reason,actual,expected,duration_ms,started_at,finished_at,error_message FROM candy_monitor_results WHERE account_id=a.id ORDER BY id DESC LIMIT 1) latest ON TRUE `
-const candyAccountColumns = `a.id,a.name,a.platform,a.status,COALESCE(m.enabled,FALSE),COALESCE(m.use_defaults,TRUE),
+const candyAccountHistory = ` LEFT JOIN LATERAL (SELECT COALESCE(jsonb_agg(to_jsonb(h) ORDER BY h.id DESC),'[]'::jsonb) AS history FROM (SELECT id,account_id,model_id,source,verdict,reason,actual,expected,duration_ms,started_at,finished_at FROM candy_monitor_results WHERE account_id=page.account_id AND verdict<>'running' ORDER BY id DESC LIMIT 10) h) recent ON TRUE `
+const candyAccountColumns = `a.id AS account_id,a.name,a.platform,a.status,a.type,COALESCE(m.enabled,FALSE),COALESCE(m.use_defaults,TRUE),
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.model_id ELSE m.model_id END,
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.interval_minutes ELSE m.interval_minutes END,
  m.last_run_at,m.next_run_at,m.lease_until,COALESCE(to_jsonb(latest),'null'::jsonb),
@@ -56,10 +57,14 @@ func scanCandyAccounts(rows *sql.Rows) ([]service.CandyMonitorAccount, error) {
 	for rows.Next() {
 		var a service.CandyMonitorAccount
 		var raw []byte
-		if err := rows.Scan(&a.AccountID, &a.Name, &a.Platform, &a.Status, &a.Enabled, &a.UseDefaults, &a.ModelID, &a.IntervalMinutes, &a.LastRunAt, &a.NextRunAt, &a.RunningUntil, &raw, &a.TotalTests, &a.Answer21Count, &a.Answer29Count, &a.OtherAnswerCount, &a.InconclusiveCount); err != nil {
+		var historyRaw []byte
+		if err := rows.Scan(&a.AccountID, &a.Name, &a.Platform, &a.Status, &a.Type, &a.Enabled, &a.UseDefaults, &a.ModelID, &a.IntervalMinutes, &a.LastRunAt, &a.NextRunAt, &a.RunningUntil, &raw, &a.TotalTests, &a.Answer21Count, &a.Answer29Count, &a.OtherAnswerCount, &a.InconclusiveCount, &historyRaw); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(raw, &a.Latest); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(historyRaw, &a.History); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -69,7 +74,9 @@ func scanCandyAccounts(rows *sql.Rows) ([]service.CandyMonitorAccount, error) {
 func (r *candyMonitorRepository) List(ctx context.Context, f service.CandyMonitorFilter) ([]service.CandyMonitorAccount, int64, error) {
 	where := ` WHERE ` + candyEligible
 	args := []any{}
-	if f.GroupID > 0 {
+	if f.Ungrouped {
+		where += ` AND NOT EXISTS (SELECT 1 FROM account_groups ag WHERE ag.account_id=a.id)`
+	} else if f.GroupID > 0 {
 		args = append(args, f.GroupID)
 		where += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM account_groups ag WHERE ag.account_id=a.id AND ag.group_id=$%d)`, len(args))
 	}
@@ -77,15 +84,56 @@ func (r *candyMonitorRepository) List(ctx context.Context, f service.CandyMonito
 		args = append(args, "%"+f.Search+"%")
 		where += fmt.Sprintf(` AND (a.name ILIKE $%d OR a.id::text ILIKE $%d)`, len(args), len(args))
 	}
-	if f.EnabledOnly {
+	if f.Enabled != nil {
+		args = append(args, *f.Enabled)
+		where += fmt.Sprintf(` AND COALESCE(m.enabled,FALSE)=$%d`, len(args))
+	} else if f.EnabledOnly {
 		where += ` AND m.enabled`
+	}
+	if f.Platform != "" {
+		args = append(args, f.Platform)
+		where += fmt.Sprintf(` AND a.platform=$%d`, len(args))
+	}
+	if f.Type != "" {
+		args = append(args, f.Type)
+		where += fmt.Sprintf(` AND a.type=$%d`, len(args))
+	}
+	if f.PrivacyMode == "__unset__" {
+		where += ` AND COALESCE(a.extra->>'privacy_mode','')=''`
+	} else if f.PrivacyMode != "" {
+		args = append(args, f.PrivacyMode)
+		where += fmt.Sprintf(` AND a.extra->>'privacy_mode'=$%d`, len(args))
+	}
+	// Match the account management page's computed availability statuses.
+	const notLimited = ` AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at<=NOW())`
+	const notTemporary = ` AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until<=NOW())`
+	switch f.Status {
+	case "active":
+		where += ` AND a.status='active' AND a.schedulable` + notLimited + notTemporary
+	case "rate_limited":
+		where += ` AND a.status='active' AND a.rate_limit_reset_at>NOW()` + notTemporary
+	case "temp_unschedulable":
+		where += ` AND a.status='active' AND a.temp_unschedulable_until>NOW()`
+	case "unschedulable":
+		where += ` AND a.status='active' AND NOT a.schedulable` + notLimited + notTemporary
+	case "":
+	default:
+		args = append(args, f.Status)
+		where += fmt.Sprintf(` AND a.status=$%d`, len(args))
+	}
+	if f.Verdict == "untested" {
+		where += ` AND latest.id IS NULL`
+	} else if f.Verdict != "" {
+		args = append(args, f.Verdict)
+		where += fmt.Sprintf(` AND latest.verdict=$%d`, len(args))
 	}
 	var total int64
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*)`+candyAccountFrom+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	args = append(args, f.PageSize, (f.Page-1)*f.PageSize)
-	rows, err := r.db.QueryContext(ctx, `SELECT `+candyAccountColumns+candyAccountFrom+where+fmt.Sprintf(` ORDER BY a.id DESC LIMIT $%d OFFSET $%d`, len(args)-1, len(args)), args...)
+	// Load recent results only for the requested page, never for the whole fleet.
+	rows, err := r.db.QueryContext(ctx, `SELECT page.*,recent.history FROM (SELECT `+candyAccountColumns+candyAccountFrom+where+fmt.Sprintf(` ORDER BY a.id DESC LIMIT $%d OFFSET $%d) page`, len(args)-1, len(args))+candyAccountHistory+` ORDER BY page.account_id DESC`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -112,7 +160,7 @@ func (r *candyMonitorRepository) Due(ctx context.Context, limit int) ([]service.
  UPDATE candy_monitor_accounts m SET total_tests=m.total_tests+c.n,inconclusive_count=m.inconclusive_count+c.n FROM counts c WHERE m.account_id=c.account_id`); err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT `+candyAccountColumns+candyAccountFrom+` WHERE `+candyEligible+` AND s.enabled AND m.enabled AND m.next_run_at<=NOW() AND (m.lease_until IS NULL OR m.lease_until<=NOW()) ORDER BY m.next_run_at LIMIT $1`, limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+candyAccountColumns+`,'[]'::jsonb`+candyAccountFrom+` WHERE `+candyEligible+` AND s.enabled AND m.enabled AND m.next_run_at<=NOW() AND (m.lease_until IS NULL OR m.lease_until<=NOW()) ORDER BY m.next_run_at LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}

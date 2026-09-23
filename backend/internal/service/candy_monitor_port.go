@@ -43,21 +43,30 @@ type CandyMonitorAccount struct {
 	Name      string `json:"name"`
 	Platform  string `json:"platform"`
 	Status    string `json:"status"`
+	Type      string `json:"type"`
 	CandyMonitorConfig
-	LastRunAt         *time.Time          `json:"last_run_at"`
-	NextRunAt         *time.Time          `json:"next_run_at"`
-	RunningUntil      *time.Time          `json:"running_until"`
-	Latest            *CandyMonitorResult `json:"latest"`
-	TotalTests        int64               `json:"total_tests"`
-	Answer21Count     int64               `json:"answer_21_count"`
-	Answer29Count     int64               `json:"answer_29_count"`
-	OtherAnswerCount  int64               `json:"other_answer_count"`
-	InconclusiveCount int64               `json:"inconclusive_count"`
+	LastRunAt         *time.Time           `json:"last_run_at"`
+	NextRunAt         *time.Time           `json:"next_run_at"`
+	RunningUntil      *time.Time           `json:"running_until"`
+	Latest            *CandyMonitorResult  `json:"latest"`
+	History           []CandyMonitorResult `json:"history"`
+	TotalTests        int64                `json:"total_tests"`
+	Answer21Count     int64                `json:"answer_21_count"`
+	Answer29Count     int64                `json:"answer_29_count"`
+	OtherAnswerCount  int64                `json:"other_answer_count"`
+	InconclusiveCount int64                `json:"inconclusive_count"`
 }
 type CandyMonitorFilter struct {
 	GroupID     int64
 	Search      string
 	EnabledOnly bool
+	Enabled     *bool
+	Ungrouped   bool
+	Platform    string
+	Status      string
+	Type        string
+	PrivacyMode string
+	Verdict     string
 	Page        int
 	PageSize    int
 }
