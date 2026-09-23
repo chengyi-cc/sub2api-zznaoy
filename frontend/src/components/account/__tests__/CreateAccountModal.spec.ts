@@ -23,6 +23,7 @@ const {
 }))
 
 vi.mock('@/api/admin/openaiAccountTemplate', () => ({ openaiAccountTemplateAPI: { get: getAccountTemplateMock, save: vi.fn() } }))
+beforeEach(() => { getAccountTemplateMock.mockResolvedValue({ version: 2, templates: [] }) })
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
@@ -679,9 +680,10 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   })
 
   it('applies selected template fields to Codex imports and preserves untouched defaults', async () => {
-    getAccountTemplateMock.mockResolvedValue({ version: 1, fields: { concurrency: 4, codexFingerprintMode: 'machine', openAILongContextBillingEnabled: true } })
+    getAccountTemplateMock.mockResolvedValue({ version: 2, templates: [{ id: 'one', name: 'Template 1', enabled: true, fields: { concurrency: 4, codexFingerprintMode: 'machine', openAILongContextBillingEnabled: true } }] })
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')
+    await flushPromises()
     await wrapper.get('[data-testid="apply-template"]').trigger('click')
     await flushPromises()
     await wrapper.get('form#create-account-form input[type="text"]').setValue('template import')

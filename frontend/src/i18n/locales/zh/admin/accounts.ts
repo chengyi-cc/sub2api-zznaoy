@@ -4,7 +4,11 @@ export default {
         title: 'OpenAI 账号设置模板', hint: '只覆盖模板中勾选的项目，其余设置保持不变。', edit: '修改模板', apply: '一键应用模板', editTitle: '编辑 OpenAI 账号模板',
         editorHint: '勾选代表应用时覆盖该项；不勾选则保留账号当前设置。模板保存在服务器，保存模板不会立即修改账号。当前显示适用于此账号类型的项目。账号名称、密钥和身份凭据不纳入模板。',
         selected: '已选择覆盖 {count} 项', capture: '从当前表单读取已选项', clearSelection: '取消全部勾选', cover: '覆盖：{field}', willCover: '应用时覆盖此项', keepCurrent: '不覆盖，保留原设置', save: '保存模板',
-        saved: '模板已保存，可点击“一键应用模板”填入当前表单。', applied: '已应用 {count} 项设置到当前表单，保存账号后生效。', empty: '模板尚未选择适用的覆盖项，请先修改模板。', failed: '模板操作失败，请重试。',
+        saved: '模板已保存，点击对应的“使用”按钮可填入当前表单。', applied: '已应用 {count} 项设置到当前表单，保存账号后生效。', empty: '模板尚未选择适用的覆盖项，请先修改模板。', failed: '模板操作失败，请重试。',
+        applyNamed: '使用{name}', noneEnabled: '暂无已启用模板，可在“修改模板”中新增或启用。', chooseTemplate: '选择要编辑的模板', addTemplate: '新增模板', removeTemplate: '删除此模板',
+        collectionHint: '最多保存 20 个模板。每个已启用模板会显示独立使用按钮，未启用的不会显示。切换时保留修改，保存后统一生效；取消可放弃本次全部修改（包括删除）。',
+        templateName: '模板名称', showButton: '启用并显示使用按钮', templateEnabled: '已启用', templateDisabled: '未启用', unnamed: '未命名', defaultName: '模板{number}',
+        invalidNames: '模板名称不能为空或重复，最多 64 个字符，且不能包含换行或制表符。', noLongerEnabled: '此模板已被停用或删除，按钮已更新，账号设置未改变。',
         emptyDefault: '留空使用默认值或不限制', enabled: '开启', noProxy: '不使用代理', unavailable: '已不可用，请重新选择', emptyGroups: '不选择分组表示清空账号分组。', defaultProfile: '默认指纹配置',
         onlyCLI: '仅允许 Codex 命令行客户端', allowAppServer: '同时允许 App Server（桌面客户端连接服务）', retryCount: '重试次数', statusCodes: '需要重试的状态码，用逗号分隔；留空使用默认值', modelList: '允许的模型名称，每行一个；留空不限制', sourceModel: '请求模型', targetModel: '上游模型', remove: '移除此映射', addMapping: '添加模型映射',
         fields: {

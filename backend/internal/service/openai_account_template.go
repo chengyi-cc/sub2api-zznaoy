@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 const settingKeyOpenAIAccountTemplate = "openai_account_form_template_v1"
@@ -21,35 +23,91 @@ type OpenAIAccountTemplate struct {
 	Fields  map[string]json.RawMessage `json:"fields"`
 }
 
-func (s *SettingService) GetOpenAIAccountTemplate(ctx context.Context) (*OpenAIAccountTemplate, error) {
+type NamedOpenAIAccountTemplate struct {
+	ID      string                     `json:"id"`
+	Name    string                     `json:"name"`
+	Enabled bool                       `json:"enabled"`
+	Fields  map[string]json.RawMessage `json:"fields"`
+}
+
+type OpenAIAccountTemplates struct {
+	Version   int                          `json:"version"`
+	Templates []NamedOpenAIAccountTemplate `json:"templates"`
+}
+
+const MaxOpenAIAccountTemplatesSize = 256 * 1024
+
+var openAIAccountTemplateID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
+
+func (s *SettingService) GetOpenAIAccountTemplate(ctx context.Context) (*OpenAIAccountTemplates, error) {
 	raw, err := s.settingRepo.GetValue(ctx, settingKeyOpenAIAccountTemplate)
 	if errors.Is(err, ErrSettingNotFound) || (err == nil && raw == "") {
-		return &OpenAIAccountTemplate{Version: 1, Fields: map[string]json.RawMessage{}}, nil
+		return &OpenAIAccountTemplates{Version: 2, Templates: []NamedOpenAIAccountTemplate{}}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	var v OpenAIAccountTemplate
+	var v OpenAIAccountTemplates
 	if err = json.Unmarshal([]byte(raw), &v); err != nil {
 		return nil, err
 	}
-	if err = validateOpenAIAccountTemplate(&v); err != nil {
+	// Read the original single template without modifying storage. The next save
+	// atomically replaces it with the collection, including explicit empty lists.
+	if v.Version == 1 {
+		var legacy OpenAIAccountTemplate
+		if err = json.Unmarshal([]byte(raw), &legacy); err != nil {
+			return nil, err
+		}
+		if err = validateOpenAIAccountTemplate(&legacy); err != nil {
+			return nil, err
+		}
+		v = OpenAIAccountTemplates{Version: 2, Templates: []NamedOpenAIAccountTemplate{}}
+		if len(legacy.Fields) > 0 {
+			v.Templates = append(v.Templates, NamedOpenAIAccountTemplate{ID: "template-1", Name: "模板1", Enabled: true, Fields: legacy.Fields})
+		}
+	}
+	if err = validateOpenAIAccountTemplates(&v); err != nil {
 		return nil, err
 	}
 	return &v, nil
 }
-func (s *SettingService) SaveOpenAIAccountTemplate(ctx context.Context, v *OpenAIAccountTemplate) error {
-	if err := validateOpenAIAccountTemplate(v); err != nil {
+func (s *SettingService) SaveOpenAIAccountTemplate(ctx context.Context, v *OpenAIAccountTemplates) error {
+	if err := validateOpenAIAccountTemplates(v); err != nil {
 		return err
 	}
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	if len(raw) > 65536 {
+	if len(raw) > MaxOpenAIAccountTemplatesSize {
 		return fmt.Errorf("%w: template is too large", ErrOpenAIAccountTemplateInvalid)
 	}
 	return s.settingRepo.Set(ctx, settingKeyOpenAIAccountTemplate, string(raw))
+}
+
+func validateOpenAIAccountTemplates(v *OpenAIAccountTemplates) error {
+	if v == nil || v.Version != 2 || v.Templates == nil || len(v.Templates) > 20 {
+		return fmt.Errorf("%w: expected version 2 and at most 20 templates", ErrOpenAIAccountTemplateInvalid)
+	}
+	ids, names := map[string]bool{}, map[string]bool{}
+	for i := range v.Templates {
+		t := &v.Templates[i]
+		t.Name = strings.TrimSpace(t.Name)
+		if !openAIAccountTemplateID.MatchString(t.ID) || ids[t.ID] || t.Name == "" || utf8.RuneCountInString(t.Name) > 64 || names[t.Name] || strings.ContainsAny(t.Name, "\r\n\t") {
+			return fmt.Errorf("%w: templates need unique IDs and names (1–64 characters)", ErrOpenAIAccountTemplateInvalid)
+		}
+		ids[t.ID], names[t.Name] = true, true
+		item := OpenAIAccountTemplate{Version: 1, Fields: t.Fields}
+		if err := validateOpenAIAccountTemplate(&item); err != nil {
+			return err
+		}
+		t.Fields = item.Fields
+		raw, err := json.Marshal(t.Fields)
+		if err != nil || len(raw) > 65536 {
+			return fmt.Errorf("%w: template fields are too large", ErrOpenAIAccountTemplateInvalid)
+		}
+	}
+	return nil
 }
 func validateOpenAIAccountTemplate(v *OpenAIAccountTemplate) error {
 	if v.Version != 1 {

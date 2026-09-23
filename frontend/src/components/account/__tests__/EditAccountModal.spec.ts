@@ -10,6 +10,7 @@ const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, getAccou
 }))
 
 vi.mock('@/api/admin/openaiAccountTemplate', () => ({ openaiAccountTemplateAPI: { get: getAccountTemplateMock, save: vi.fn() } }))
+beforeEach(() => { getAccountTemplateMock.mockResolvedValue({ version: 2, templates: [] }) })
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
@@ -332,8 +333,9 @@ describe('EditAccountModal', () => {
     account.priority = 9
     account.extra = { codex_fingerprint_mode: 'machine', openai_passthrough: true, custom_marker: 'keep' }
     updateAccountMock.mockReset().mockResolvedValue(account)
-    getAccountTemplateMock.mockResolvedValue({ version: 1, fields: { concurrency: 5, openaiPassthroughEnabled: false } })
+    getAccountTemplateMock.mockResolvedValue({ version: 2, templates: [{ id: 'one', name: 'Template 1', enabled: true, fields: { concurrency: 5, openaiPassthroughEnabled: false } }] })
     const wrapper = mountModal(account)
+    await flushPromises()
     await wrapper.get('[data-testid="apply-template"]').trigger('click')
     await flushPromises()
     expect(updateAccountMock).not.toHaveBeenCalled()

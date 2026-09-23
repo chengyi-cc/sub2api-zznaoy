@@ -1,6 +1,8 @@
 import { nextTick, type Ref } from 'vue'
 
 export interface OpenAIAccountTemplate { version: 1; fields: Record<string, unknown> }
+export interface NamedOpenAIAccountTemplate { id: string; name: string; enabled: boolean; fields: Record<string, unknown> }
+export interface OpenAIAccountTemplates { version: 2; templates: NamedOpenAIAccountTemplate[] }
 export interface TemplateBinding { read: () => unknown; write: (value: unknown) => void | Promise<void> }
 export type TemplateBindings = Record<string, TemplateBinding>
 export interface TemplateField {
