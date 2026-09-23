@@ -8,6 +8,8 @@ node_modules/
 # 忽略构建输出
 dist/
 ../backend/internal/web/dist/
+# Generated homepage preview bundle; its source lives in tools/homepage-concepts/.
+public/homepage-concepts/selected/selected-home.js
 
 # 忽略缓存
 .cache/

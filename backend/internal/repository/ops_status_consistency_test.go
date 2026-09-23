@@ -45,11 +45,11 @@ func TestOpsStatusConsistency_RequestList(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &opsRepository{db: db}
 	mock.ExpectQuery(`o.status_code AS status_code,\s+o.upstream_status_code AS upstream_status_code,[\s\S]*SELECT COUNT\(1\)`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
-	columns := strings.Fields("kind created_at request_id platform model duration status upstream_status error_id phase severity message user_id api_key_id account_id group_id stream")
+	columns := strings.Fields("kind created_at request_id platform model duration first_token_ms status upstream_status error_id phase severity message user_id api_key_id account_id group_id stream")
 	rows := sqlmock.NewRows(columns).
-		AddRow("error", time.Now(), "req-1", "openai", "gpt-5", 10, 502, 403, 1, "request", "P1", "denied", nil, nil, nil, nil, false).
-		AddRow("error", time.Now(), "req-2", "openai", "gpt-5", 10, 400, nil, 2, "request", "P3", "invalid", nil, nil, nil, nil, false).
-		AddRow("success", time.Now(), "req-3", "openai", "gpt-5", 10, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false)
+		AddRow("error", time.Now(), "req-1", "openai", "gpt-5", 10, 3, 502, 403, 1, "request", "P1", "denied", nil, nil, nil, nil, false).
+		AddRow("error", time.Now(), "req-2", "openai", "gpt-5", 10, nil, 400, nil, 2, "request", "P3", "invalid", nil, nil, nil, nil, false).
+		AddRow("success", time.Now(), "req-3", "openai", "gpt-5", 10, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false)
 	mock.ExpectQuery(`SELECT\s+kind,[\s\S]*status_code,\s+upstream_status_code,\s+error_id`).WillReturnRows(rows)
 	items, total, err := repo.ListRequestDetails(context.Background(), nil)
 	require.NoError(t, err)
@@ -57,7 +57,9 @@ func TestOpsStatusConsistency_RequestList(t *testing.T) {
 	require.Len(t, items, 3)
 	require.Equal(t, 502, *items[0].StatusCode)
 	require.Equal(t, 403, *items[0].UpstreamStatusCode)
+	require.Equal(t, 3, *items[0].FirstTokenMs)
 	require.Nil(t, items[1].UpstreamStatusCode)
+	require.Nil(t, items[1].FirstTokenMs)
 	require.Nil(t, items[2].StatusCode)
 	require.Nil(t, items[2].UpstreamStatusCode)
 	require.NoError(t, mock.ExpectationsWereMet())
