@@ -382,6 +382,49 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('saves and disables Excel BPS without changing native transport, credentials or scheduling', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.status = 'error'
+    account.schedulable = false
+    account.credentials = { access_token: 'test-token', refresh_token: 'keep-refresh', chatgpt_account_id: 'test-account' }
+    account.extra = { unrelated: 'preserve', openai_oauth_responses_websockets_v2_mode: 'ctx_pool', openai_passthrough: true, codex_fingerprint_mode: 'off' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="excel-bps-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent'); await flushPromises()
+    let saved = updateAccountMock.mock.lastCall?.[1]
+    expect(saved.extra).toMatchObject({ openai_excel_bps: true, unrelated: 'preserve', openai_passthrough: true, openai_oauth_responses_websockets_v2_mode: 'ctx_pool' })
+    expect(saved.credentials).toMatchObject(account.credentials)
+    expect(saved.status).toBe('error')
+    expect(saved.schedulable).not.toBe(true)
+    wrapper.unmount()
+    const reopened = mountModal({ ...account, extra: saved.extra })
+    expect(reopened.get('[data-testid="excel-bps-toggle"]').attributes('aria-checked')).toBe('true')
+    await reopened.get('[data-testid="excel-bps-toggle"]').trigger('click')
+    await reopened.get('form#edit-account-form').trigger('submit.prevent'); await flushPromises()
+    saved = updateAccountMock.mock.lastCall?.[1]
+    expect(saved.extra).not.toHaveProperty('openai_excel_bps')
+    expect(saved.extra).toMatchObject({ unrelated: 'preserve', openai_passthrough: true, openai_oauth_responses_websockets_v2_mode: 'ctx_pool' })
+    reopened.unmount()
+  })
+
+  it.each([
+    { type: 'apikey' }, { type: 'setup-token' }, { platform: 'anthropic', type: 'oauth' },
+    { type: 'oauth', parent_account_id: 10 },
+    { type: 'oauth', credentials: { auth_mode: 'agent_identity' } },
+    { type: 'oauth', credentials: { auth_mode: 'agentIdentity' } },
+    { type: 'oauth', credentials: { auth_mode: 'personalAccessToken' } },
+    { type: 'oauth', credentials: { openai_auth_mode: 'personal_access_token' } }
+  ])('hides Excel BPS for unsupported accounts: %o', overrides => {
+    const wrapper = mountModal({ ...buildAccount(), ...overrides })
+    expect(wrapper.find('[data-testid="excel-bps-toggle"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('sets expiry presets from now instead of extending the saved expiry', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2028-02-29T12:34:00'))

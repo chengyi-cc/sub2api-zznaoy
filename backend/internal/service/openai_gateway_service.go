@@ -296,6 +296,7 @@ type OpenAIForwardResult struct {
 	AudioUsage *AudioUsage
 
 	wsReplayInput                []json.RawMessage
+	streamReadIncomplete         bool
 	wsReplayInputExists          bool
 	wsAccountFailoverReplayInput []json.RawMessage
 }
@@ -304,6 +305,9 @@ type OpenAIForwardResult struct {
 // that may clear model-scoped transient state. The zero value remains a success
 // for existing non-WS callers.
 func (r *OpenAIForwardResult) SucceededForScheduling() bool {
+	if r != nil && r.UpstreamEndpoint == "/basispoints/api/responses" {
+		return !r.streamReadIncomplete && r.UpstreamTerminalEvent == "response.completed"
+	}
 	if r == nil || !r.OpenAIWSMode || r.UpstreamTerminalEvent == "" {
 		return true
 	}
