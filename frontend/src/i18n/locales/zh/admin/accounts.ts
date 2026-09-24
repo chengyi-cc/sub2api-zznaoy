@@ -21,8 +21,10 @@ export default {
       },
       candyMonitor: {
         intelligenceStatus: '智力状态', normalRate: '正常率', normalRateHint: '最近 10 次已完成检测中，有效数值答案为 21 的比例；请求失败、格式错误不计入，无有效答案显示 —。',
+        pause: '暂停', pauseHint: '暂停此账号的自动检测，保留配置和历史', blockedHint: '账号当前不可调度，自动检测已跳过；恢复可用后自动继续，不新增检测记录。',
+        blocked: { expired: '已跳过 · 账号过期', account_error: '已跳过 · 账号异常', inactive: '已跳过 · 账号停用', unschedulable: '已跳过 · 停止调度', cooldown: '已跳过 · 冷却中', rate_limited: '已跳过 · 限流中', overloaded: '已跳过 · 过载中' },
         autoDetect: '自动检测', lastValidAnswer: '最近有效答案：{answer}（不计请求失败或格式错误）',
-        autoDetectOnHint: '已启用：{model}，每 {minutes} 分钟。关闭开关可暂停，保留原设置。',
+        autoDetectOnHint: '已启用：{model}，每 {minutes} 分钟。点击“暂停”可关闭自动检测，保留原设置。',
         autoDetectOffHint: '开启后自动检测：{model}，每 {minutes} 分钟；首次检测通常在 30 秒内开始，会消耗调用额度。',
         enabledWhilePaused: '已启用此账号的自动检测，但全局定时检测已暂停，请在降智检测页面开启全局开关。', stateLoadFailed: '检测状态读取失败，正在自动重试。',
         counts: '总次数', count21: '21 · 正常', count29: '29 · 异常', totalTests: '已完成 {count} 次', otherAnswers: '其他答案 {count}', inconclusiveCount: '待复测 {count}',

@@ -141,12 +141,49 @@ func newCandyMonitorTestService(t *testing.T) (*CandyMonitorService, *candyMonit
 	repo := &candyMonitorStub{settings: CandyMonitorSettings{Enabled: true, ModelID: CandyMonitorDefaultModel, IntervalMinutes: 60, MaxResults: 50}, active: map[int64]bool{}, finished: make(chan CandyMonitorResult, 10)}
 	accounts := &candyAccountsStub{items: map[int64]*Account{}}
 	for id := int64(1); id <= 6; id++ {
-		accounts.items[id] = &Account{ID: id, Platform: PlatformOpenAI}
+		accounts.items[id] = &Account{ID: id, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true}
 	}
 	s := NewCandyMonitorService(repo, accounts, &AccountTestService{})
 	t.Cleanup(s.Stop)
 	return s, repo, accounts
 }
+func TestCandyMonitorSkipsUnavailableScheduledAccounts(t *testing.T) {
+	past, future := time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
+	for _, tc := range []struct {
+		name   string
+		change func(*Account)
+	}{
+		{"disabled", func(a *Account) { a.Status = "inactive" }},
+		{"authentication error", func(a *Account) { a.Status = "error" }},
+		{"scheduling disabled", func(a *Account) { a.Schedulable = false }},
+		{"expired", func(a *Account) { a.AutoPauseOnExpired = true; a.ExpiresAt = &past }},
+		{"cooldown", func(a *Account) { a.TempUnschedulableUntil = &future }},
+		{"rate limited", func(a *Account) { a.RateLimitResetAt = &future }},
+		{"overloaded", func(a *Account) { a.OverloadUntil = &future }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, r, accounts := newCandyMonitorTestService(t)
+			tc.change(accounts.items[1])
+			_, err := s.queue(context.Background(), 1, CandyMonitorDefaultModel, true)
+			require.ErrorIs(t, err, ErrCandyMonitorBusy)
+			require.Empty(t, r.active, "skip before claiming or creating a test")
+			require.Empty(t, r.finished)
+			// Manual probes remain available for troubleshooting the account.
+			s.probe = func(context.Context, int64, string) (CandyTestResult, string, error) {
+				return CandyTestResult{Verdict: "inconclusive"}, "", nil
+			}
+			_, err = s.Queue(context.Background(), 1, CandyMonitorDefaultModel)
+			require.NoError(t, err)
+			select {
+			case v := <-r.finished:
+				require.Equal(t, "manual", v.Source)
+			case <-time.After(time.Second):
+				t.Fatal("manual probe did not finish")
+			}
+		})
+	}
+}
+
 func TestCandyMonitorConfigureValidatesWholeBatchAndInherits(t *testing.T) {
 	s, r, accounts := newCandyMonitorTestService(t)
 	require.NoError(t, s.Configure(context.Background(), []int64{1, 1, 2}, CandyMonitorConfig{Enabled: true, UseDefaults: true}))

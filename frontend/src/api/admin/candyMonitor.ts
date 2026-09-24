@@ -30,6 +30,7 @@ export interface CandyResult {
   finished_at?: string
 }
 export interface CandyAccount extends CandyConfig {
+  blocked_reason?: string
   total_tests: number
   answer_21_count: number
   answer_29_count: number
@@ -61,6 +62,7 @@ export interface CandyFilter {
   status?: string
 }
 export interface CandyAccountState extends CandyConfig {
+  blocked_reason?: string
   account_id: number
   history: CandyResult[]
   last_valid_answer: number | null

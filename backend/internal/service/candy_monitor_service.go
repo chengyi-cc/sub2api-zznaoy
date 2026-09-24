@@ -217,6 +217,16 @@ func (s *CandyMonitorService) queue(ctx context.Context, id int64, model string,
 	if a.IsShadow() {
 		return nil, fmt.Errorf("%w: shadow accounts are not supported", ErrCandyMonitorInvalid)
 	}
+	if scheduled {
+		// Match the repository's candyBlockedReason checks. The repository checks
+		// again under an account lock before creating a scheduled result.
+		now := time.Now()
+		if !a.IsActive() || !a.Schedulable || a.IsRateLimited() || a.IsOverloaded() ||
+			(a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt)) ||
+			(a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil)) {
+			return nil, ErrCandyMonitorBusy
+		}
+	}
 	if !scheduled {
 		if err := validateCandyTest(a, model, AccountTestOptions{}); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrCandyMonitorInvalid, err)

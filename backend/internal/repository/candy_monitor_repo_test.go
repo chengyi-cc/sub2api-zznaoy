@@ -100,6 +100,57 @@ func TestCandyMonitorPostgres(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, due, 1)
 	require.Equal(t, first, due[0].AccountID)
+	// Unavailable accounts must not consume the scan limit, create yellow
+	// history, or advance their schedule. Recheck state after the due scan.
+	for _, tc := range []struct{ update, reason string }{
+		{`status='inactive'`, "inactive"},
+		{`status='error',error_message='401 Unauthorized'`, "account_error"},
+		{`schedulable=FALSE`, "unschedulable"},
+		{`auto_pause_on_expired=TRUE,expires_at=NOW()-INTERVAL '1 hour'`, "expired"},
+		{`temp_unschedulable_until=NOW()+INTERVAL '1 hour'`, "cooldown"},
+		{`rate_limit_reset_at=NOW()+INTERVAL '1 hour'`, "rate_limited"},
+		{`overload_until=NOW()+INTERVAL '1 hour'`, "overloaded"},
+	} {
+		t.Run("skip "+tc.reason, func(t *testing.T) {
+			_, err := db.ExecContext(ctx, `UPDATE accounts SET `+tc.update+` WHERE id=$1`, first)
+			require.NoError(t, err)
+			_, err = r.Begin(ctx, first, settings.ModelID, true)
+			require.ErrorIs(t, err, service.ErrCandyMonitorBusy, "claim must recheck account state after the scan")
+			due, err := r.Due(ctx, 1)
+			require.NoError(t, err)
+			require.Empty(t, due)
+			require.NoError(t, r.SetMonitoring(ctx, second, true))
+			due, err = r.Due(ctx, 1)
+			require.NoError(t, err)
+			require.Len(t, due, 1)
+			require.Equal(t, second, due[0].AccountID, "blocked accounts must not starve healthy accounts")
+			require.NoError(t, r.SetMonitoring(ctx, second, false))
+			states, err := r.AccountStates(ctx, []int64{first})
+			require.NoError(t, err)
+			require.Equal(t, tc.reason, states[0].BlockedReason)
+			require.True(t, states[0].Enabled, "preserve the automatic monitoring configuration")
+			items, _, err := r.List(ctx, service.CandyMonitorFilter{Page: 1, PageSize: 30, GroupID: group})
+			require.NoError(t, err)
+			require.Equal(t, tc.reason, items[0].BlockedReason)
+			require.EqualValues(t, 1, items[0].TotalTests)
+			require.Len(t, items[0].History, 1)
+			require.True(t, items[0].NextRunAt.Before(time.Now()), "skipping must preserve the due time")
+			_, err = db.ExecContext(ctx, `UPDATE accounts SET status='active',error_message='',schedulable=TRUE,expires_at=NULL,temp_unschedulable_until=NULL,rate_limit_reset_at=NULL,overload_until=NULL WHERE id=$1`, first)
+			require.NoError(t, err)
+			due, err = r.Due(ctx, 1)
+			require.NoError(t, err)
+			require.Len(t, due, 1)
+			require.Equal(t, first, due[0].AccountID, "resume after recovery")
+		})
+	}
+	// Explicitly disabling official expiry auto-pause keeps the account usable.
+	_, err = db.ExecContext(ctx, `UPDATE accounts SET auto_pause_on_expired=FALSE,expires_at=NOW()-INTERVAL '1 hour' WHERE id=$1`, first)
+	require.NoError(t, err)
+	due, err = r.Due(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, due, 1)
+	_, err = db.ExecContext(ctx, `UPDATE accounts SET auto_pause_on_expired=TRUE,expires_at=NULL WHERE id=$1`, first)
+	require.NoError(t, err)
 	settings.Enabled = false
 	require.NoError(t, r.SaveSettings(ctx, settings))
 	_, err = r.Begin(ctx, first, "updated-text", true)

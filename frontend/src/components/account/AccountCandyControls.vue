@@ -6,7 +6,7 @@
         :title="testTitle" :aria-label="tr('quickTest')" data-testid="candy-test" @click="emit('test')">
         <span>{{ tr('intelligenceStatus') }}</span><span class="tabular-nums" :title="tr('normalRateHint')">{{ candyNormalRate(state.history) }}</span>
       </button>
-      <label class="relative inline-flex h-5 w-8 shrink-0 cursor-pointer items-center" :class="{ 'cursor-wait opacity-60': pending, 'opacity-50': !state || loadError }" :title="monitorTitle">
+      <label v-if="!state?.enabled" class="relative inline-flex h-5 w-8 shrink-0 cursor-pointer items-center" :class="{ 'cursor-wait opacity-60': pending, 'opacity-50': !state || loadError }" :title="monitorTitle">
         <input type="checkbox" role="switch" class="peer sr-only" :checked="state?.enabled || false" :disabled="!state || pending || loadError" :aria-label="tr('autoDetect')" data-testid="candy-auto" @change="changeMonitoring" />
         <span class="h-4 w-8 rounded-full bg-gray-300 transition-colors peer-checked:bg-primary-500 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-500 peer-focus-visible:ring-offset-2 dark:bg-dark-500" />
         <span class="pointer-events-none absolute left-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
@@ -14,7 +14,11 @@
     </div>
     <template v-if="state?.enabled">
       <CandyHistoryBars :history="state.history" :show-rate="false" :interactive="false" />
-      <div class="truncate text-[10px] leading-4 text-gray-500 dark:text-gray-400" :title="monitorTitle">{{ state.model_id }}</div>
+      <div class="flex items-center justify-between gap-1 text-[10px] leading-4 text-gray-500 dark:text-gray-400">
+        <span class="min-w-0 truncate" :title="monitorTitle">{{ state.model_id }}</span>
+        <button type="button" class="shrink-0 hover:text-gray-800 hover:underline disabled:opacity-50 dark:hover:text-gray-200" :disabled="pending || loadError" :title="tr('pauseHint')" :aria-label="tr('pauseHint')" data-testid="candy-pause" @click="emit('toggle', false)">{{ tr('pause') }}</button>
+      </div>
+      <div v-if="state.blocked_reason" class="text-[10px] leading-4 text-gray-500 dark:text-gray-400" :title="tr('blockedHint')">{{ tr(`blocked.${state.blocked_reason}`) }}</div>
       <div class="text-[10px] leading-4 tabular-nums text-gray-400" :title="latestTime ? new Date(latestTime).toLocaleString() : tr('noRecord')">{{ latestTime ? new Date(latestTime).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : tr('noRecord') }}</div>
     </template>
   </div>
@@ -43,6 +47,7 @@ const monitorTitle = computed(() => {
   if (props.loadError) return tr('stateLoadFailed')
   if (!props.state) return tr('loading')
   if (!props.schedulerEnabled) return tr('schedulerPausedHint')
+  if (props.state.blocked_reason) return `${tr(`blocked.${props.state.blocked_reason}`)} · ${tr('blockedHint')}`
   return tr(props.state.enabled ? 'autoDetectOnHint' : 'autoDetectOffHint', { model: props.state.model_id, minutes: props.state.interval_minutes })
 })
 </script>

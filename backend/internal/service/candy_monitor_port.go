@@ -39,11 +39,12 @@ type CandyMonitorResult struct {
 	FinishedAt   *time.Time `json:"finished_at,omitempty"`
 }
 type CandyMonitorAccount struct {
-	AccountID int64  `json:"account_id"`
-	Name      string `json:"name"`
-	Platform  string `json:"platform"`
-	Status    string `json:"status"`
-	Type      string `json:"type"`
+	BlockedReason string `json:"blocked_reason"`
+	AccountID     int64  `json:"account_id"`
+	Name          string `json:"name"`
+	Platform      string `json:"platform"`
+	Status        string `json:"status"`
+	Type          string `json:"type"`
 	CandyMonitorConfig
 	LastRunAt         *time.Time           `json:"last_run_at"`
 	NextRunAt         *time.Time           `json:"next_run_at"`
@@ -71,7 +72,8 @@ type CandyMonitorFilter struct {
 	PageSize    int
 }
 type CandyMonitorAccountState struct {
-	AccountID int64 `json:"account_id"`
+	BlockedReason string `json:"blocked_reason"`
+	AccountID     int64  `json:"account_id"`
 	CandyMonitorConfig
 	LastValidAnswer *int                 `json:"last_valid_answer"`
 	LastValidAt     *time.Time           `json:"last_valid_at"`

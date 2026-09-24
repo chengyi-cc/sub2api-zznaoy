@@ -49,8 +49,21 @@ const candyAccountColumns = `a.id AS account_id,a.name,a.platform,a.status,a.typ
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.model_id ELSE m.model_id END,
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.interval_minutes ELSE m.interval_minutes END,
  m.last_run_at,m.next_run_at,m.lease_until,COALESCE(to_jsonb(latest),'null'::jsonb),
- COALESCE(m.total_tests,0),COALESCE(m.answer_21_count,0),COALESCE(m.answer_29_count,0),COALESCE(m.other_answer_count,0),COALESCE(m.inconclusive_count,0)`
+ COALESCE(m.total_tests,0),COALESCE(m.answer_21_count,0),COALESCE(m.answer_29_count,0),COALESCE(m.other_answer_count,0),COALESCE(m.inconclusive_count,0),` + candyBlockedReason
 const candyEligible = `a.deleted_at IS NULL AND a.platform IN ('openai','anthropic','gemini') AND COALESCE(a.extra->>'synthetic_ui_test','false')<>'true' AND a.parent_account_id IS NULL`
+
+// Share availability checks between display, due selection and the locked claim.
+// Expiry honors the account's official auto-pause setting; refreshable OAuth
+// access-token expiry alone does not make an account unavailable.
+const candyBlockedReason = `CASE
+ WHEN a.auto_pause_on_expired AND a.expires_at<=NOW() THEN 'expired'
+ WHEN a.status='error' THEN 'account_error'
+ WHEN a.status<>'active' THEN 'inactive'
+ WHEN NOT a.schedulable THEN 'unschedulable'
+ WHEN a.temp_unschedulable_until>NOW() THEN 'cooldown'
+ WHEN a.rate_limit_reset_at>NOW() THEN 'rate_limited'
+ WHEN a.overload_until>NOW() THEN 'overloaded'
+ ELSE '' END`
 
 func scanCandyAccounts(rows *sql.Rows) ([]service.CandyMonitorAccount, error) {
 	out := make([]service.CandyMonitorAccount, 0)
@@ -58,7 +71,7 @@ func scanCandyAccounts(rows *sql.Rows) ([]service.CandyMonitorAccount, error) {
 		var a service.CandyMonitorAccount
 		var raw []byte
 		var historyRaw []byte
-		if err := rows.Scan(&a.AccountID, &a.Name, &a.Platform, &a.Status, &a.Type, &a.Enabled, &a.UseDefaults, &a.ModelID, &a.IntervalMinutes, &a.LastRunAt, &a.NextRunAt, &a.RunningUntil, &raw, &a.TotalTests, &a.Answer21Count, &a.Answer29Count, &a.OtherAnswerCount, &a.InconclusiveCount, &historyRaw); err != nil {
+		if err := rows.Scan(&a.AccountID, &a.Name, &a.Platform, &a.Status, &a.Type, &a.Enabled, &a.UseDefaults, &a.ModelID, &a.IntervalMinutes, &a.LastRunAt, &a.NextRunAt, &a.RunningUntil, &raw, &a.TotalTests, &a.Answer21Count, &a.Answer29Count, &a.OtherAnswerCount, &a.InconclusiveCount, &a.BlockedReason, &historyRaw); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(raw, &a.Latest); err != nil {
@@ -160,7 +173,7 @@ func (r *candyMonitorRepository) Due(ctx context.Context, limit int) ([]service.
  UPDATE candy_monitor_accounts m SET total_tests=m.total_tests+c.n,inconclusive_count=m.inconclusive_count+c.n FROM counts c WHERE m.account_id=c.account_id`); err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT `+candyAccountColumns+`,'[]'::jsonb`+candyAccountFrom+` WHERE `+candyEligible+` AND s.enabled AND m.enabled AND m.next_run_at<=NOW() AND (m.lease_until IS NULL OR m.lease_until<=NOW()) ORDER BY m.next_run_at LIMIT $1`, limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+candyAccountColumns+`,'[]'::jsonb`+candyAccountFrom+` WHERE `+candyEligible+` AND (`+candyBlockedReason+`)='' AND s.enabled AND m.enabled AND m.next_run_at<=NOW() AND (m.lease_until IS NULL OR m.lease_until<=NOW()) ORDER BY m.next_run_at LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +190,7 @@ func (r *candyMonitorRepository) AccountStates(ctx context.Context, ids []int64)
 	rows, err := r.db.QueryContext(ctx, `SELECT page.*,recent.history FROM (SELECT a.id AS account_id,COALESCE(m.enabled,FALSE),COALESCE(m.use_defaults,TRUE),
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.model_id ELSE m.model_id END,
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.interval_minutes ELSE m.interval_minutes END,
- m.last_valid_answer,m.last_valid_at
+ m.last_valid_answer,m.last_valid_at,`+candyBlockedReason+`
  FROM accounts a CROSS JOIN candy_monitor_settings s LEFT JOIN candy_monitor_accounts m ON m.account_id=a.id
  WHERE `+candyEligible+` AND a.id=ANY($1)) page`+candyAccountHistory+` ORDER BY page.account_id`, pq.Array(ids))
 	if err != nil {
@@ -188,7 +201,7 @@ func (r *candyMonitorRepository) AccountStates(ctx context.Context, ids []int64)
 	for rows.Next() {
 		var item service.CandyMonitorAccountState
 		var historyRaw []byte
-		if err := rows.Scan(&item.AccountID, &item.Enabled, &item.UseDefaults, &item.ModelID, &item.IntervalMinutes, &item.LastValidAnswer, &item.LastValidAt, &historyRaw); err != nil {
+		if err := rows.Scan(&item.AccountID, &item.Enabled, &item.UseDefaults, &item.ModelID, &item.IntervalMinutes, &item.LastValidAnswer, &item.LastValidAt, &item.BlockedReason, &historyRaw); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(historyRaw, &item.History); err != nil {
@@ -224,6 +237,18 @@ func (r *candyMonitorRepository) Begin(ctx context.Context, accountID int64, mod
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if scheduled {
+		// Lock the account through the claim so changes after Due cannot start an
+		// automatic probe on a disabled/expired account or create a failed record.
+		var blocked string
+		err = tx.QueryRowContext(ctx, `SELECT `+candyBlockedReason+` FROM accounts a WHERE a.id=$1 AND `+candyEligible+` FOR SHARE OF a`, accountID).Scan(&blocked)
+		if err == sql.ErrNoRows || (err == nil && blocked != "") {
+			return nil, service.ErrCandyMonitorBusy
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO candy_monitor_accounts(account_id) VALUES($1) ON CONFLICT DO NOTHING`, accountID); err != nil {
 		return nil, err
 	}

@@ -21,8 +21,10 @@ export default {
       },
       candyMonitor: {
         intelligenceStatus: 'Intelligence', normalRate: 'Normal rate', normalRateHint: 'Share of valid numeric answers equal to 21 in the last 10 completed tests. Request failures and invalid formats are excluded; — means no valid answers.',
+        pause: 'Pause', pauseHint: 'Pause automatic tests for this account, keeping settings and history', blockedHint: 'Automatic tests are skipped while the account is unavailable and resume after recovery. No test record is created.',
+        blocked: { expired: 'Skipped · Account expired', account_error: 'Skipped · Account error', inactive: 'Skipped · Account disabled', unschedulable: 'Skipped · Scheduling disabled', cooldown: 'Skipped · Cooling down', rate_limited: 'Skipped · Rate limited', overloaded: 'Skipped · Overloaded' },
         autoDetect: 'Auto test', lastValidAnswer: 'Last valid answer: {answer} (request failures and invalid formats excluded)',
-        autoDetectOnHint: 'Enabled: {model}, every {minutes} minutes. Turn off to pause without changing settings.',
+        autoDetectOnHint: 'Enabled: {model}, every {minutes} minutes. Click Pause to stop automatic tests without changing settings.',
         autoDetectOffHint: 'Turn on to test automatically with {model} every {minutes} minutes. The first test normally starts within 30 seconds and consumes usage.',
         enabledWhilePaused: 'Automatic testing is enabled for this account, but the global scheduler is paused. Enable it on the Candy Monitor page.', stateLoadFailed: 'Unable to load test status. Retrying automatically.',
         counts: 'Total', count21: '21 · Normal', count29: '29 · Abnormal', totalTests: '{count} completed', otherAnswers: 'Other answers: {count}', inconclusiveCount: 'Inconclusive: {count}',
