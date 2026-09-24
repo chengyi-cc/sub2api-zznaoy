@@ -174,12 +174,12 @@ func (r *candyMonitorRepository) SetEnabled(ctx context.Context, ids []int64, en
 	return err
 }
 func (r *candyMonitorRepository) AccountStates(ctx context.Context, ids []int64) ([]service.CandyMonitorAccountState, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT a.id,COALESCE(m.enabled,FALSE),COALESCE(m.use_defaults,TRUE),
+	rows, err := r.db.QueryContext(ctx, `SELECT page.*,recent.history FROM (SELECT a.id AS account_id,COALESCE(m.enabled,FALSE),COALESCE(m.use_defaults,TRUE),
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.model_id ELSE m.model_id END,
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.interval_minutes ELSE m.interval_minutes END,
  m.last_valid_answer,m.last_valid_at
  FROM accounts a CROSS JOIN candy_monitor_settings s LEFT JOIN candy_monitor_accounts m ON m.account_id=a.id
- WHERE `+candyEligible+` AND a.id=ANY($1) ORDER BY a.id`, pq.Array(ids))
+ WHERE `+candyEligible+` AND a.id=ANY($1)) page`+candyAccountHistory+` ORDER BY page.account_id`, pq.Array(ids))
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,11 @@ func (r *candyMonitorRepository) AccountStates(ctx context.Context, ids []int64)
 	items := make([]service.CandyMonitorAccountState, 0)
 	for rows.Next() {
 		var item service.CandyMonitorAccountState
-		if err := rows.Scan(&item.AccountID, &item.Enabled, &item.UseDefaults, &item.ModelID, &item.IntervalMinutes, &item.LastValidAnswer, &item.LastValidAt); err != nil {
+		var historyRaw []byte
+		if err := rows.Scan(&item.AccountID, &item.Enabled, &item.UseDefaults, &item.ModelID, &item.IntervalMinutes, &item.LastValidAnswer, &item.LastValidAt, &historyRaw); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(historyRaw, &item.History); err != nil {
 			return nil, err
 		}
 		items = append(items, item)

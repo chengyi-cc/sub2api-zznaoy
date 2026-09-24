@@ -243,6 +243,17 @@ func TestCandyMonitorPostgres(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, states, 3)
 	require.Equal(t, largeAnswer, *states[0].LastValidAnswer)
+	require.Len(t, states[0].History, 10)
+	require.Equal(t, large.ID, states[0].History[0].ID)
+	for i, item := range states[0].History {
+		require.Empty(t, item.ResponseText)
+		require.NotEqual(t, "running", item.Verdict)
+		if i > 0 {
+			require.Greater(t, states[0].History[i-1].ID, item.ID)
+		}
+	}
+	require.NotNil(t, states[2].History)
+	require.Empty(t, states[2].History)
 	require.Nil(t, states[1].LastValidAnswer)
 	// New opt-in is immediately due, re-enabling preserves custom model/interval.
 	require.NoError(t, r.SetMonitoring(ctx, third, true))

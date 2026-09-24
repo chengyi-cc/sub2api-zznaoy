@@ -28,7 +28,7 @@
         </fieldset>
         <p class="mt-3 text-xs leading-5 text-gray-500">{{ tr('templateHint') }}</p>
       </form>
-      <div v-if="ready && !schedulerEnabled" class="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400"><span class="h-2 w-2 rounded-full bg-amber-500" />{{ tr('schedulerPausedHint') }}</div>
+      <div v-if="ready && !schedulerEnabled" class="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400"><span class="h-3 w-1 rounded-[1px] bg-amber-500" />{{ tr('schedulerPausedHint') }}</div>
       <section class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
         <div class="space-y-3 border-b border-gray-200 p-4 dark:border-dark-700">
           <div class="flex flex-wrap items-center gap-2.5">
@@ -47,9 +47,9 @@
             <Select v-model="privacyMode" class="w-40" :options="privacyOptions" :aria-label="t('admin.accounts.allPrivacyModes')" data-testid="privacy-filter" @change="applyFilters" />
             <button v-if="hasFilters" class="btn btn-ghost btn-sm" data-testid="reset-filters" @click="resetFilters"><Icon name="x" size="sm" />{{ tr('reset') }}</button>
             <div class="ml-auto flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400" :title="tr('rule')">
-              <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-emerald-500" />21 {{ tr('verdict.pass') }}</span>
-              <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-red-500" />29 {{ tr('verdict.incorrect') }}</span>
-              <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-amber-400" />{{ tr('verdict.inconclusive') }}</span>
+              <span class="inline-flex items-center gap-1.5"><span class="h-3 w-1 rounded-[1px] bg-emerald-500" />21 {{ tr('verdict.pass') }}</span>
+              <span class="inline-flex items-center gap-1.5"><span class="h-3 w-1 rounded-[1px] bg-red-500" />29 {{ tr('verdict.incorrect') }}</span>
+              <span class="inline-flex items-center gap-1.5"><span class="h-3 w-1 rounded-[1px] bg-amber-400" />{{ tr('verdict.inconclusive') }}</span>
             </div>
           </div>
         </div>
@@ -72,11 +72,11 @@
               <tr v-for="account in accounts" :key="account.account_id" :data-account-id="account.account_id" class="transition-colors hover:bg-gray-50 dark:hover:bg-dark-700/30" :class="{ 'bg-primary-50/60 dark:bg-primary-950/20': selected.includes(account.account_id) }">
                 <td><input v-model="selected" type="checkbox" :value="account.account_id" :aria-label="account.name" /></td>
                 <td class="min-w-52"><div class="max-w-72 truncate font-medium text-gray-900 dark:text-gray-100" :title="account.name">{{ account.name }}</div><div class="mt-1 flex items-center gap-1.5 text-xs text-gray-400"><span class="tabular-nums">#{{ account.account_id }}</span><span>&middot;</span><span>{{ platformLabel(account.platform) }}</span><span v-if="account.type" class="rounded bg-gray-100 px-1 text-[10px] dark:bg-dark-700">{{ typeLabel(account.type) }}</span></div></td>
-                <td class="min-w-32"><div class="inline-flex items-center gap-2 whitespace-nowrap text-xs font-medium" data-testid="latest-status"><span class="h-2 w-2 shrink-0 rounded-full" :class="dotClass(account.latest)" :data-verdict="account.latest?.verdict || 'untested'" />{{ resultLabel(account.latest) }}</div><div v-if="account.latest" class="mt-1 text-[11px] tabular-nums text-gray-400" :title="date(account.latest.started_at)">{{ shortDate(account.latest.started_at) }}</div></td>
+                <td class="min-w-32"><div class="inline-flex items-center gap-2 whitespace-nowrap text-xs font-medium" data-testid="latest-status"><span class="h-3 w-1 shrink-0 rounded-[1px]" :class="statusBarClass(account.latest)" :data-verdict="account.latest?.verdict || 'untested'" />{{ resultLabel(account.latest) }}</div><div v-if="account.latest" class="mt-1 text-[11px] tabular-nums text-gray-400" :title="date(account.latest.started_at)">{{ shortDate(account.latest.started_at) }}</div></td>
                 <td class="text-right text-base font-semibold tabular-nums text-emerald-600 dark:text-emerald-400" data-testid="count-21">{{ account.answer_21_count || 0 }}</td>
                 <td class="text-right text-base font-semibold tabular-nums" :class="account.answer_29_count ? 'text-red-600 dark:text-red-400' : 'text-gray-400'" data-testid="count-29">{{ account.answer_29_count || 0 }}</td>
                 <td class="text-right tabular-nums text-gray-500" :title="`${tr('otherAnswers', { count: account.other_answer_count || 0 })} / ${tr('inconclusiveCount', { count: account.inconclusive_count || 0 })}`" data-testid="total-tests">{{ account.total_tests || 0 }}</td>
-                <td><div class="flex w-max items-center gap-1.5" data-testid="history-dots"><button v-for="(result, index) in historyDots(account)" :key="index" type="button" class="flex h-6 w-3 items-center justify-center rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500" :disabled="!result" :title="result ? `${date(result.started_at)} / ${resultLabel(result)} / ${result.model_id}` : tr('noRecord')" :aria-label="result ? `${date(result.started_at)} / ${resultLabel(result)}` : tr('noRecord')" @click="showHistory(account)"><span class="h-2.5 w-2.5 rounded-full" :class="dotClass(result)" :data-verdict="result?.verdict || 'empty'" /></button></div></td>
+                <td><CandyHistoryBars :history="account.history" @select="showHistory(account)" /></td>
                 <td class="min-w-40"><div class="flex items-center gap-2 whitespace-nowrap text-xs"><span :class="account.enabled ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400'">{{ account.enabled ? tr('enabled') : tr('paused') }}</span><span class="text-gray-300 dark:text-dark-500">/</span><span class="text-gray-500">{{ tr('minutes', { count: account.interval_minutes }) }}</span></div><div class="mt-1 max-w-48 truncate text-[11px] text-gray-400" :title="`${account.model_id} / ${account.use_defaults ? tr('inherited') : tr('custom')}`">{{ account.model_id }}<span v-if="!account.use_defaults"> &middot; {{ tr('custom') }}</span></div></td>
                 <td class="whitespace-nowrap text-xs tabular-nums text-gray-500" :title="date(account.next_run_at)">{{ !account.enabled ? '—' : !schedulerEnabled ? tr('globalPaused') : shortDate(account.next_run_at) }}</td>
                 <td><div class="flex items-center justify-end gap-1 whitespace-nowrap">
@@ -132,6 +132,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import CandyHistoryBars from '@/components/account/CandyHistoryBars.vue'
 import CandyVerdictBadge from '@/components/account/CandyVerdictBadge.vue'
 import CandyMonitorRunDialog from '@/components/account/CandyMonitorRunDialog.vue'
 import { candyMonitorAPI, CANDY_DEFAULT_MODEL, type CandyAccount, type CandyConfig, type CandyResult, type CandySettings } from '@/api/admin/candyMonitor'
@@ -194,12 +195,8 @@ const date = (value: string | null) => value ? new Date(value).toLocaleString() 
 const shortDate = (value: string | null) => value ? new Date(value).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
 const platformLabel = (value: string) => ({ openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini' })[value] || value
 const typeLabel = (value: string) => ({ oauth: 'OAuth', apikey: 'API Key', 'setup-token': 'Setup Token', bedrock: 'AWS Bedrock' })[value] || value
-function historyDots(account: CandyAccount): (CandyResult | null)[] {
-  const results = (account.history || []).filter(result => result.verdict !== 'running').slice(0, 10).reverse()
-  return [...Array<null>(10 - results.length).fill(null), ...results]
-}
 const resultLabel = (result: CandyResult | null | undefined) => `${tr(`verdict.${result?.verdict || 'untested'}`)}${result?.actual != null ? ` · ${result.actual}` : ''}`
-function dotClass(result: CandyResult | null | undefined) {
+function statusBarClass(result: CandyResult | null | undefined) {
   if (!result) return 'bg-gray-200 dark:bg-dark-600'
   if (result.verdict === 'pass') return 'bg-emerald-500'
   if (result.verdict === 'incorrect') return 'bg-red-500'

@@ -196,9 +196,10 @@ describe('admin AccountsView lite account list', () => {
   })
 
   it('opens candy detection beside status without requiring account details', async () => {
+    candyAPI.states.mockImplementation(async (ids: number[]) => ({ scheduler_enabled: true, items: ids.map(account_id => ({ account_id, enabled: true, history: [], use_defaults: true, model_id: 'gpt-6-astra', interval_minutes: 60, last_valid_answer: 29, last_valid_at: null })) }))
     const wrapper = mountView()
     await flushPromises()
-    const button = wrapper.findAll('button').find(b => b.text().includes('admin.accounts.candyMonitor.quickTest'))
+    const button = wrapper.findAll('button').find(b => b.attributes('data-testid') === 'candy-test')
     expect(button).toBeTruthy()
     expect(button!.text()).not.toContain('🍬')
     expect(button!.classes()).toContain('text-red-600')
@@ -237,7 +238,7 @@ describe('admin AccountsView lite account list', () => {
     listAccounts.mockResolvedValue({ items: [{ ...listRow, ...overrides }], total: 1, page: 1, page_size: 20, pages: 1 })
     const wrapper = mountView()
     await flushPromises()
-    expect(wrapper.findAll('button').some(b => b.text().includes('admin.accounts.candyMonitor.quickTest'))).toBe(false)
+    expect(wrapper.findAll('button').some(b => b.attributes('data-testid') === 'candy-test')).toBe(false)
     wrapper.unmount()
   })
 

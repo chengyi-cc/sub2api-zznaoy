@@ -62,6 +62,7 @@ export interface CandyFilter {
 }
 export interface CandyAccountState extends CandyConfig {
   account_id: number
+  history: CandyResult[]
   last_valid_answer: number | null
   last_valid_at: string | null
 }

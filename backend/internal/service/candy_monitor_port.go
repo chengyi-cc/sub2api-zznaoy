@@ -73,8 +73,9 @@ type CandyMonitorFilter struct {
 type CandyMonitorAccountState struct {
 	AccountID int64 `json:"account_id"`
 	CandyMonitorConfig
-	LastValidAnswer *int       `json:"last_valid_answer"`
-	LastValidAt     *time.Time `json:"last_valid_at"`
+	LastValidAnswer *int                 `json:"last_valid_answer"`
+	LastValidAt     *time.Time           `json:"last_valid_at"`
+	History         []CandyMonitorResult `json:"history"`
 }
 type CandyMonitorStates struct {
 	SchedulerEnabled bool                       `json:"scheduler_enabled"`

@@ -287,7 +287,7 @@
             <AccountCapacityCell :account="row" />
           </template>
           <template #cell-status="{ row }">
-            <div class="flex items-center gap-1.5">
+            <div class="flex flex-col items-start gap-1.5">
               <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
               <AccountCandyControls
                 v-if="supportsAccountCandyTest(row, CANDY_DEFAULT_MODEL) && !row.parent_account_id && !row.extra?.synthetic_ui_test"

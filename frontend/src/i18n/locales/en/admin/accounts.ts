@@ -20,9 +20,10 @@ export default {
         options: { off: 'Off', device: 'Device only', machine: 'Single machine, multi-window', session: 'Device and session', full: 'Full convergence', auto: 'Automatic', force_on: 'Force supported', force_off: 'Force unsupported', ctx_pool: 'Context connection pool', passthrough: 'Upstream passthrough', http_bridge: 'HTTP bridge', force_responses: 'Responses endpoint', force_chat_completions: 'Chat Completions endpoint', whitelist: 'Model allowlist', mapping: 'Model mapping', chat_completions: 'Text generation', embeddings: 'Embeddings', seedance: 'Seedance video' }
       },
       candyMonitor: {
+        intelligenceStatus: 'Intelligence', normalRate: 'Normal rate', normalRateHint: 'Share of valid numeric answers equal to 21 in the last 10 completed tests. Request failures and invalid formats are excluded; — means no valid answers.',
         autoDetect: 'Auto test', lastValidAnswer: 'Last valid answer: {answer} (request failures and invalid formats excluded)',
-        autoDetectOnHint: 'Enabled: {model}, every {minutes} minutes. Uncheck to pause without changing settings.',
-        autoDetectOffHint: 'Check to test automatically with {model} every {minutes} minutes. The first test normally starts within 30 seconds and consumes usage.',
+        autoDetectOnHint: 'Enabled: {model}, every {minutes} minutes. Turn off to pause without changing settings.',
+        autoDetectOffHint: 'Turn on to test automatically with {model} every {minutes} minutes. The first test normally starts within 30 seconds and consumes usage.',
         enabledWhilePaused: 'Automatic testing is enabled for this account, but the global scheduler is paused. Enable it on the Candy Monitor page.', stateLoadFailed: 'Unable to load test status. Retrying automatically.',
         counts: 'Total', count21: '21 · Normal', count29: '29 · Abnormal', totalTests: '{count} completed', otherAnswers: 'Other answers: {count}', inconclusiveCount: 'Inconclusive: {count}',
         accountCount: '{count} accounts', allResults: 'All test results', noRecord: 'No test record', schedulerPausedHint: 'Scheduled testing is paused. Re-enable it in the default test template.',
