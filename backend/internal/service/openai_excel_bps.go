@@ -125,7 +125,13 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if accountID == "" {
 		return fail(400, "basispoints_account_id_missing", "Excel BPS requires chatgpt_account_id")
 	}
-	upstreamBody, err = s.excelBPSImages.upload(ctx, upstreamBody, imagePlan)
+	// Isolate images by caller and conversation, without changing URLs when the
+	// scheduler selects another upstream account for the same caller.
+	imageScope := fmt.Sprintf("key:%d/thread:%s", getAPIKeyIDFromContext(c), identity)
+	if getAPIKeyIDFromContext(c) == 0 {
+		imageScope = scope
+	}
+	upstreamBody, err = s.excelBPSImages.upload(ctx, upstreamBody, imagePlan, imageScope, c.Request.Host)
 	if err != nil {
 		return fail(503, "basispoints_image_storage_unavailable", err.Error())
 	}

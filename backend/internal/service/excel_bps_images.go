@@ -9,115 +9,19 @@ import (
 	"image"
 	_ "image/gif"
 	"net/http"
-	"net/url"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	_ "golang.org/x/image/webp"
 )
 
 const ExcelBPSImageTTL = 5 * time.Minute
-const ExcelBPSImageObjectPrefix = "_sub2api/excel-bps-input/v1/"
+const ExcelBPSImagePath = "/v1/excel-images"
 const excelBPSMaxImageBytes = 20 << 20
 const excelBPSMaxTotalImageBytes = 32 << 20
 const excelBPSMaxImages = 16
-
-// TemporaryImageStorage always signs links, independently of generated-image
-// public URLs and TTL. Expired objects can be discovered again after a restart.
-type TemporaryImageStorage interface {
-	SaveTemporary(context.Context, string, string, []byte, time.Duration) (string, error)
-	DeleteTemporary(context.Context, string) error
-	DeleteExpiredTemporary(context.Context, time.Time) error
-}
-
-type ExcelBPSImageService struct {
-	settings     *ImageStorageSettingService
-	resolve      func(context.Context, bool) (TemporaryImageStorage, error)
-	startOnce    sync.Once
-	stopOnce     sync.Once
-	stop         chan struct{}
-	done         chan struct{}
-	workerCtx    context.Context
-	workerCancel context.CancelFunc
-}
-
-func NewExcelBPSImageService(settings *ImageStorageSettingService) *ExcelBPSImageService {
-	s := &ExcelBPSImageService{settings: settings, stop: make(chan struct{}), done: make(chan struct{})}
-	s.workerCtx, s.workerCancel = context.WithCancel(context.Background())
-	s.resolve = s.resolveStorage
-	return s
-}
-
-func (s *ExcelBPSImageService) resolveStorage(ctx context.Context, requireEnabled bool) (TemporaryImageStorage, error) {
-	if s == nil || s.settings == nil || s.settings.factory == nil {
-		return nil, fmt.Errorf("image storage is unavailable")
-	}
-	cfg, err := s.settings.effectiveConfig(ctx)
-	if err != nil || cfg == nil || !cfg.IsConfigured() || (requireEnabled && !cfg.Enabled) {
-		return nil, fmt.Errorf("configure and enable image storage in Admin > Backup before sending inline images through Excel BPS")
-	}
-	// Never use the public CDN or the generated-image expiry for customer inputs.
-	cfg.PublicBaseURL = ""
-	storage, err := s.settings.factory(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("cannot initialize temporary image storage")
-	}
-	temporary, ok := storage.(TemporaryImageStorage)
-	if !ok {
-		return nil, fmt.Errorf("image storage does not support five-minute private links")
-	}
-	return temporary, nil
-}
-
-func (s *ExcelBPSImageService) Start() {
-	s.startOnce.Do(func() {
-		go func() {
-			defer close(s.done)
-			ticker := time.NewTicker(time.Minute)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-s.stop:
-					return
-				default:
-				}
-				ctx, cancel := context.WithTimeout(s.workerCtx, 30*time.Second)
-				storage, err := s.resolve(ctx, false)
-				if err == nil {
-					// Uploads are bounded to 30s. The extra minute ensures no live
-					// five-minute signature is deleted while its object is still needed.
-					if storage.DeleteExpiredTemporary(ctx, time.Now().Add(-ExcelBPSImageTTL-time.Minute)) != nil {
-						logger.L().Warn("excel_bps temporary image cleanup failed; will retry")
-					}
-				}
-				cancel()
-				select {
-				case <-s.stop:
-					return
-				case <-ticker.C:
-				}
-			}
-		}()
-	})
-}
-
-func (s *ExcelBPSImageService) Stop() {
-	if s == nil {
-		return
-	}
-	s.stopOnce.Do(func() { s.workerCancel(); close(s.stop) })
-	// Also supports stopping a service that was constructed but not started.
-	s.Start()
-	select {
-	case <-s.done:
-	case <-time.After(5 * time.Second):
-	}
-}
 
 type excelBPSInlineImage struct {
 	placeholder, mime string
@@ -214,44 +118,21 @@ func decodeExcelBPSImage(raw string) (string, []byte, error) {
 	return mime, data, nil
 }
 
-func (s *ExcelBPSImageService) upload(ctx context.Context, wire []byte, plan *excelBPSImagePlan) ([]byte, error) {
+// Links are independent of lease timestamps, so renewed history stays byte-identical.
+func (s *ExcelBPSImageService) upload(ctx context.Context, wire []byte, plan *excelBPSImagePlan, scope, requestHost string) ([]byte, error) {
 	if plan == nil || len(plan.images) == 0 {
 		return wire, nil
 	}
-	if s == nil || s.resolve == nil {
-		return nil, fmt.Errorf("configure and enable image storage in Admin > Backup before sending inline images through Excel BPS")
+	if s == nil {
+		return nil, fmt.Errorf("Excel BPS local image storage is unavailable")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	storage, err := s.resolve(ctx, true)
+	base, err := s.publicBaseURL(ctx, requestHost)
 	if err != nil {
 		return nil, err
 	}
-	keys := make([]string, 0, len(plan.images))
-	succeeded := false
-	defer func() {
-		if succeeded {
-			return
-		}
-		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
-		for _, key := range keys {
-			_ = storage.DeleteTemporary(cleanup, key)
-		}
-	}()
-	urls := make(map[string]string)
-	for _, img := range plan.images {
-		key := ExcelBPSImageObjectPrefix + uuid.NewString()
-		keys = append(keys, key)
-		link, err := storage.SaveTemporary(ctx, key, img.mime, img.data, ExcelBPSImageTTL)
-		if err != nil {
-			return nil, fmt.Errorf("Excel BPS temporary image upload failed; check image storage configuration and permissions")
-		}
-		parsed, err := url.Parse(link)
-		if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil {
-			return nil, fmt.Errorf("Excel BPS image storage must provide an upstream-accessible HTTPS signed URL")
-		}
-		urls[img.placeholder] = link
+	urls, err := s.saveImages(ctx, plan, scope, base)
+	if err != nil {
+		return nil, fmt.Errorf("Excel BPS local image storage failed; check data directory permissions and available space")
 	}
 	updated := wire
 	err = excelBPSImageParts(wire, func(path string, part gjson.Result) error {
@@ -264,6 +145,5 @@ func (s *ExcelBPSImageService) upload(ctx context.Context, wire []byte, plan *ex
 	if err != nil {
 		return nil, fmt.Errorf("cannot attach Excel BPS temporary images")
 	}
-	succeeded = true
 	return updated, nil
 }

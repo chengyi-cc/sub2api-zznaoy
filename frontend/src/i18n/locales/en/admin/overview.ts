@@ -103,17 +103,17 @@ export default {
         saved: 'S3 configuration saved'
       },
       imageStorage: {
-        title: 'Image object storage',
-        description: 'Stores generated images and converts inline Excel input images into temporary links. Excel links expire after exactly 5 minutes, with expired objects cleaned up automatically; they do not use the public URL or generated-image expiry below. Use a private bucket. Changes take effect on save.',
-        enabled: 'Enable image storage (async generation and Excel image conversion)',
+        title: 'Async image object storage',
+        description: 'Enables the asynchronous image endpoints and offloads generated images to object storage, keeping only short links in Redis. Shares the S3 client with backups and takes effect on save — no restart needed.',
+        enabled: 'Enable async image tasks',
         reuseBackupS3: 'Reuse the backup S3 configuration above (different bucket/prefix only)',
         bucket: 'Bucket',
         bucketInherited: 'Leave empty to use the backup bucket',
         prefix: 'Key prefix',
-        publicBaseUrl: 'Generated-image public base URL',
+        publicBaseUrl: 'Public base URL',
         publicBaseUrlPlaceholder: 'Leave empty to return presigned links',
-        presignExpiryHours: 'Generated-image link TTL (hours)',
-        saved: 'Image object storage saved'
+        presignExpiryHours: 'Presigned link TTL (hours)',
+        saved: 'Async image object storage saved'
       },
       schedule: {
         title: 'Scheduled Backup',
