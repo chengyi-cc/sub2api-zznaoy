@@ -135,6 +135,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if err != nil {
 		return fail(503, "basispoints_image_storage_unavailable", err.Error())
 	}
+	imageRedactor := newExcelImageRedactor(upstreamBody)
 	requestCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileLongStream))
 	req, err := newExcelBPSRequest(requestCtx, upstreamBody, token, accountID)
 	if err != nil {
@@ -160,7 +161,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		upstreamMessage := fmt.Sprintf("Excel BPS returned HTTP %d", resp.StatusCode)
 		upstreamDetail := ""
 		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-			safeBody := excelBPSSanitizeErrorBody(string(raw), token, account)
+			safeBody := excelBPSSanitizeErrorBody(string(imageRedactor.redactJSON(raw)), token, account)
 			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
 			if maxBytes <= 0 {
 				maxBytes = 2048
@@ -209,8 +210,17 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	terminal := ""
 	for scanner.Next(ctx, 0, heartbeat.C, keepalive) {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "data: ") {
-			payload := []byte(strings.TrimPrefix(line, "data: "))
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payloads := [][]byte{[]byte(strings.TrimPrefix(line, "data: "))}
+		if imageRedactor != nil {
+			payloads, err = imageRedactor.events(payloads[0])
+			if err != nil {
+				break
+			}
+		}
+		for _, payload := range payloads {
 			kind := gjson.GetBytes(payload, "type").String()
 			s.parseSSEUsageBytes(payload, &result.Usage)
 			if result.FirstTokenMs == nil && (kind == "response.output_text.delta" || kind == "response.output_item.added") {
@@ -224,22 +234,23 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 				result.ResponseID = gjson.GetBytes(payload, "response.id").String()
 				result.UpstreamResponseModel = gjson.GetBytes(payload, "response.model").String()
 			}
-		}
-		if stream {
-			if _, err = c.Writer.WriteString(line + "\n"); err != nil {
-				result.streamReadIncomplete = true
-				result.ClientDisconnect = true
-				result.Duration = time.Since(start)
-				return result, err
-			}
-			if line == "" {
+			if stream {
+				if _, err = c.Writer.WriteString("event: " + kind + "\ndata: " + string(payload) + "\n\n"); err != nil {
+					result.streamReadIncomplete = true
+					result.ClientDisconnect = true
+					result.Duration = time.Since(start)
+					return result, err
+				}
 				c.Writer.Flush()
 			}
 		}
 	}
 	result.Duration = time.Since(start)
 	result.UpstreamTerminalEvent = terminal
-	if err = scanner.Err(); err != nil || terminal == "" {
+	if err == nil {
+		err = scanner.Err()
+	}
+	if err != nil || terminal == "" {
 		result.streamReadIncomplete = true
 		if ctx.Err() != nil {
 			result.ClientDisconnect = true

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -239,4 +240,46 @@ func TestExcelBPSLocalForwardedImageCanBeFetchedAcrossAccountSwitch(t *testing.T
 		require.Equal(t, 200, resp.StatusCode)
 		require.Equal(t, plan.images[0].data, actual)
 	}
+}
+
+func TestExcelBPSLocalDownloadAbuseLimits(t *testing.T) {
+	s := imageTestService(t)
+	now := time.Now().Truncate(time.Second)
+	s.now = func() time.Time { return now }
+	body, plan, err := prepareExcelBPSImages(inlineTestBody(t, inlineTestImage(t, 3)))
+	require.NoError(t, err)
+	_, err = s.upload(context.Background(), body, plan, "caller", "site.example")
+	require.NoError(t, err)
+	token := s.imageToken("caller", plan.images[0].data)
+	gateway := &OpenAIGatewayService{excelBPSImages: s}
+	get := func(token string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		gateway.ServeExcelBPSImage(rec, httptest.NewRequest("GET", "https://site.example"+ExcelBPSImagePath+"?token="+token, nil))
+		return rec
+	}
+	for i := 0; i < excelImageReadsPerMinute; i++ {
+		require.Equal(t, 200, get(token).Code)
+	}
+	rec := get(token)
+	require.Equal(t, 429, rec.Code)
+	require.Equal(t, "60", rec.Header().Get("Retry-After"))
+	for i := 0; i < 200; i++ {
+		require.Equal(t, 404, get(fmt.Sprintf("%064x", i)).Code)
+	}
+	require.Len(t, s.reads, 1, "guessed capabilities must not allocate limiter entries")
+	now = now.Add(time.Minute)
+	require.Equal(t, 200, get(token).Code)
+	for i := 0; i < cap(s.downloads); i++ {
+		s.downloads <- struct{}{}
+	}
+	require.Equal(t, 429, get(token).Code)
+	for i := 0; i < cap(s.downloads); i++ {
+		<-s.downloads
+	}
+	require.Equal(t, 200, get(token).Code)
+	now = now.Add(ExcelBPSImageTTL)
+	require.Equal(t, 404, get(token).Code, "reading must never extend the lease")
+	require.NoError(t, s.cleanupLocked())
+	require.Empty(t, s.reads)
+	require.Empty(t, s.leases)
 }

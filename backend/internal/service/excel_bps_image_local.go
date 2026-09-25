@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,10 +29,23 @@ type ExcelBPSImageService struct {
 	now                       func() time.Time
 	mu                        sync.Mutex
 	files                     map[string]int64
+	leases                    map[string]time.Time
+	reads                     map[string]excelImageReadWindow
+	downloads                 chan struct{}
 	total                     int64
 	startOnce, stopOnce       sync.Once
 	stop, done                chan struct{}
 }
+
+type excelImageReadWindow struct {
+	start time.Time
+	count int
+}
+
+var errExcelImageReadLimited = errors.New("image read limit exceeded")
+
+const excelImageReadsPerMinute = 120
+const excelImageConcurrentDownloads = 64
 
 func NewExcelBPSImageService(cfg *config.Config, settings SettingRepository) *ExcelBPSImageService {
 	root := strings.TrimSpace(cfg.Gateway.ImageJobs.RootDir)
@@ -48,7 +62,7 @@ func NewExcelBPSImageService(cfg *config.Config, settings SettingRepository) *Ex
 	}
 	return &ExcelBPSImageService{root: filepath.Clean(root) + "-excel-inputs", secret: cfg.JWT.Secret,
 		frontendURL: cfg.Server.FrontendURL, settings: settings, maxBytes: maxBytes,
-		now: time.Now, stop: make(chan struct{}), done: make(chan struct{})}
+		now: time.Now, stop: make(chan struct{}), done: make(chan struct{}), downloads: make(chan struct{}, excelImageConcurrentDownloads)}
 }
 
 func (s *ExcelBPSImageService) publicBaseURL(ctx context.Context, requestHost string) (string, error) {
@@ -115,6 +129,7 @@ func (s *ExcelBPSImageService) initLocked() error {
 		return err
 	}
 	files := make(map[string]int64)
+	leases := make(map[string]time.Time)
 	var total int64
 	for _, entry := range entries {
 		name := entry.Name()
@@ -131,9 +146,11 @@ func (s *ExcelBPSImageService) initLocked() error {
 			continue
 		}
 		files[name] = info.Size()
+		leases[name] = info.ModTime().Add(ExcelBPSImageTTL)
 		total += info.Size()
 	}
 	s.files, s.total = files, total
+	s.leases, s.reads = leases, make(map[string]excelImageReadWindow)
 	return nil
 }
 
@@ -158,6 +175,8 @@ func (s *ExcelBPSImageService) cleanupLocked() error {
 			continue
 		}
 		delete(s.files, name)
+		delete(s.leases, name)
+		delete(s.reads, name)
 		s.total -= size
 	}
 	return first
@@ -204,6 +223,8 @@ func (s *ExcelBPSImageService) saveImages(ctx context.Context, plan *excelBPSIma
 				if err := os.Remove(filepath.Join(s.root, name)); err == nil {
 					s.total -= s.files[name]
 					delete(s.files, name)
+					delete(s.leases, name)
+					delete(s.reads, name)
 				}
 			}
 		}
@@ -243,6 +264,7 @@ func (s *ExcelBPSImageService) saveImages(ctx context.Context, plan *excelBPSIma
 		if err := os.Chtimes(path, now, now); err != nil {
 			return nil, err
 		}
+		s.leases[token] = now.Add(ExcelBPSImageTTL)
 		links[img.placeholder] = base + "?token=" + token
 	}
 	succeeded = true
@@ -256,6 +278,24 @@ func (s *ExcelBPSImageService) OpenImage(token string) (*os.File, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.initLocked(); err != nil {
+		return nil, os.ErrNotExist
+	}
+	// Random guesses are rejected by bounded in-memory lookup, not disk stats.
+	expires, exists := s.leases[token]
+	now := s.now()
+	if !exists || !now.Before(expires) {
+		return nil, os.ErrNotExist
+	}
+	window := s.reads[token]
+	if now.Sub(window.start) >= time.Minute || now.Before(window.start) {
+		window = excelImageReadWindow{start: now}
+	}
+	if window.count >= excelImageReadsPerMinute {
+		return nil, errExcelImageReadLimited
+	}
+	window.count++
+	s.reads[token] = window
 	path := filepath.Join(s.root, token)
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > excelBPSMaxImageBytes || !s.now().Before(info.ModTime().Add(ExcelBPSImageTTL)) {
@@ -311,12 +351,39 @@ func (s *OpenAIGatewayService) ServeExcelBPSImage(w http.ResponseWriter, r *http
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	storage := s.excelBPSImages
+	if storage == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	// Bound active downloads and slow readers without an unbounded wait queue.
+	select {
+	case storage.downloads <- struct{}{}:
+		defer func() { <-storage.downloads }()
+	default:
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
 	file, err := s.excelBPSImages.OpenImage(r.URL.Query().Get("token"))
 	if err != nil {
+		if errors.Is(err, errExcelImageReadLimited) {
+			w.Header().Set("Retry-After", "60")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	defer file.Close()
+	if strings.Contains(r.Header.Get("Range"), ",") {
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+		return
+	}
+	controller := http.NewResponseController(w)
+	if controller.SetWriteDeadline(time.Now().Add(30*time.Second)) == nil {
+		defer func() { _ = controller.SetWriteDeadline(time.Time{}) }()
+	}
 	var header [512]byte
 	n, _ := file.Read(header[:])
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
