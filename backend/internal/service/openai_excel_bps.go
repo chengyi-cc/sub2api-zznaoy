@@ -125,17 +125,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if accountID == "" {
 		return fail(400, "basispoints_account_id_missing", "Excel BPS requires chatgpt_account_id")
 	}
-	// Isolate images by caller and conversation, without changing URLs when the
-	// scheduler selects another upstream account for the same caller.
-	imageScope := fmt.Sprintf("key:%d/thread:%s", getAPIKeyIDFromContext(c), identity)
-	if getAPIKeyIDFromContext(c) == 0 {
-		imageScope = scope
-	}
-	upstreamBody, err = s.excelBPSImages.upload(ctx, upstreamBody, imagePlan, imageScope, c.Request.Host)
+	imageScope := excelBPSAttachmentScope{account.ID, getAPIKeyIDFromContext(c), accountID}
+	upstreamBody, err = s.excelBPSImages.upload(ctx, upstreamBody, imagePlan, imageScope, token, account, s.httpUpstream)
 	if err != nil {
-		return fail(503, "basispoints_image_storage_unavailable", err.Error())
+		return fail(502, "basispoints_image_upload_failed", err.Error())
 	}
-	imageRedactor := newExcelImageRedactor(upstreamBody)
 	requestCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileLongStream))
 	req, err := newExcelBPSRequest(requestCtx, upstreamBody, token, accountID)
 	if err != nil {
@@ -156,12 +150,13 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+		s.excelBPSImages.invalidateRejected(imageScope, upstreamBody, raw)
 		// Preserve the original rejection for Ops without exposing it to clients.
 		// BPS errors can echo request fields, so redact before storing diagnostics.
 		upstreamMessage := fmt.Sprintf("Excel BPS returned HTTP %d", resp.StatusCode)
 		upstreamDetail := ""
 		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-			safeBody := excelBPSSanitizeErrorBody(string(imageRedactor.redactJSON(raw)), token, account)
+			safeBody := excelBPSSanitizeErrorBody(string(raw), token, account)
 			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
 			if maxBytes <= 0 {
 				maxBytes = 2048
@@ -210,17 +205,8 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	terminal := ""
 	for scanner.Next(ctx, 0, heartbeat.C, keepalive) {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		payloads := [][]byte{[]byte(strings.TrimPrefix(line, "data: "))}
-		if imageRedactor != nil {
-			payloads, err = imageRedactor.events(payloads[0])
-			if err != nil {
-				break
-			}
-		}
-		for _, payload := range payloads {
+		if strings.HasPrefix(line, "data: ") {
+			payload := []byte(strings.TrimPrefix(line, "data: "))
 			kind := gjson.GetBytes(payload, "type").String()
 			s.parseSSEUsageBytes(payload, &result.Usage)
 			if result.FirstTokenMs == nil && (kind == "response.output_text.delta" || kind == "response.output_item.added") {
@@ -234,23 +220,22 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 				result.ResponseID = gjson.GetBytes(payload, "response.id").String()
 				result.UpstreamResponseModel = gjson.GetBytes(payload, "response.model").String()
 			}
-			if stream {
-				if _, err = c.Writer.WriteString("event: " + kind + "\ndata: " + string(payload) + "\n\n"); err != nil {
-					result.streamReadIncomplete = true
-					result.ClientDisconnect = true
-					result.Duration = time.Since(start)
-					return result, err
-				}
+		}
+		if stream {
+			if _, err = c.Writer.WriteString(line + "\n"); err != nil {
+				result.streamReadIncomplete = true
+				result.ClientDisconnect = true
+				result.Duration = time.Since(start)
+				return result, err
+			}
+			if line == "" {
 				c.Writer.Flush()
 			}
 		}
 	}
 	result.Duration = time.Since(start)
 	result.UpstreamTerminalEvent = terminal
-	if err == nil {
-		err = scanner.Err()
-	}
-	if err != nil || terminal == "" {
+	if err = scanner.Err(); err != nil || terminal == "" {
 		result.streamReadIncomplete = true
 		if ctx.Err() != nil {
 			result.ClientDisconnect = true

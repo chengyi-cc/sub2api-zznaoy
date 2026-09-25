@@ -748,8 +748,8 @@ func ProvideImageTaskService(store ImageTaskStore, settings *ImageStorageSetting
 	return NewImageTaskServiceWithResolver(store, settings.Resolver(), defaultImageTaskTTL, defaultImageTaskExecutionTimeout)
 }
 
-func ProvideExcelBPSImageService(cfg *config.Config, settings SettingRepository) *ExcelBPSImageService {
-	s := NewExcelBPSImageService(cfg, settings)
+func ProvideExcelBPSImageService(cfg *config.Config) *ExcelBPSImageService {
+	s := NewExcelBPSImageService(cfg)
 	s.Start()
 	return s
 }

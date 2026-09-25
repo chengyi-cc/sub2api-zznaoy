@@ -29,9 +29,6 @@ func RegisterGatewayRoutes(
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 ) {
-	// Upstream image fetches authenticate with a short-lived capability, not a client API key.
-	r.GET(service.ExcelBPSImagePath, h.OpenAIGateway.ExcelBPSImage)
-	r.HEAD(service.ExcelBPSImagePath, h.OpenAIGateway.ExcelBPSImage)
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
 	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
 	clientRequestID := middleware.ClientRequestID()

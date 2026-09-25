@@ -2,7 +2,6 @@ package service
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -10,15 +9,12 @@ import (
 	_ "image/gif"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	_ "golang.org/x/image/webp"
 )
 
-const ExcelBPSImageTTL = 5 * time.Minute
-const ExcelBPSImagePath = "/v1/excel-images"
 const excelBPSMaxImageBytes = 20 << 20
 const excelBPSMaxTotalImageBytes = 32 << 20
 const excelBPSMaxImages = 16
@@ -116,34 +112,4 @@ func decodeExcelBPSImage(raw string) (string, []byte, error) {
 		return "", nil, fmt.Errorf("invalid Excel BPS image dimensions or more than 40 million pixels")
 	}
 	return mime, data, nil
-}
-
-// Links are independent of lease timestamps, so renewed history stays byte-identical.
-func (s *ExcelBPSImageService) upload(ctx context.Context, wire []byte, plan *excelBPSImagePlan, scope, requestHost string) ([]byte, error) {
-	if plan == nil || len(plan.images) == 0 {
-		return wire, nil
-	}
-	if s == nil {
-		return nil, fmt.Errorf("Excel BPS local image storage is unavailable")
-	}
-	base, err := s.publicBaseURL(ctx, requestHost)
-	if err != nil {
-		return nil, err
-	}
-	urls, err := s.saveImages(ctx, plan, scope, base)
-	if err != nil {
-		return nil, fmt.Errorf("Excel BPS local image storage failed; check data directory permissions and available space")
-	}
-	updated := wire
-	err = excelBPSImageParts(wire, func(path string, part gjson.Result) error {
-		if link, ok := urls[part.Get("image_url").String()]; ok {
-			updated, err = sjson.SetBytes(updated, path, link)
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("cannot attach Excel BPS temporary images")
-	}
-	return updated, nil
 }

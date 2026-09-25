@@ -466,3 +466,12 @@ func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
 	router.ServeHTTP(w, req)
 	require.NotEqual(t, http.StatusNotFound, w.Code)
 }
+
+func TestRetiredExcelImageDownloadRouteIsUnavailable(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(method, "/v1/excel-images?token="+strings.Repeat("a", 64), nil))
+		require.Equal(t, http.StatusNotFound, rec.Code)
+	}
+}

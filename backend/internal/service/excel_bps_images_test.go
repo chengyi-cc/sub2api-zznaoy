@@ -2,7 +2,6 @@ package service
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,25 +9,14 @@ import (
 	"image/color"
 	"image/png"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
-func imageTestService(t *testing.T) *ExcelBPSImageService {
-	t.Helper()
-	cfg := &config.Config{}
-	cfg.Gateway.ImageJobs.RootDir = t.TempDir() + "/images"
-	cfg.JWT.Secret = "local-test-only-signing-key-32-bytes"
-	return NewExcelBPSImageService(cfg, nil)
-}
 func inlineTestImage(t *testing.T, shade uint8) string {
 	t.Helper()
 	var b bytes.Buffer
@@ -46,61 +34,6 @@ func inlineTestBody(t *testing.T, images ...string) []byte {
 	body, err := json.Marshal(map[string]any{"model": "gpt-6-astra", "input": []any{map[string]any{"role": "user", "content": content}}})
 	require.NoError(t, err)
 	return body
-}
-
-func TestExcelBPSImagesUploadAndRefreshHistory(t *testing.T) {
-	inline := inlineTestImage(t, 1)
-	body := inlineTestBody(t, inline, inline)
-	original := bytes.Clone(body)
-	s := imageTestService(t)
-	now := time.Now().Truncate(time.Second)
-	s.now = func() time.Time { return now }
-	prepared, plan, err := prepareExcelBPSImages(body)
-	require.NoError(t, err)
-	require.Len(t, plan.images, 1)
-	wire, _, err := basispoints.Prepare(prepared, "scope", nil)
-	require.NoError(t, err)
-	first, err := s.upload(context.Background(), wire, plan, "user1/thread1", "site.example")
-	require.NoError(t, err)
-	require.Len(t, s.files, 1)
-	require.NotContains(t, string(first), "data:image")
-	require.NotContains(t, string(first), "inline-image.invalid")
-	require.Equal(t, original, body)
-	require.Contains(t, string(first), `"detail":"high"`)
-	now = now.Add(4 * time.Minute)
-	second, err := s.upload(context.Background(), wire, plan, "user1/thread1", "site.example")
-	require.NoError(t, err)
-	require.Equal(t, first, second, "renewal must preserve the ENTIRE upstream request")
-	var token string
-	for token = range s.files {
-	}
-	now = now.Add(4 * time.Minute)
-	f, err := s.OpenImage(token)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-	now = now.Add(time.Minute)
-	_, err = s.OpenImage(token)
-	require.ErrorIs(t, err, os.ErrNotExist, "GET must not renew the lease")
-	s.mu.Lock()
-	require.NoError(t, s.cleanupLocked())
-	s.mu.Unlock()
-	require.Empty(t, s.files)
-	require.Zero(t, s.total)
-	// Even after expiry/deletion the original image restores the SAME URL.
-	third, err := s.upload(context.Background(), wire, plan, "user1/thread1", "site.example")
-	require.NoError(t, err)
-	require.Equal(t, first, third)
-	differentUser, err := s.upload(context.Background(), wire, plan, "user2/thread1", "site.example")
-	require.NoError(t, err)
-	require.NotEqual(t, first, differentUser)
-	differentThread, err := s.upload(context.Background(), wire, plan, "user1/thread2", "site.example")
-	require.NoError(t, err)
-	require.NotEqual(t, first, differentThread)
-	changed, changedPlan, err := prepareExcelBPSImages(inlineTestBody(t, inlineTestImage(t, 2)))
-	require.NoError(t, err)
-	differentImage, err := s.upload(context.Background(), changed, changedPlan, "user1/thread1", "site.example")
-	require.NoError(t, err)
-	require.NotEqual(t, first, differentImage)
 }
 
 func TestExcelBPSImagesValidateBeforeUpload(t *testing.T) {
@@ -136,52 +69,6 @@ func TestExcelBPSImagesPreserveOpaqueFieldsAndNumbers(t *testing.T) {
 	require.Equal(t, urlBody, got)
 }
 
-func TestExcelBPSImagesGatewayRoutingAndErrors(t *testing.T) {
-	for _, tc := range []struct {
-		name             string
-		enabled, storage bool
-		status           int
-	}{{"Excel upload", true, true, 200}, {"Excel missing storage", true, false, 503}, {"native unchanged", false, false, 200}} {
-		t.Run(tc.name, func(t *testing.T) {
-			storage := imageTestService(t)
-			upstream := &httpUpstreamRecorder{resp: excelBPSTestResponse("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Image received\"}]}],\"usage\":{\"input_tokens\":10,\"output_tokens\":2}}}\n\n")}
-			svc := openAIClientToolsTestService(upstream)
-			if tc.storage {
-				svc.excelBPSImages = storage
-			}
-			a := excelAccount()
-			a.Extra["openai_excel_bps"] = tc.enabled
-			c, rec := imageGatewayContext()
-			_, err := svc.Forward(context.Background(), c, a, inlineTestBody(t, inlineTestImage(t, 1)))
-			require.Equal(t, tc.status, rec.Code)
-			if tc.status != 200 {
-				require.Error(t, err)
-				require.Empty(t, upstream.requests)
-				require.True(t, IsResponseCommitted(c))
-				return
-			}
-			require.NoError(t, err)
-			if tc.enabled {
-				require.Len(t, storage.files, 1)
-				require.NotContains(t, string(upstream.lastBody), "data:image")
-				require.Contains(t, string(upstream.lastBody), ExcelBPSImagePath+"?token=")
-			} else {
-				require.Contains(t, string(upstream.lastBody), "data:image/png;base64,")
-				require.Empty(t, storage.files)
-			}
-		})
-	}
-	// Unsupported protocol requests must fail before any upload side effects.
-	storage := imageTestService(t)
-	svc := openAIClientToolsTestService(&httpUpstreamRecorder{})
-	svc.excelBPSImages = storage
-	body := inlineTestBody(t, inlineTestImage(t, 1))
-	body = bytes.Replace(body, []byte(`"model":`), []byte(`"previous_response_id":"old","model":`), 1)
-	c, _ := imageGatewayContext()
-	_, err := svc.Forward(context.Background(), c, excelAccount(), body)
-	require.Error(t, err)
-	require.Empty(t, storage.files)
-}
 func imageGatewayContext() (*gin.Context, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)

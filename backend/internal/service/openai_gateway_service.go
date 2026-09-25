@@ -567,6 +567,7 @@ func NewOpenAIGatewayService(
 			"service.openai_gateway",
 		),
 		httpUpstream:          httpUpstream,
+		excelBPSImages:        NewExcelBPSImageService(cfg),
 		deferredService:       deferredService,
 		openAITokenProvider:   openAITokenProvider,
 		grokTokenProvider:     grokTokenProvider,
