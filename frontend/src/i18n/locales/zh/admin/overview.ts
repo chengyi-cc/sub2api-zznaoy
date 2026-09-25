@@ -103,17 +103,17 @@ export default {
         saved: 'S3 配置已保存'
       },
       imageStorage: {
-        title: '异步生图对象存储',
-        description: '开启后，异步生图接口可用，生成结果转存到对象存储，只把短链接写入 Redis。与备份共用同一套 S3 客户端，保存后立即生效，无需重启。',
-        enabled: '启用异步生图',
+        title: '图片对象存储',
+        description: '用于保存异步生图结果，以及将 Excel 通道收到的图片转为临时链接。Excel 图片链接固定 5 分钟有效，过期文件自动清理，不使用下方的公开域名和生图链接时长；请使用私有存储桶。保存后立即生效。',
+        enabled: '启用图片存储（异步生图与 Excel 图片转换）',
         reuseBackupS3: '复用上方备份的 S3 配置（只用不同的存储桶/前缀）',
         bucket: '存储桶',
         bucketInherited: '留空则沿用备份存储桶',
         prefix: 'Key 前缀',
-        publicBaseUrl: '公开访问域名',
+        publicBaseUrl: '生图结果公开访问域名',
         publicBaseUrlPlaceholder: '留空则返回预签名临时链接',
-        presignExpiryHours: '预签名链接有效期（小时）',
-        saved: '异步生图对象存储配置已保存'
+        presignExpiryHours: '生图结果链接有效期（小时）',
+        saved: '图片对象存储配置已保存'
       },
       schedule: {
         title: '定时备份',

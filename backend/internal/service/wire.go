@@ -199,9 +199,11 @@ func ProvideOpenAIGatewayService(
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	excelBPSImages *ExcelBPSImageService,
 ) *OpenAIGatewayService {
 	gateway := NewOpenAIGatewayService(accountRepo, usageLogRepo, usageBillingRepo, userRepo, userSubRepo, userGroupRateRepo, cache, cfg, schedulerSnapshot, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, grokTokenProvider, resolver, channelService, balanceNotifyService, settingService, userPlatformQuotaRepo)
 	gateway.tlsFPProfileService = tlsFPProfileService
+	gateway.excelBPSImages = excelBPSImages
 	return gateway
 }
 
@@ -746,6 +748,12 @@ func ProvideImageTaskService(store ImageTaskStore, settings *ImageStorageSetting
 	return NewImageTaskServiceWithResolver(store, settings.Resolver(), defaultImageTaskTTL, defaultImageTaskExecutionTimeout)
 }
 
+func ProvideExcelBPSImageService(settings *ImageStorageSettingService) *ExcelBPSImageService {
+	s := NewExcelBPSImageService(settings)
+	s.Start()
+	return s
+}
+
 // ProvideBackupService creates and starts BackupService
 func ProvideBackupService(
 	settingRepo SettingRepository,
@@ -908,6 +916,7 @@ var ProviderSet = wire.NewSet(
 	NewGatewayService,
 	ProvideOpenAIGatewayService,
 	ProvideImageStorageSettingService,
+	ProvideExcelBPSImageService,
 	ProvideImageTaskService,
 	ProvideBatchImageModelPricingResolver,
 	NewBatchImagePublicService,

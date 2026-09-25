@@ -680,7 +680,7 @@ export default {
         excelBPSCacheCreationAsInput: 'Bill cache creation as ordinary input',
         excelBPSCacheCreationAsInputDesc: 'Off by default. Bill cache creation at the input price while keeping cache reads unchanged. Only affects local billing, not upstream caching.',
         excelBPSDesc: 'Forward requests through the Excel BPS endpoint using this account’s ChatGPT OAuth credentials. Off by default; disabling restores the original route.',
-        excelBPSNotice: 'Start a new Codex session after saving. Uses HTTP/SSE instead of WebSocket or passthrough. Supports Responses, client tools and HTTPS image URLs, not local/base64 images. max / ultra effort is sent as xhigh; model access depends on the upstream account.',
+        excelBPSNotice: 'Start a new Codex session after saving. Supports image URLs. For inline uploads, enable Backup → Image object storage; images are converted to links valid for 5 minutes. Uses HTTP/SSE instead of WebSocket or passthrough. max / ultra effort is sent as xhigh; model access depends on the upstream account.',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',

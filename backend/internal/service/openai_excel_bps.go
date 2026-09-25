@@ -109,7 +109,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		// history may be restored. Never share result-only replay across requests.
 		replay = nil
 	}
-	upstreamBody, bridge, err := basispoints.Prepare(body, scope, replay)
+	imageBody, imagePlan, err := prepareExcelBPSImages(body)
+	if err != nil {
+		return fail(400, "basispoints_image_invalid", err.Error())
+	}
+	upstreamBody, bridge, err := basispoints.Prepare(imageBody, scope, replay)
 	if err != nil {
 		return fail(400, "basispoints_request_invalid", err.Error())
 	}
@@ -120,6 +124,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	accountID := excelBPSAccountID(account, token)
 	if accountID == "" {
 		return fail(400, "basispoints_account_id_missing", "Excel BPS requires chatgpt_account_id")
+	}
+	upstreamBody, err = s.excelBPSImages.upload(ctx, upstreamBody, imagePlan)
+	if err != nil {
+		return fail(503, "basispoints_image_storage_unavailable", err.Error())
 	}
 	requestCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileLongStream))
 	req, err := newExcelBPSRequest(requestCtx, upstreamBody, token, accountID)
@@ -280,7 +288,7 @@ func excelBPSSanitizeErrorBody(raw, token string, account *Account) string {
 		clean = excelBPSBearerPattern.ReplaceAllString(clean, "Bearer [redacted]")
 		clean = excelBPSURLCredentialsPattern.ReplaceAllString(clean, "${1}[redacted]@")
 		clean = sanitizeUpstreamErrorMessage(clean)
-		fields[key] = truncateString(logredact.RedactText(clean, "authorization", "api_key", "apikey", "token", "secret", "key", "cookie", "ticket", "recovery_ticket"), 2048)
+		fields[key] = truncateString(logredact.RedactText(clean, "authorization", "api_key", "apikey", "token", "secret", "key", "cookie", "ticket", "recovery_ticket", "x-amz-signature", "x-amz-credential", "x-amz-security-token"), 2048)
 	}
 	encoded, _ := json.Marshal(map[string]any{"error": fields})
 	return string(encoded)
