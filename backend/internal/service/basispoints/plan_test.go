@@ -79,7 +79,7 @@ func TestNativePlanAdaptsOnlyDeclaredFunctionAndPreservesOriginal(t *testing.T) 
 				}
 				output := object{"type": "function_call_output", "call_id": "call_plan_native", "output": "client explicitly rejected the plan"}
 				history, err := bridge.translateHistory([]any{translated, output})
-				if err != nil || !reflect.DeepEqual(history[0], native) || history[1].(object)["output"] != output["output"] {
+				if err != nil || !reflect.DeepEqual(history[0], native) || mustTestValue[object](t, history[1])["output"] != output["output"] {
 					t.Fatalf("replay must retain the native item and the client's real result: %v", err)
 				}
 			}
@@ -133,29 +133,41 @@ func TestNativePlanRejectsMalformedArgumentsWithoutDroppingSteps(t *testing.T) {
 }
 
 func TestNativePlanRespectsRequiredAndUnsupportedSchemaConstraints(t *testing.T) {
+	schemaAt := func(s object, path ...string) object {
+		for _, key := range path {
+			s = mustTestValue[object](t, s[key])
+		}
+		return s
+	}
 	for _, change := range []func(object){
 		func(s object) { s["required"] = []any{"plan", "approval"} },
 		func(s object) { s["required"] = []any{"plan", "explanation"} },
 		func(s object) { s["allOf"] = []any{object{}} },
 		func(s object) { s["$ref"] = "#/$defs/plan" },
 		func(s object) { s["additionalProperties"] = object{"type": "string"} },
-		func(s object) { s["properties"].(object)["plan"].(object)["minItems"] = json.Number("2") },
-		func(s object) { s["properties"].(object)["plan"].(object)["maxItems"] = json.Number("0") },
-		func(s object) { s["properties"].(object)["plan"].(object)["minItems"] = json.Number("1.5") },
 		func(s object) {
-			s["properties"].(object)["plan"].(object)["items"].(object)["required"] = []any{"step", "status", "owner"}
+			schemaAt(s, "properties", "plan")["minItems"] = json.Number("2")
 		},
 		func(s object) {
-			s["properties"].(object)["plan"].(object)["items"].(object)["properties"] = "invalid schema"
+			schemaAt(s, "properties", "plan")["maxItems"] = json.Number("0")
 		},
 		func(s object) {
-			s["properties"].(object)["plan"].(object)["items"].(object)["properties"].(object)["status"].(object)["enum"] = []any{"completed"}
+			schemaAt(s, "properties", "plan")["minItems"] = json.Number("1.5")
 		},
 		func(s object) {
-			s["properties"].(object)["plan"].(object)["items"].(object)["properties"].(object)["step"].(object)["pattern"] = "^authorized$"
+			schemaAt(s, "properties", "plan", "items")["required"] = []any{"step", "status", "owner"}
 		},
 		func(s object) {
-			s["properties"].(object)["plan"].(object)["items"].(object)["properties"].(object)["step"].(object)["maxLength"] = json.Number("2")
+			schemaAt(s, "properties", "plan", "items")["properties"] = "invalid schema"
+		},
+		func(s object) {
+			schemaAt(s, "properties", "plan", "items", "properties", "status")["enum"] = []any{"completed"}
+		},
+		func(s object) {
+			schemaAt(s, "properties", "plan", "items", "properties", "step")["pattern"] = "^authorized$"
+		},
+		func(s object) {
+			schemaAt(s, "properties", "plan", "items", "properties", "step")["maxLength"] = json.Number("2")
 		},
 	} {
 		bridge := nativePlanTestBridge("")

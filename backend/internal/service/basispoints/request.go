@@ -22,6 +22,7 @@ type Bridge struct {
 	Warnings         []string
 	tools            map[string]tool
 	unsupportedTools map[string]bool
+	structured       *structuredOutput
 	replay           *ReplayCache
 	scope            string
 }
@@ -56,7 +57,7 @@ func NormalizeEffort(effort string) (string, error) {
 	case "none", "minimal":
 		return "low", nil
 	default:
-		return "", fmt.Errorf("Basispoints reasoning effort %q is unsupported", effort)
+		return "", fmt.Errorf("basispoints reasoning effort %q is unsupported", effort)
 	}
 }
 
@@ -78,26 +79,30 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 	}
 	model := strings.TrimSpace(text(source["model"]))
 	if model == "" {
-		return nil, nil, fmt.Errorf("Basispoints requires a model")
+		return nil, nil, fmt.Errorf("basispoints requires a model")
 	}
 	if text(source["previous_response_id"]) != "" {
-		return nil, nil, fmt.Errorf("Basispoints requires expanded history instead of previous_response_id")
+		return nil, nil, fmt.Errorf("basispoints requires expanded history instead of previous_response_id")
 	}
 	requested := text(source["reasoning_effort"])
 	if reasoning, ok := source["reasoning"].(object); ok {
 		requested = text(reasoning["effort"])
 		if mode := text(reasoning["mode"]); mode != "" && mode != "standard" {
-			return nil, nil, fmt.Errorf("Basispoints does not support reasoning mode %q", mode)
+			return nil, nil, fmt.Errorf("basispoints does not support reasoning mode %q", mode)
 		}
 	}
 	effort, err := NormalizeEffort(requested)
 	if err != nil {
 		return nil, nil, err
 	}
-	b := &Bridge{RequestedEffort: requested, Effort: effort, tools: make(map[string]tool), unsupportedTools: make(map[string]bool), replay: replay, scope: scope}
+	structured, err := prepareStructuredOutput(source["text"])
+	if err != nil {
+		return nil, nil, err
+	}
+	b := &Bridge{RequestedEffort: requested, Effort: effort, tools: make(map[string]tool), unsupportedTools: make(map[string]bool), structured: structured, replay: replay, scope: scope}
 	choice := source["tool_choice"]
 	if choice != nil && text(choice) != "auto" && text(choice) != "none" {
-		return nil, nil, fmt.Errorf("Basispoints supports tool_choice auto or none only")
+		return nil, nil, fmt.Errorf("basispoints supports tool_choice auto or none only")
 	}
 	var catalog []any
 	if text(choice) != "none" {
@@ -118,11 +123,6 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 			}
 		}
 	}
-	if format, ok := source["text"].(object); ok {
-		if f, ok := format["format"].(object); ok && text(f["type"]) != "" && text(f["type"]) != "text" {
-			return nil, nil, fmt.Errorf("Basispoints does not support structured output formats")
-		}
-	}
 	var input []any
 	switch v := source["input"].(type) {
 	case string:
@@ -130,7 +130,7 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 	case []any:
 		input = v
 	default:
-		return nil, nil, fmt.Errorf("Basispoints input must be text or a Responses item array")
+		return nil, nil, fmt.Errorf("basispoints input must be text or a Responses item array")
 	}
 	translated, err := b.translateHistory(input)
 	if err != nil {
@@ -165,6 +165,9 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 		warning := "Hosted tools unavailable through Basispoints: " + strings.Join(kinds, ", ")
 		b.Warnings = append(b.Warnings, warning)
 		protocol += "\n" + warning + ". These declarations were omitted. Do not claim to have used them. If the task requires one, explain the limitation or use a suitable declared client tool."
+	}
+	if structured != nil {
+		protocol += "\n" + structured.instructions()
 	}
 	prologue = append(prologue, message("developer", protocol))
 	cacheKey := text(source["prompt_cache_key"])

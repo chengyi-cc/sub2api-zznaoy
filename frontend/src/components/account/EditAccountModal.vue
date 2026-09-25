@@ -18,6 +18,29 @@
         :bindings="openaiTemplateBindings"
         :proxies="proxies" :groups="groups" :profiles="tlsFingerprintProfiles"
       />
+      <!-- Optional Excel protocol for direct OpenAI OAuth accounts. -->
+      <div v-if="supportsExcelBPS" data-testid="excel-bps-card" class="rounded-xl border border-primary-200 bg-primary-50/50 p-5 dark:border-primary-800 dark:bg-primary-950/20">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ t('admin.accounts.openai.excelBPS') }}</label>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSDesc') }}</p>
+          </div>
+          <button type="button" role="switch" :aria-checked="excelBPSEnabled"
+            :aria-label="t('admin.accounts.openai.excelBPS')" data-testid="excel-bps-toggle"
+            :class="['relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2', excelBPSEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600']"
+            @click="excelBPSEnabled = !excelBPSEnabled">
+            <span :class="['pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow transition', excelBPSEnabled ? 'translate-x-6' : 'translate-x-0']" />
+          </button>
+        </div>
+        <label v-if="excelBPSEnabled" class="mt-4 flex cursor-pointer items-start gap-3 border-t border-primary-200/70 pt-4 dark:border-primary-800">
+          <input v-model="excelBPSCacheCreationAsInput" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" data-testid="excel-bps-cache-creation-as-input" />
+          <span>
+            <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('admin.accounts.openai.excelBPSCacheCreationAsInput') }}</span>
+            <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSCacheCreationAsInputDesc') }}</span>
+          </span>
+        </label>
+        <p v-if="excelBPSEnabled" class="mt-2 text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.excelBPSNotice') }}</p>
+      </div>
       <div>
         <label class="input-label">{{ t('common.name') }}</label>
         <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
@@ -1744,23 +1767,6 @@
           {{ t('admin.accounts.expiresAtHint') }}
           {{ t('admin.accounts.expiresAtTimezoneHint', { timezone: browserTimeZone }) }}
         </p>
-      </div>
-
-      <!-- Optional Excel protocol for direct OpenAI OAuth accounts. -->
-      <div v-if="supportsExcelBPS" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.openai.excelBPS') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSDesc') }}</p>
-          </div>
-          <button type="button" role="switch" :aria-checked="excelBPSEnabled"
-            :aria-label="t('admin.accounts.openai.excelBPS')" data-testid="excel-bps-toggle"
-            :class="['relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2', excelBPSEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600']"
-            @click="excelBPSEnabled = !excelBPSEnabled">
-            <span :class="['pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition', excelBPSEnabled ? 'translate-x-5' : 'translate-x-0']" />
-          </button>
-        </div>
-        <p v-if="excelBPSEnabled" class="mt-2 text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.excelBPSNotice') }}</p>
       </div>
 
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
@@ -3721,6 +3727,7 @@ const customBaseUrl = ref('')
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
 const excelBPSEnabled = ref(false)
+const excelBPSCacheCreationAsInput = ref(false)
 const supportsExcelBPS = computed(() => {
   const account = props.account
   if (account?.platform !== 'openai' || account.type !== 'oauth' || isSparkShadow.value) return false
@@ -4246,6 +4253,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
   excelBPSEnabled.value = supportsExcelBPS.value && extra?.openai_excel_bps === true
+  excelBPSCacheCreationAsInput.value = excelBPSEnabled.value && extra?.openai_excel_bps_cache_creation_as_input === true
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
@@ -5747,6 +5755,11 @@ const handleSubmit = async () => {
         newExtra.openai_excel_bps = true
       } else {
         delete newExtra.openai_excel_bps
+      }
+      if (supportsExcelBPS.value && excelBPSEnabled.value && excelBPSCacheCreationAsInput.value) {
+        newExtra.openai_excel_bps_cache_creation_as_input = true
+      } else {
+        delete newExtra.openai_excel_bps_cache_creation_as_input
       }
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value

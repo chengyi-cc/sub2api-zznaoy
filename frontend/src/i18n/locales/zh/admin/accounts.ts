@@ -795,6 +795,8 @@ export default {
         apiKeyHint: '您的 OpenAI API Key',
         oauthPassthrough: '自动透传（仅替换认证）',
         excelBPS: 'Excel / BPS 协议',
+        excelBPSCacheCreationAsInput: '创建缓存按普通输入计费',
+        excelBPSCacheCreationAsInputDesc: '默认关闭。勾选后，缓存创建用量按普通输入价格计费，缓存读取不变；仅调整本系统计费，不影响上游缓存。',
         excelBPSDesc: '使用此账号的 ChatGPT 登录授权，经 Excel 的 BPS 接口转发请求。默认关闭，关闭后恢复原有请求路径。',
         excelBPSNotice: '保存后请新建 Codex 会话。使用 HTTP 流式连接，不使用 WebSocket（双向长连接）及自动透传；支持 Responses（响应接口）、客户端工具和 HTTPS 图片链接，不支持本地/base64 图片。max / ultra（推理强度）按 xhigh 发送，模型可用性以上游为准。',
         oauthPassthroughDesc:

@@ -11,7 +11,8 @@ import (
 func describeCatalog(catalog []any) string {
 	var lines []string
 	for _, raw := range catalog {
-		entry := raw.(object)
+		// collectTools constructs every catalog entry as an object.
+		entry, _ := raw.(object)
 		line := "Client tool " + quoted(entry["name"]) + " (" + text(entry["type"]) + ")."
 		if description := text(entry["description"]); description != "" {
 			line += " " + description

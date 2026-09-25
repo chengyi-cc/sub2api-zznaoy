@@ -1,7 +1,8 @@
 # Source attribution
 
-Ported into chengyi-cc/sub2api-zznaoy from ranxi2001/sub2api v2.8.10
-(0aeb577a6), including the protocol fixes through 1116abc22. The gateway
+Ported into chengyi-cc/sub2api-zznaoy from ranxi2001/sub2api production
+(055a1cd1470b3b866d04aad8d1514bd34cac73ab), checked on 2026-09-25.
+Includes release v2.8.11 and subsequent structured-output and billing fixes. The gateway
 integration uses this repository's account and transport services; no unrelated
 ticket, Copilot, account operations or deployment features are imported.
 

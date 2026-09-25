@@ -86,17 +86,17 @@ func rawControlsInTestJSON(raw string) string {
 			i++
 			switch raw[i] {
 			case 'n':
-				output.WriteByte('\n')
+				_ = output.WriteByte('\n')
 			case 'r':
-				output.WriteByte('\r')
+				_ = output.WriteByte('\r')
 			case 't':
-				output.WriteByte('\t')
+				_ = output.WriteByte('\t')
 			default:
-				output.WriteByte('\\')
-				output.WriteByte(raw[i])
+				_ = output.WriteByte('\\')
+				_ = output.WriteByte(raw[i])
 			}
 		} else {
-			output.WriteByte(raw[i])
+			_ = output.WriteByte(raw[i])
 		}
 	}
 	return output.String()
@@ -104,11 +104,11 @@ func rawControlsInTestJSON(raw string) string {
 
 func TestLargeMultilineCustomPatchTransportRoundTrip(t *testing.T) {
 	var patch strings.Builder
-	patch.WriteString("*** Begin Patch\r\n*** Update File: src/example.ts\r\n@@\r\n")
+	_, _ = patch.WriteString("*** Begin Patch\r\n*** Update File: src/example.ts\r\n@@\r\n")
 	for i := 0; i < 110; i++ {
 		fmt.Fprintf(&patch, "+\tconst line%d = \"中文 \\\"quoted\\\" C:\\\\Projects\\\\data\"; // regex \\d+ and literal \\n\r\n", i)
 	}
-	patch.WriteString("*** End Patch\r\n")
+	_, _ = patch.WriteString("*** End Patch\r\n")
 	input := patch.String()
 	if len(input) < 9000 || len(input) > 13000 {
 		t.Fatalf("expected a representative roughly 10 KB patch, got %d bytes", len(input))
@@ -144,8 +144,8 @@ func TestLargeMultilineCustomPatchTransportRoundTrip(t *testing.T) {
 			}
 			source["input"] = []any{message("user", "Apply the patch"), call, object{"type": "custom_tool_call_output", "call_id": "call_large_patch", "output": "patch accepted"}}
 			replayed, _ := mustPrepare(t, source, "patch-account/key", cache)
-			items := replayed["input"].([]any)
-			if !reflect.DeepEqual(items[len(items)-2], native) || items[len(items)-1].(object)["output"] != "patch accepted" {
+			items := mustTestValue[[]any](t, replayed["input"])
+			if !reflect.DeepEqual(items[len(items)-2], native) || mustTestValue[object](t, items[len(items)-1])["output"] != "patch accepted" {
 				t.Fatal("tool-result replay did not preserve the original transport and client result")
 			}
 		})

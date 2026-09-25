@@ -15,7 +15,7 @@ func TestMarkedRawCustomCallValidatesCatalogAndIdentity(t *testing.T) {
 	if err != nil || call["type"] != "custom_tool_call" || call["namespace"] != "functions" || call["name"] != "exec" || call["input"] != raw {
 		t.Fatalf("marked custom call did not preserve identity/input: %v", err)
 	}
-	args := native["arguments"].(object)
+	args := mustTestValue[object](t, native["arguments"])
 	for _, invalid := range []string{"codex2api.custom/functions.shell", "codex2api.custom/functions.missing"} {
 		args["summary"] = invalid
 		if _, err := b.translateCall(native); err == nil {

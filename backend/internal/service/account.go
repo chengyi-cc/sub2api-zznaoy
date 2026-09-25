@@ -2125,6 +2125,15 @@ func (a *Account) IsExcelBPSEnabled() bool {
 	return enabled
 }
 
+// IsExcelBPSCacheCreationAsInputEnabled controls local cache-creation billing only.
+func (a *Account) IsExcelBPSCacheCreationAsInputEnabled() bool {
+	if !a.IsExcelBPSEnabled() {
+		return false
+	}
+	enabled, _ := a.Extra["openai_excel_bps_cache_creation_as_input"].(bool)
+	return enabled
+}
+
 // IsOpenAIResponsesWebSocketV2Enabled 返回 OpenAI 账号是否开启 Responses WebSocket v2。
 //
 // 分类型新字段：

@@ -328,3 +328,138 @@ func TestExcelBPSDisabledUsesNativePassthrough(t *testing.T) {
 	require.Equal(t, "chatgpt.com", upstream.lastReq.URL.Host)
 	require.Equal(t, "/backend-api/codex/responses", upstream.lastReq.URL.Path)
 }
+
+func TestExcelBPSHTTPErrorRecordsUpstreamRejection(t *testing.T) {
+	for _, logBody := range []bool{false, true} {
+		t.Run(fmt.Sprint(logBody), func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"X-Request-Id": {"bps-upstream-request"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_value","param":"input[2].id","message":"Expected an ID that begins with fc. token=test-token; refresh-secret Bearer other-secret https://user:pass@example.com/?api_key=query-secret; echoed prompt: private-user-input"},"access_token":"other-secret"}`)),
+			}}
+			svc := openAIClientToolsTestService(upstream)
+			svc.cfg.Gateway.LogUpstreamErrorBody = logBody
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			account := excelAccount()
+			account.Credentials["refresh_token"] = "refresh-secret"
+			_, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"gpt-6-astra","stream":true,"input":"continue"}`))
+			require.Error(t, err)
+			var failover *UpstreamFailoverError
+			require.NotErrorAs(t, err, &failover)
+			require.Len(t, upstream.requests, 1)
+			require.True(t, account.Schedulable)
+			require.True(t, IsResponseCommitted(c))
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.True(t, json.Valid(rec.Body.Bytes()))
+			require.NotContains(t, rec.Body.String(), "Expected an ID")
+			require.Equal(t, http.StatusBadRequest, c.GetInt(OpsUpstreamStatusCodeKey))
+			if logBody {
+				require.Contains(t, c.GetString(OpsUpstreamErrorMessageKey), "Expected an ID")
+			} else {
+				require.Equal(t, "Excel BPS returned HTTP 400", c.GetString(OpsUpstreamErrorMessageKey))
+			}
+			events, exists := c.Get(OpsUpstreamErrorsKey)
+			require.True(t, exists)
+			attempts, ok := events.([]*OpsUpstreamErrorEvent)
+			require.True(t, ok)
+			require.Len(t, attempts, 1)
+			require.Equal(t, "bps-upstream-request", attempts[0].UpstreamRequestID)
+			require.Equal(t, basispoints.ResponsesURL, attempts[0].UpstreamURL)
+			require.Equal(t, account.ID, attempts[0].AccountID)
+			require.Equal(t, "direct/no_proxy", attempts[0].ProxyName)
+			if logBody {
+				require.Equal(t, "invalid_value", gjson.Get(attempts[0].Detail, "error.code").String())
+				require.Equal(t, "input[2].id", gjson.Get(attempts[0].Detail, "error.param").String())
+				require.Equal(t, c.GetString(OpsUpstreamErrorDetailKey), attempts[0].Detail)
+			} else {
+				require.Empty(t, attempts[0].Detail)
+				require.Empty(t, attempts[0].UpstreamResponseBody)
+				require.Empty(t, c.GetString(OpsUpstreamErrorDetailKey))
+				require.NotContains(t, attempts[0].Message, "private-user-input")
+			}
+			encoded, err := json.Marshal(attempts)
+			require.NoError(t, err)
+			require.NotContains(t, string(encoded), "test-token")
+			require.NotContains(t, string(encoded), "other-secret")
+			require.NotContains(t, string(encoded), "refresh-secret")
+			require.NotContains(t, string(encoded), "user:pass")
+			require.NotContains(t, string(encoded), "query-secret")
+		})
+	}
+}
+
+func TestExcelBPSHTTPErrorAfterCompactKeepalive(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest, Header: http.Header{},
+		Body: io.NopCloser(strings.NewReader(`{"error":{"message":"invalid input"}}`)),
+	}}
+	svc := openAIClientToolsTestService(upstream)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil)
+	MarkOpenAICompactClientStream(c)
+	stop := StartOpenAICompactSSEKeepalive(c, time.Hour)
+	defer stop()
+	value, exists := c.Get(openAICompactSSEKeepaliveKey)
+	require.True(t, exists)
+	keepalive, ok := value.(*openAICompactSSEKeepalive)
+	require.True(t, ok)
+	require.True(t, keepalive.beat())
+	_, err := svc.Forward(context.Background(), c, excelAccount(), []byte(`{"model":"gpt-6-astra","input":"continue"}`))
+	require.Error(t, err)
+	require.True(t, IsResponseCommitted(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, strings.Count(rec.Body.String(), "event: response.failed\n"))
+	require.NotContains(t, rec.Body.String(), `{"error":`)
+	streamError, exists := GetOpsStreamError(c)
+	require.True(t, exists)
+	require.Equal(t, "basispoints_upstream_error", streamError.ErrType)
+}
+
+// Compact request normalization removes stream; the context still requires SSE.
+func TestExcelBPSCompactPreservesClientStreamIntent(t *testing.T) {
+	for _, beat := range []bool{false, true} {
+		for _, terminal := range []string{"response.completed", "response.failed", ""} {
+			t.Run(fmt.Sprintf("beat=%v/terminal=%s", beat, terminal), func(t *testing.T) {
+				wire := ""
+				if terminal != "" {
+					status := "completed"
+					if terminal == "response.failed" {
+						status = "failed"
+					}
+					wire = fmt.Sprintf("data: {\"type\":\"%s\",\"response\":{\"id\":\"resp_compact\",\"status\":\"%s\",\"output\":[{\"type\":\"compaction\",\"encrypted_content\":\"opaque\"}]}}\n\n", terminal, status)
+				}
+				upstream := &httpUpstreamRecorder{resp: excelBPSTestResponse(wire)}
+				svc := openAIClientToolsTestService(upstream)
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil)
+				MarkOpenAICompactClientStream(c)
+				stop := StartOpenAICompactSSEKeepalive(c, time.Hour)
+				defer stop()
+				if beat {
+					value, _ := c.Get(openAICompactSSEKeepaliveKey)
+					require.True(t, value.(*openAICompactSSEKeepalive).beat())
+				}
+				result, err := svc.Forward(context.Background(), c, excelAccount(), []byte(`{"model":"gpt-6-astra","input":"continue"}`))
+				require.NotNil(t, result)
+				require.True(t, result.Stream)
+				require.Contains(t, rec.Header().Get("Content-Type"), "text/event-stream")
+				if terminal == "response.completed" {
+					require.NoError(t, err)
+					require.Contains(t, rec.Body.String(), `"type":"compaction"`)
+					require.Equal(t, 1, strings.Count(rec.Body.String(), "event: response.completed\n"))
+				} else {
+					require.Error(t, err)
+					require.True(t, IsResponseCommitted(c))
+					require.Equal(t, 1, strings.Count(rec.Body.String(), "event: response.failed\n"))
+				}
+				for _, line := range strings.Split(rec.Body.String(), "\n") {
+					require.False(t, strings.HasPrefix(line, "{"), "raw JSON must not follow SSE headers")
+				}
+			})
+		}
+	}
+}

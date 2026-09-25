@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -49,12 +51,22 @@ func newExcelBPSRequest(ctx context.Context, body []byte, token, accountID strin
 // only the selected account's bearer and ChatGPT account ID belong on this host.
 func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Context, account *Account, body []byte, start time.Time) (*OpenAIForwardResult, error) {
 	fail := func(status int, code, message string) (*OpenAIForwardResult, error) {
-		c.JSON(status, gin.H{"error": gin.H{"type": "invalid_request_error", "code": code, "message": message}})
+		// A compact keepalive may already have committed SSE headers. Otherwise
+		// finish a single JSON response so the handler cannot append another error.
+		committed := StopOpenAICompactSSEKeepaliveCommitted(c)
+		MarkResponseCommitted(c)
+		if committed {
+			writeOpenAICompactSSEFailureMessage(c, status, code, message)
+		} else {
+			c.JSON(status, gin.H{"error": gin.H{"type": "invalid_request_error", "code": code, "message": message}})
+		}
 		return nil, fmt.Errorf("excel BPS: %s", code)
 	}
 	originalModel := gjson.GetBytes(body, "model").String()
 	model := account.GetMappedModel(originalModel)
-	stream := gjson.GetBytes(body, "stream").Bool()
+	// The handler strips stream from normalized compact bodies but retains the
+	// client's original intent in context. Honor it when returning BPS events.
+	stream := gjson.GetBytes(body, "stream").Bool() || openAICompactClientWantsStream(c)
 	var err error
 	body, err = sjson.SetBytes(body, "model", model)
 	if err != nil {
@@ -129,6 +141,29 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+		// Preserve the original rejection for Ops without exposing it to clients.
+		// BPS errors can echo request fields, so redact before storing diagnostics.
+		upstreamMessage := fmt.Sprintf("Excel BPS returned HTTP %d", resp.StatusCode)
+		upstreamDetail := ""
+		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+			safeBody := excelBPSSanitizeErrorBody(string(raw), token, account)
+			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+			if maxBytes <= 0 {
+				maxBytes = 2048
+			}
+			upstreamDetail, _ = sanitizeErrorBodyForStorage(safeBody, maxBytes)
+			if message := strings.TrimSpace(extractUpstreamErrorMessage([]byte(safeBody))); message != "" {
+				upstreamMessage = truncateString(message, 2048)
+			}
+		}
+		setOpsUpstreamError(c, resp.StatusCode, upstreamMessage, upstreamDetail)
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+			ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),
+			UpstreamStatusCode: resp.StatusCode, UpstreamRequestID: resp.Header.Get("x-request-id"),
+			UpstreamURL: basispoints.ResponsesURL, Kind: "http_error",
+			Message: upstreamMessage, Detail: upstreamDetail, UpstreamResponseBody: upstreamDetail,
+		})
 		code := gjson.GetBytes(raw, "error.code").String()
 		if code == "basispoints_model_access_changed" {
 			return fail(resp.StatusCode, code, "This model is not available on the account's Excel BPS endpoint")
@@ -139,6 +174,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	defer func() { _ = converted.Close() }()
 	result := &OpenAIForwardResult{Model: originalModel, UpstreamModel: model, UpstreamEndpoint: "/basispoints/api/responses", Stream: stream, ReasoningEffort: &bridge.Effort, RequestedReasoningEffort: &bridge.RequestedEffort, RequestID: resp.Header.Get("x-request-id")}
 	if stream {
+		// Take ownership before writing events so the compact heartbeat cannot
+		// interleave writes or leave a committed SSE response followed by JSON.
+		StopOpenAICompactSSEKeepaliveCommitted(c)
 		c.Header("Content-Type", "text/event-stream")
 		c.Header("Cache-Control", "no-cache")
 		c.Header("X-Accel-Buffering", "no")
@@ -193,6 +231,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			result.ClientDisconnect = true
 			return result, ctx.Err()
 		}
+		MarkResponseCommitted(c)
 		if stream {
 			_, _ = c.Writer.WriteString("event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"basispoints_stream_incomplete\",\"message\":\"Upstream stream ended before completion\"}}}\n\n")
 			c.Writer.Flush()
@@ -200,6 +239,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			c.JSON(502, gin.H{"error": gin.H{"code": "basispoints_stream_incomplete", "message": "Excel BPS stream ended before completion"}})
 		}
 		return result, fmt.Errorf("excel BPS stream incomplete")
+	}
+	if terminal != "response.completed" {
+		MarkResponseCommitted(c)
 	}
 	if !stream {
 		if terminal != "response.completed" {
@@ -213,4 +255,46 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	}
 	s.bindHTTPResponseAccount(ctx, c, account, result.ResponseID)
 	return result, nil
+}
+
+var excelBPSBearerPattern = regexp.MustCompile(`(?i)\bBearer\s+[^\s"',;<>]+`)
+var excelBPSURLCredentialsPattern = regexp.MustCompile(`(https?://)[^/\s@]+@`)
+
+func excelBPSSanitizeErrorBody(raw, token string, account *Account) string {
+	if !json.Valid([]byte(raw)) {
+		return ""
+	}
+	secrets := append([]string{token}, excelBPSAccountSecrets(account)...)
+	fields := make(map[string]string)
+	for _, key := range []string{"message", "code", "type", "param"} {
+		value := gjson.Get(raw, "error."+key)
+		if value.Type != gjson.String {
+			continue
+		}
+		clean := value.String()
+		for _, secret := range secrets {
+			if secret != "" {
+				clean = strings.ReplaceAll(clean, secret, "[redacted]")
+			}
+		}
+		clean = excelBPSBearerPattern.ReplaceAllString(clean, "Bearer [redacted]")
+		clean = excelBPSURLCredentialsPattern.ReplaceAllString(clean, "${1}[redacted]@")
+		clean = sanitizeUpstreamErrorMessage(clean)
+		fields[key] = truncateString(logredact.RedactText(clean, "authorization", "api_key", "apikey", "token", "secret", "key", "cookie", "ticket", "recovery_ticket"), 2048)
+	}
+	encoded, _ := json.Marshal(map[string]any{"error": fields})
+	return string(encoded)
+}
+
+func excelBPSAccountSecrets(account *Account) []string {
+	var secrets []string
+	for _, key := range []string{"access_token", "refresh_token", "id_token", "api_key", "session_key", "cookie"} {
+		if value := account.GetCredential(key); value != "" {
+			secrets = append(secrets, value)
+		}
+	}
+	if account.Proxy != nil && account.Proxy.Password != "" {
+		secrets = append(secrets, account.Proxy.Password)
+	}
+	return secrets
 }

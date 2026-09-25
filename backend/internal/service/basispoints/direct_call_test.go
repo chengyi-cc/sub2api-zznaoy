@@ -82,7 +82,7 @@ func TestDirectCallReplaysAsTransportWrapper(t *testing.T) {
 	}
 	source["input"] = []any{message("user", "run"), call, object{"type": "function_call_output", "call_id": call["call_id"], "output": "/root"}}
 	replayed, _ := mustPrepare(t, source, "account/key", cache)
-	items := replayed["input"].([]any)
+	items := mustTestValue[[]any](t, replayed["input"])
 	wrapper, _ := items[len(items)-2].(object)
 	if text(wrapper["type"]) != "function_call" || text(wrapper["name"]) != "run_officejs" {
 		t.Fatalf("direct call did not replay as a run_officejs transport item: %+v", wrapper)

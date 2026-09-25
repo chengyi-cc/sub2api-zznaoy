@@ -19,8 +19,8 @@ func TestToolsUseTerminalItemWhileTextStaysIncremental(t *testing.T) {
 	partial["arguments"] = `{"summary":"partial","code":""}`
 	upstream, writer := io.Pipe()
 	body := bridge.Stream(upstream)
-	defer body.Close()
-	defer writer.Close()
+	defer func() { _ = body.Close() }()
+	defer func() { _ = writer.Close() }()
 	first := sse(object{"type": "response.output_text.delta", "delta": "Working."})
 	go func() { _, _ = io.WriteString(writer, first) }()
 	reader := bufio.NewReader(body)

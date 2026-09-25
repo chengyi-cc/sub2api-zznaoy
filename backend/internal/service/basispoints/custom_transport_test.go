@@ -65,11 +65,11 @@ func TestRawCustomTransportValidatesCodeTypeAndSize(t *testing.T) {
 
 func TestRawCustomTransportLargePatchNeedsOnlyOuterJSON(t *testing.T) {
 	var patch strings.Builder
-	patch.WriteString("*** Begin Patch\r\n*** Update File: src/example.ts\r\n@@\r\n")
+	_, _ = patch.WriteString("*** Begin Patch\r\n*** Update File: src/example.ts\r\n@@\r\n")
 	for i := 0; i < 125; i++ {
 		fmt.Fprintf(&patch, "+\tconst item%d = \"中文 \\\"nested\\\" C:\\\\Projects\\\\file\"; // literal \\n and \\d+\r\n", i)
 	}
-	patch.WriteString("*** End Patch\r\n")
+	_, _ = patch.WriteString("*** End Patch\r\n")
 	input := patch.String()
 	if len(input) < 9000 || len(input) > 13000 {
 		t.Fatalf("expected a roughly 10 KB patch, got %d bytes", len(input))

@@ -30,13 +30,13 @@ func TestCompleteHistoryCallIDsCannotSubstituteAnotherConversationsArguments(t *
 			object{"type": "function_call_output", "call_id": "call_1", "output": path + " result"},
 		}
 		body, _ := mustPrepare(t, source, "same-account|same-key", cache)
-		items := body["input"].([]any)
-		envelope := historyCollisionEnvelope(t, items[len(items)-2].(object))
-		args := envelope["arguments"].(object)
+		items := mustTestValue[[]any](t, body["input"])
+		envelope := historyCollisionEnvelope(t, mustTestValue[object](t, items[len(items)-2]))
+		args := mustTestValue[object](t, envelope["arguments"])
 		if args["path"] != path || args["exact"] != json.Number("9007199254740993") {
 			t.Fatalf("reused historical call ID substituted another request's arguments: %+v", args)
 		}
-		if items[len(items)-1].(object)["output"] != path+" result" {
+		if mustTestValue[object](t, items[len(items)-1])["output"] != path+" result" {
 			t.Fatal("collision recovery altered the client's recorded result")
 		}
 	}
@@ -107,17 +107,17 @@ func TestUnsignedReplayEntryCannotOverrideCompleteClientHistory(t *testing.T) {
 		object{"type": "function_call_output", "call_id": "call_1", "output": "current result"},
 	}
 	body, _ := mustPrepare(t, source, "scope", cache)
-	items := body["input"].([]any)
-	envelope := historyCollisionEnvelope(t, items[len(items)-2].(object))
-	if envelope["name"] != "current_tool" || envelope["arguments"].(object)["path"] != "current" {
+	items := mustTestValue[[]any](t, body["input"])
+	envelope := historyCollisionEnvelope(t, mustTestValue[object](t, items[len(items)-2]))
+	if envelope["name"] != "current_tool" || mustTestValue[object](t, envelope["arguments"])["path"] != "current" {
 		t.Fatal("entry without a client signature overrode complete current history")
 	}
 	// Output-only replay still requires a cached original; it cannot infer an
 	// unseen call's arguments. Matching is enforced when the complete call exists.
 	source["input"] = []any{object{"type": "function_call_output", "call_id": "call_1", "output": "current result"}}
 	replayed, _ := mustPrepare(t, source, "scope", cache)
-	items = replayed["input"].([]any)
-	if envelope := historyCollisionEnvelope(t, items[len(items)-2].(object)); envelope["name"] != "current_tool" {
+	items = mustTestValue[[]any](t, replayed["input"])
+	if envelope := historyCollisionEnvelope(t, mustTestValue[object](t, items[len(items)-2])); envelope["name"] != "current_tool" {
 		t.Fatal("collision-safe storage broke output-only replay")
 	}
 }

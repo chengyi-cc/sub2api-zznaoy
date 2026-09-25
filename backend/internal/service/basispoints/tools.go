@@ -46,7 +46,9 @@ func (c *ReplayCache) put(scope, id string, item object, clientCall ...object) {
 	}
 	key := scope + "\x00" + id
 	if old := c.entries[key]; old != nil {
-		c.bytes -= len(old.Value.(replayEntry).raw)
+		// Only replayEntry values are inserted into this private list.
+		entry, _ := old.Value.(replayEntry)
+		c.bytes -= len(entry.raw)
 		c.order.Remove(old)
 	}
 	var signature string
@@ -57,7 +59,7 @@ func (c *ReplayCache) put(scope, id string, item object, clientCall ...object) {
 	c.bytes += len(raw)
 	for len(c.entries) > 1024 || c.bytes > 16<<20 {
 		old := c.order.Front()
-		entry := old.Value.(replayEntry)
+		entry, _ := old.Value.(replayEntry)
 		delete(c.entries, entry.key)
 		c.bytes -= len(entry.raw)
 		c.order.Remove(old)
@@ -127,12 +129,13 @@ func (c *ReplayCache) getMatching(scope, id, signature string, requireSignature 
 	if entry == nil {
 		return nil
 	}
-	if requireSignature && entry.Value.(replayEntry).callFingerprint != signature {
+	cached, ok := entry.Value.(replayEntry)
+	if !ok || (requireSignature && cached.callFingerprint != signature) {
 		return nil
 	}
 	c.order.MoveToBack(entry)
 	var item object
-	if decode(entry.Value.(replayEntry).raw, &item) != nil {
+	if decode(cached.raw, &item) != nil {
 		return nil
 	}
 	return item
@@ -149,7 +152,7 @@ func (b *Bridge) collectTools(value any, namespace string) ([]any, error) {
 		kind, name := text(item["type"]), text(item["name"])
 		if kind == "namespace" {
 			if name == "" {
-				return nil, fmt.Errorf("Basispoints client namespaces require a name")
+				return nil, fmt.Errorf("basispoints client namespaces require a name")
 			}
 			nestedNamespace := name
 			if namespace != "" {
@@ -170,10 +173,10 @@ func (b *Bridge) collectTools(value any, namespace string) ([]any, error) {
 			continue
 		}
 		if kind != "function" && kind != "custom" {
-			return nil, fmt.Errorf("Basispoints does not support hosted tool %q; use client function or custom tools", kind)
+			return nil, fmt.Errorf("basispoints does not support hosted tool %q; use client function or custom tools", kind)
 		}
 		if name == "" {
-			return nil, fmt.Errorf("Basispoints client tools require a name")
+			return nil, fmt.Errorf("basispoints client tools require a name")
 		}
 		key := name
 		if namespace != "" {
@@ -223,12 +226,12 @@ func isUnsupportedHostedTool(kind string) bool {
 func rebuildNativeHistoryCall(item object) (object, error) {
 	id, name := text(item["call_id"]), text(item["name"])
 	if id == "" || strings.TrimSpace(id) != id || name == "" || strings.TrimSpace(name) != name {
-		return nil, fmt.Errorf("Basispoints history recovery requires a complete tool call with nonempty call_id and name")
+		return nil, fmt.Errorf("basispoints history recovery requires a complete tool call with nonempty call_id and name")
 	}
 	if value, exists := item["namespace"]; exists {
 		namespace, ok := value.(string)
 		if !ok || strings.TrimSpace(namespace) != namespace {
-			return nil, fmt.Errorf("Basispoints history tool namespace must be a string")
+			return nil, fmt.Errorf("basispoints history tool namespace must be a string")
 		}
 		if namespace != "" {
 			name = namespace + "." + name
@@ -240,25 +243,25 @@ func rebuildNativeHistoryCall(item object) (object, error) {
 		arguments := item["arguments"]
 		if encoded, ok := arguments.(string); ok {
 			if decode([]byte(encoded), &arguments) != nil {
-				return nil, fmt.Errorf("Basispoints history function arguments must contain one valid JSON object")
+				return nil, fmt.Errorf("basispoints history function arguments must contain one valid JSON object")
 			}
 		}
 		if args, ok := arguments.(object); !ok || args == nil {
-			return nil, fmt.Errorf("Basispoints history function arguments must be a JSON object")
+			return nil, fmt.Errorf("basispoints history function arguments must be a JSON object")
 		}
 		envelope["arguments"] = arguments
 	case "custom_tool_call":
 		input, ok := item["input"].(string)
 		if !ok {
-			return nil, fmt.Errorf("Basispoints history custom tool input must be a string")
+			return nil, fmt.Errorf("basispoints history custom tool input must be a string")
 		}
 		envelope["input"] = input
 	default:
-		return nil, fmt.Errorf("Basispoints history recovery requires a function or custom tool call")
+		return nil, fmt.Errorf("basispoints history recovery requires a function or custom tool call")
 	}
 	code, err := json.Marshal(envelope)
 	if err != nil {
-		return nil, fmt.Errorf("Basispoints history tool arguments cannot be serialized")
+		return nil, fmt.Errorf("basispoints history tool arguments cannot be serialized")
 	}
 	arguments, err := json.Marshal(object{
 		"code": string(code), "summary": "Replay a previously requested client tool",
@@ -266,7 +269,7 @@ func rebuildNativeHistoryCall(item object) (object, error) {
 		"destructive":      false, "references": []any{},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Basispoints history transport cannot be serialized")
+		return nil, fmt.Errorf("basispoints history transport cannot be serialized")
 	}
 	itemID := text(item["id"])
 	if !strings.HasPrefix(itemID, "fc_") || len(itemID) > 64 {
@@ -292,7 +295,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 		case "additional_tools":
 			continue
 		case "item_reference":
-			return nil, fmt.Errorf("Basispoints requires full history; item_reference is unsupported")
+			return nil, fmt.Errorf("basispoints requires full history; item_reference is unsupported")
 		case "compaction_trigger":
 			trigger = item
 			continue
@@ -319,7 +322,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 			if !seenCalls[id] {
 				native := b.replay.get(b.scope, id)
 				if native == nil {
-					return nil, fmt.Errorf("Basispoints original tool item is unavailable for this tool result; start a new conversation")
+					return nil, fmt.Errorf("basispoints original tool item is unavailable for this tool result; start a new conversation")
 				}
 				result = append(result, native)
 				seenCalls[id] = true
@@ -328,15 +331,18 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 			if err := validateHistoryContent(item["output"]); err != nil {
 				return nil, err
 			}
-			if text(item["id"]) == "" {
-				itemID := "fc_" + id
-				if len(itemID) > 64 {
-					itemID = "fc_" + fingerprint(id)
-				}
-				item["id"] = itemID
+			// Codex custom results carry ctco_ IDs. After lowering to a function
+			// result, BPS requires an fc_ item ID even when the client supplied one.
+			itemID := text(item["id"])
+			if itemID == "" {
+				itemID = "fc_" + id
 			}
+			if !strings.HasPrefix(itemID, "fc_") || len(itemID) > 64 {
+				itemID = "fc_" + fingerprint(itemID)
+			}
+			item["id"] = itemID
 		case "configuration_update":
-			return nil, fmt.Errorf("Basispoints does not support configuration_update; start a new request with the desired effort")
+			return nil, fmt.Errorf("basispoints does not support configuration_update; start a new request with the desired effort")
 		}
 		if err := validateHistoryContent(item["content"]); err != nil {
 			return nil, err
@@ -360,7 +366,7 @@ func validateHistoryContent(value any) error {
 				return err
 			}
 		default:
-			return fmt.Errorf("Basispoints supports text and HTTPS input_image content only")
+			return fmt.Errorf("basispoints supports text and HTTPS input_image content only")
 		}
 	}
 	return nil
@@ -384,10 +390,10 @@ func (b *Bridge) translateCall(native object) (object, error) {
 	if value, ok := native["arguments"].(object); ok {
 		arguments = value
 	} else if err := decode([]byte(text(native["arguments"])), &arguments); err != nil {
-		return nil, fmt.Errorf("Basispoints returned invalid tool transport arguments")
+		return nil, fmt.Errorf("basispoints returned invalid tool transport arguments")
 	}
 	if arguments == nil {
-		return nil, fmt.Errorf("Basispoints returned empty tool transport arguments")
+		return nil, fmt.Errorf("basispoints returned empty tool transport arguments")
 	}
 	envelope, marked, err := customTransportEnvelope(arguments)
 	if !marked && err == nil {
@@ -402,7 +408,7 @@ func (b *Bridge) translateCall(native object) (object, error) {
 	}
 	info, allowed := b.tools[toolName]
 	if !allowed {
-		return nil, fmt.Errorf("Basispoints returned a tool outside the client's catalog")
+		return nil, fmt.Errorf("basispoints returned a tool outside the client's catalog")
 	}
 	result, err := b.finishClientToolCall(native, info, envelope, marked)
 	if err != nil {
@@ -429,27 +435,27 @@ func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 		}
 	}
 	if !ok {
-		return nil, fmt.Errorf("Basispoints returned an unsupported native tool; no tool was executed")
+		return nil, fmt.Errorf("basispoints returned an unsupported native tool; no tool was executed")
 	}
 	kind := text(native["type"])
 	var envelope object
 	switch info.Kind {
 	case "function":
 		if kind != "function_call" {
-			return nil, fmt.Errorf("Basispoints returned client function tool %q as a %q; no tool was executed", info.Name, kind)
+			return nil, fmt.Errorf("basispoints returned client function tool %q as a %q; no tool was executed", info.Name, kind)
 		}
 		envelope = object{"name": info.Name, "arguments": native["arguments"]}
 	case "custom":
 		if kind != "custom_tool_call" {
-			return nil, fmt.Errorf("Basispoints returned client custom tool %q as a %q; no tool was executed", info.Name, kind)
+			return nil, fmt.Errorf("basispoints returned client custom tool %q as a %q; no tool was executed", info.Name, kind)
 		}
 		input, ok := native["input"].(string)
 		if !ok {
-			return nil, fmt.Errorf("Basispoints direct custom tool input must be a string")
+			return nil, fmt.Errorf("basispoints direct custom tool input must be a string")
 		}
 		envelope = object{"name": info.Name, "input": input}
 	default:
-		return nil, fmt.Errorf("Basispoints returned an unsupported native tool; no tool was executed")
+		return nil, fmt.Errorf("basispoints returned an unsupported native tool; no tool was executed")
 	}
 	result, err := b.finishClientToolCall(native, info, envelope, false)
 	if err != nil {
@@ -471,11 +477,11 @@ func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 // how the call replays upstream.
 func (b *Bridge) finishClientToolCall(native object, info tool, envelope object, marked bool) (object, error) {
 	if marked && info.Kind != "custom" {
-		return nil, fmt.Errorf("Basispoints raw transport requires a declared custom tool")
+		return nil, fmt.Errorf("basispoints raw transport requires a declared custom tool")
 	}
 	id := text(native["call_id"])
 	if id == "" {
-		return nil, fmt.Errorf("Basispoints tool call is missing call_id")
+		return nil, fmt.Errorf("basispoints tool call is missing call_id")
 	}
 	itemID := text(native["id"])
 	if itemID == "" {
@@ -489,16 +495,16 @@ func (b *Bridge) finishClientToolCall(native object, info tool, envelope object,
 		value, hasInput := envelope["input"]
 		if alias, hasAlias := envelope["args"]; hasAlias {
 			if hasInput {
-				return nil, fmt.Errorf("Basispoints custom tool envelope contains conflicting input fields")
+				return nil, fmt.Errorf("basispoints custom tool envelope contains conflicting input fields")
 			}
 			value = alias
 		}
 		if _, exists := envelope["arguments"]; exists {
-			return nil, fmt.Errorf("Basispoints custom tools require input text, not arguments")
+			return nil, fmt.Errorf("basispoints custom tools require input text, not arguments")
 		}
 		input, ok := value.(string)
 		if !ok {
-			return nil, fmt.Errorf("Basispoints custom tool input must be a string")
+			return nil, fmt.Errorf("basispoints custom tool input must be a string")
 		}
 		result["type"] = "custom_tool_call"
 		result["id"] = "ctc_" + fingerprint(id)
@@ -510,11 +516,11 @@ func (b *Bridge) finishClientToolCall(native object, info tool, envelope object,
 		}
 		if raw, ok := args.(string); ok {
 			if decode([]byte(raw), &args) != nil {
-				return nil, fmt.Errorf("Basispoints function arguments are invalid JSON")
+				return nil, fmt.Errorf("basispoints function arguments are invalid JSON")
 			}
 		}
 		if _, ok := args.(object); !ok {
-			return nil, fmt.Errorf("Basispoints function arguments must be an object")
+			return nil, fmt.Errorf("basispoints function arguments must be an object")
 		}
 		encoded, _ := json.Marshal(args)
 		result["arguments"] = string(encoded)

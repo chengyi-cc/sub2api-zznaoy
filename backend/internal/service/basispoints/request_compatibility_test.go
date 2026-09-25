@@ -32,9 +32,9 @@ func TestTurnWithoutUserRemainsStableAcrossToolResults(t *testing.T) {
 	source := testSource()
 	source["input"] = []any{message("developer", "synthetic task")}
 	first, _ := mustPrepare(t, source, "scope", nil)
-	source["input"] = append(source["input"].([]any), object{"type": "function_call", "call_id": "call_old", "name": "get_weather", "arguments": `{"city":"Tokyo"}`}, object{"type": "function_call_output", "call_id": "call_old", "output": "18 C"})
+	source["input"] = append(mustTestValue[[]any](t, source["input"]), object{"type": "function_call", "call_id": "call_old", "name": "get_weather", "arguments": `{"city":"Tokyo"}`}, object{"type": "function_call_output", "call_id": "call_old", "output": "18 C"})
 	next, _ := mustPrepare(t, source, "scope", nil)
-	a, b := first["metadata"].(object), next["metadata"].(object)
+	a, b := mustTestValue[object](t, first["metadata"]), mustTestValue[object](t, next["metadata"])
 	if !reflect.DeepEqual(a["turn_id"], b["turn_id"]) || b["agent_iteration"] != "2" {
 		t.Fatalf("unstable continuation metadata: %v / %v", a, b)
 	}

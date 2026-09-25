@@ -12,7 +12,7 @@ import (
 // a plan, changes its result, or treats a same-named arbitrary tool as compatible.
 func (b *Bridge) translateNativePlan(native object) (object, error) {
 	if text(native["type"]) != "function_call" || (text(native["name"]) != "update_plan" && text(native["name"]) != "functions.update_plan") {
-		return nil, fmt.Errorf("Basispoints native plan adapter requires an update_plan function call")
+		return nil, fmt.Errorf("basispoints native plan adapter requires an update_plan function call")
 	}
 	var selected tool
 	matches := 0
@@ -23,52 +23,52 @@ func (b *Bridge) translateNativePlan(native object) (object, error) {
 		}
 	}
 	if matches != 1 || selected.Kind != "function" {
-		return nil, fmt.Errorf("Basispoints native update_plan requires one unambiguous client function declaration")
+		return nil, fmt.Errorf("basispoints native update_plan requires one unambiguous client function declaration")
 	}
 	properties, _ := selected.Parameters["properties"].(object)
 	if text(selected.Parameters["type"]) != "object" || properties["plan"] == nil {
-		return nil, fmt.Errorf("Basispoints native update_plan requires an explicit client plan argument schema")
+		return nil, fmt.Errorf("basispoints native update_plan requires an explicit client plan argument schema")
 	}
 	arguments, ok := native["arguments"].(object)
 	if !ok {
 		if err := decode([]byte(text(native["arguments"])), &arguments); err != nil {
-			return nil, fmt.Errorf("Basispoints native update_plan arguments must be one JSON object")
+			return nil, fmt.Errorf("basispoints native update_plan arguments must be one JSON object")
 		}
 	}
 	steps, ok := arguments["plan"].([]any)
 	if !ok {
-		return nil, fmt.Errorf("Basispoints native update_plan requires a plan array")
+		return nil, fmt.Errorf("basispoints native update_plan requires a plan array")
 	}
 	plan := make([]any, 0, len(steps))
 	for _, value := range steps {
 		step, ok := value.(object)
 		if !ok {
-			return nil, fmt.Errorf("Basispoints native update_plan entries must be objects")
+			return nil, fmt.Errorf("basispoints native update_plan entries must be objects")
 		}
 		description, present, err := planTextAlias(step, "step", "description", "title")
 		if err != nil || !present || strings.TrimSpace(description) == "" {
-			return nil, fmt.Errorf("Basispoints native update_plan has an ambiguous or missing step description")
+			return nil, fmt.Errorf("basispoints native update_plan has an ambiguous or missing step description")
 		}
 		status := normalizeNativePlanStatus(text(step["status"]))
 		if status == "" {
-			return nil, fmt.Errorf("Basispoints native update_plan has an unsupported step status")
+			return nil, fmt.Errorf("basispoints native update_plan has an unsupported step status")
 		}
 		plan = append(plan, object{"step": description, "status": status})
 	}
 	translated := object{"plan": plan}
 	explanation, present, err := planTextAlias(arguments, "explanation", "summary")
 	if err != nil {
-		return nil, fmt.Errorf("Basispoints native update_plan has an ambiguous explanation")
+		return nil, fmt.Errorf("basispoints native update_plan has an ambiguous explanation")
 	}
 	if present {
 		translated["explanation"] = explanation
 	}
 	if !planSchemaAccepts(translated, selected.Parameters, 0) {
-		return nil, fmt.Errorf("Basispoints native update_plan does not satisfy the declared client argument schema")
+		return nil, fmt.Errorf("basispoints native update_plan does not satisfy the declared client argument schema")
 	}
 	callID := text(native["call_id"])
 	if callID == "" || strings.TrimSpace(callID) != callID {
-		return nil, fmt.Errorf("Basispoints native update_plan is missing a valid call_id")
+		return nil, fmt.Errorf("basispoints native update_plan is missing a valid call_id")
 	}
 	itemID := text(native["id"])
 	if itemID == "" {

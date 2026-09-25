@@ -29,7 +29,8 @@ func (b *streamBody) Close() error {
 	return errors.Join(readerErr, b.closeUpstream())
 }
 
-// Stream keeps text incremental while withholding native tool events until validated.
+// Stream keeps ordinary text incremental while withholding native tool events
+// and structured final answers until validated.
 // Closing the downstream body interrupts an upstream read or a blocked pipe write.
 func (b *Bridge) Stream(upstream io.ReadCloser) io.ReadCloser {
 	reader, writer := io.Pipe()
@@ -96,10 +97,18 @@ func (b *Bridge) transform(reader io.Reader, writer io.Writer) error {
 		if kind == "" {
 			kind = event
 		}
+		if b.structured != nil && kind == "response.completed" {
+			if response, ok := payload["response"].(object); !ok || response == nil {
+				return fmt.Errorf("basispoints structured output is missing its terminal response")
+			}
+		}
 		if isToolEvent(kind) {
 			return nil
 		}
 		item, _ := payload["item"].(object)
+		if b.structured != nil && isStructuredMessageEvent(kind, item) {
+			return nil
+		}
 		if kind == "response.output_item.added" && isTool(item) {
 			return nil
 		}
@@ -107,13 +116,26 @@ func (b *Bridge) transform(reader io.Reader, writer io.Writer) error {
 			// Only the terminal response contains the authoritative native item.
 			// Text keeps streaming; tool calls wait until the whole response validates.
 			if len(pendingTools) >= 1024 {
-				return fmt.Errorf("Basispoints response contains too many tool items")
+				return fmt.Errorf("basispoints response contains too many tool items")
 			}
 			pendingTools[text(item["call_id"])+"\x00"+text(item["id"])] = true
 			return nil
 		}
 		if response, ok := payload["response"].(object); ok {
+			if b.structured != nil {
+				config, _ := response["text"].(object)
+				if config == nil {
+					config = make(object)
+				}
+				config["format"] = b.structured.format
+				response["text"] = config
+			}
 			if kind == "response.completed" {
+				if b.structured != nil {
+					if err := b.structured.validate(response); err != nil {
+						return err
+					}
+				}
 				output, _ := response["output"].([]any)
 				for _, raw := range output {
 					item, _ := raw.(object)
@@ -122,7 +144,7 @@ func (b *Bridge) transform(reader io.Reader, writer io.Writer) error {
 					}
 				}
 				if len(pendingTools) != 0 {
-					return fmt.Errorf("Basispoints completed response omitted an original tool item")
+					return fmt.Errorf("basispoints completed response omitted an original tool item")
 				}
 				if err := b.translateResponse(response); err != nil {
 					return err
@@ -134,6 +156,10 @@ func (b *Bridge) transform(reader io.Reader, writer io.Writer) error {
 						if err := emitTool(item, i); err != nil {
 							return err
 						}
+					} else if b.structured != nil && text(item["type"]) == "message" {
+						if err := emitStructuredMessage(item, i, emit); err != nil {
+							return err
+						}
 					}
 				}
 			} else {
@@ -142,7 +168,7 @@ func (b *Bridge) transform(reader io.Reader, writer io.Writer) error {
 				filtered := make([]any, 0, len(output))
 				for _, raw := range output {
 					item, _ := raw.(object)
-					if !isTool(item) {
+					if !isTool(item) && (b.structured == nil || text(item["type"]) != "message") {
 						filtered = append(filtered, raw)
 					}
 				}
@@ -205,16 +231,16 @@ func readEvents(reader io.Reader, consume func(string, []byte) error) error {
 		} else if strings.HasPrefix(line, "event:") {
 			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
 		} else if strings.HasPrefix(line, "data:") {
-			data.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
-			data.WriteByte('\n')
+			_, _ = data.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+			_ = data.WriteByte('\n')
 			if data.Len() > 16<<20 {
-				return protocolError{fmt.Errorf("Basispoints SSE event exceeds 16 MiB")}
+				return protocolError{fmt.Errorf("basispoints SSE event exceeds 16 MiB")}
 			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		if errors.Is(err, bufio.ErrTooLong) {
-			return protocolError{fmt.Errorf("Basispoints SSE line exceeds 16 MiB")}
+			return protocolError{fmt.Errorf("basispoints SSE line exceeds 16 MiB")}
 		}
 		return err
 	}
