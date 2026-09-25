@@ -83,6 +83,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if account == nil {
 		return errors.New("account is nil")
 	}
+	hooks = withExcelBPSModelGuard(account, hooks)
+	account = account.forOpenAIModel(gjson.GetBytes(firstClientMessage, "model").String())
 	// A handler may reuse the same gin context across account failover attempts.
 	// Never let an OAuth attempt's response aliases leak into the next account.
 	setCodexToolNameReverse(c, nil)

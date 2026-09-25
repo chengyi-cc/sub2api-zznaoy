@@ -404,6 +404,7 @@ describe('EditAccountModal', () => {
     expect(saved.extra).toMatchObject({ openai_excel_bps: true, unrelated: 'preserve', openai_passthrough: true, openai_oauth_responses_websockets_v2_mode: 'ctx_pool' })
     expect(saved.credentials).toMatchObject(account.credentials)
     expect(saved.extra.openai_excel_bps_cache_creation_as_input).toBe(true)
+    expect(saved.extra.openai_excel_bps_models).toEqual(['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra'])
     expect(saved.status).toBe('error')
     expect(saved.schedulable).not.toBe(true)
     wrapper.unmount()
@@ -414,6 +415,7 @@ describe('EditAccountModal', () => {
     await reopened.get('form#edit-account-form').trigger('submit.prevent'); await flushPromises()
     saved = updateAccountMock.mock.lastCall?.[1]
     expect(saved.extra).not.toHaveProperty('openai_excel_bps')
+    expect(saved.extra).not.toHaveProperty('openai_excel_bps_models')
     expect(saved.extra).not.toHaveProperty('openai_excel_bps_cache_creation_as_input')
     expect(saved.extra).toMatchObject({ unrelated: 'preserve', openai_passthrough: true, openai_oauth_responses_websockets_v2_mode: 'ctx_pool' })
     reopened.unmount()
@@ -430,6 +432,25 @@ describe('EditAccountModal', () => {
     const wrapper = mountModal({ ...buildAccount(), ...overrides })
     expect(wrapper.find('[data-testid="excel-bps-toggle"]').exists()).toBe(false)
     wrapper.unmount()
+  })
+
+  it.each([['gpt-6-sol'], []] as string[][])('saves and restores an explicit Excel model selection %j', async (...models) => {
+    const account = { ...buildAccount(), type: 'oauth' as const, extra: { openai_excel_bps: true } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const selector = wrapper.get('[data-testid="excel-bps-models"]').findComponent({ name: 'ModelWhitelistSelector' })
+    expect(selector.props('modelValue')).toEqual(['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra'])
+    selector.vm.$emit('update:modelValue', models)
+    await flushPromises()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const saved = updateAccountMock.mock.lastCall?.[1]
+    expect(saved.extra.openai_excel_bps_models).toEqual(models)
+    wrapper.unmount()
+    const reopened = mountModal({ ...account, extra: saved.extra })
+    expect(reopened.get('[data-testid="excel-bps-models"]').findComponent({ name: 'ModelWhitelistSelector' }).props('modelValue')).toEqual(models)
+    reopened.unmount()
   })
 
   it('sets expiry presets from now instead of extending the saved expiry', async () => {

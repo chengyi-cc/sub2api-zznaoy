@@ -810,6 +810,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	// account model mapping. Native remote compaction v2 rides the ordinary
 	// /responses wire and does NOT apply the legacy compact-only mapping
 	// (post-#5641 semantics: compact_model_mapping is /responses/compact-only).
+	account = account.forOpenAIModel(testModelID)
 	testModelID = account.GetMappedModel(testModelID)
 	if account.IsExcelBPSEnabled() {
 		return s.testExcelBPSConnection(c, account, testModelID, prompt, mode)

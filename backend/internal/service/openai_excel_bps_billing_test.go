@@ -69,6 +69,7 @@ func TestExcelBPSCacheCreationAsInputBilling(t *testing.T) {
 		{"disabled", true, false, 1000, 200, 100, 50, 700, 200},
 		{"enabled", true, true, 1000, 200, 100, 50, 900, 0},
 		{"BPS disabled", false, true, 1000, 200, 100, 50, 700, 200},
+		{"unselected native model", true, true, 1000, 200, 100, 50, 700, 200},
 		{"no cache creation", true, true, 1000, 0, 100, 50, 900, 0},
 		{"all input cached", true, true, 1000, 800, 200, 50, 800, 0},
 		{"empty usage", true, true, 0, 0, 0, 0, 0, 0},
@@ -92,6 +93,9 @@ func TestExcelBPSCacheCreationAsInputBilling(t *testing.T) {
 					}
 					original := OpenAIUsage{InputTokens: tt.input, CacheCreationInputTokens: tt.creation, CacheReadInputTokens: tt.read, OutputTokens: tt.output}
 					result := &OpenAIForwardResult{RequestID: "resp_bps_billing", Usage: original, Model: "gpt-6-astra", Stream: stream, Duration: time.Second}
+					if tt.bps && tt.name != "unselected native model" {
+						result.UpstreamEndpoint = "/basispoints/api/responses"
+					}
 					input := &OpenAIRecordUsageInput{
 						Result: result, APIKey: &APIKey{ID: 1001}, User: &User{ID: 2001},
 						Account: &Account{ID: 3001, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra},

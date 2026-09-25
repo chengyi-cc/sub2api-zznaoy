@@ -32,6 +32,11 @@
             <span :class="['pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow transition', excelBPSEnabled ? 'translate-x-6' : 'translate-x-0']" />
           </button>
         </div>
+        <div v-if="excelBPSEnabled" data-testid="excel-bps-models" class="mt-4 border-t border-primary-200/70 pt-4 dark:border-primary-800">
+          <label class="input-label">{{ t('admin.accounts.openai.excelBPSModels') }}</label>
+          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSModelsDesc') }}</p>
+          <ModelWhitelistSelector v-model="excelBPSModels" platform="openai" />
+        </div>
         <label v-if="excelBPSEnabled" class="mt-4 flex cursor-pointer items-start gap-3 border-t border-primary-200/70 pt-4 dark:border-primary-800">
           <input v-model="excelBPSCacheCreationAsInput" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" data-testid="excel-bps-cache-creation-as-input" />
           <span>
@@ -3726,7 +3731,9 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+const defaultExcelBPSModels = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra']
 const excelBPSEnabled = ref(false)
+const excelBPSModels = ref<string[]>([...defaultExcelBPSModels])
 const excelBPSCacheCreationAsInput = ref(false)
 const supportsExcelBPS = computed(() => {
   const account = props.account
@@ -4253,6 +4260,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
   excelBPSEnabled.value = supportsExcelBPS.value && extra?.openai_excel_bps === true
+  const savedExcelModels = extra?.openai_excel_bps_models
+  excelBPSModels.value = savedExcelModels === undefined
+    ? [...defaultExcelBPSModels]
+    : Array.isArray(savedExcelModels)
+      ? [...new Set(savedExcelModels.filter((model): model is string => typeof model === 'string').map(model => model.trim()).filter(Boolean))]
+      : []
   excelBPSCacheCreationAsInput.value = excelBPSEnabled.value && extra?.openai_excel_bps_cache_creation_as_input === true
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
@@ -5753,8 +5766,10 @@ const handleSubmit = async () => {
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
       if (supportsExcelBPS.value && excelBPSEnabled.value) {
         newExtra.openai_excel_bps = true
+        newExtra.openai_excel_bps_models = [...new Set(excelBPSModels.value.map(model => model.trim()).filter(Boolean))]
       } else {
         delete newExtra.openai_excel_bps
+        delete newExtra.openai_excel_bps_models
       }
       if (supportsExcelBPS.value && excelBPSEnabled.value && excelBPSCacheCreationAsInput.value) {
         newExtra.openai_excel_bps_cache_creation_as_input = true

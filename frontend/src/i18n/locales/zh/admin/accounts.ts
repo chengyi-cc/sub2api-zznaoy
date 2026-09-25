@@ -797,8 +797,10 @@ export default {
         excelBPS: 'Excel / BPS 协议',
         excelBPSCacheCreationAsInput: '创建缓存按普通输入计费',
         excelBPSCacheCreationAsInputDesc: '默认关闭。勾选后，缓存创建用量按普通输入价格计费，缓存读取不变；仅调整本系统计费，不影响上游缓存。',
-        excelBPSDesc: '使用此账号的 ChatGPT 登录授权，经 Excel 的 BPS 接口转发请求。默认关闭，关闭后恢复原有请求路径。',
-        excelBPSNotice: '保存后请新建 Codex 会话。支持图片链接和直接上传图片；上传图片通过当前账号发送到 OpenAI 附件接口，同图复用文件编号，无需图床或本站公网取图。图片由 OpenAI 保存，不保证 5 分钟后删除；上传失败会明确报错。使用 HTTP 流式连接，不使用 WebSocket（双向长连接）及自动透传。max / ultra（推理强度）按 xhigh 发送，模型可用性以上游为准。',
+        excelBPSModels: '使用 Excel 通道的模型',
+        excelBPSModelsDesc: '默认勾选已实测通过的 gpt-6-astra、gpt-5.6-sol、gpt-5.6-terra。可搜索、勾选其他模型；未勾选或全部清空时走原流程。按账号映射后的实际模型名称精确匹配，勾选模型报错时不会自动换通道。',
+        excelBPSDesc: '使用此账号的 ChatGPT 登录授权，仅将勾选模型经 Excel 的 BPS 接口转发；未勾选模型保留原来的请求路径。',
+        excelBPSNotice: '保存后请新建 Codex 会话。支持图片链接和直接上传图片；上传图片通过当前账号发送到 OpenAI 附件接口，同图复用文件编号，无需图床或本站公网取图。图片由 OpenAI 保存，不保证 5 分钟后删除；上传失败会明确报错。勾选模型使用 HTTP 流式连接，不使用 WebSocket（双向长连接）及自动透传；未勾选模型保留原连接设置。max / ultra（推理强度）按 xhigh 发送，模型可用性以上游为准。',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',

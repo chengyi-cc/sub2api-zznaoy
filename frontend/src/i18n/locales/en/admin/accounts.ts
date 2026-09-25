@@ -679,8 +679,10 @@ export default {
         excelBPS: 'Excel / BPS protocol',
         excelBPSCacheCreationAsInput: 'Bill cache creation as ordinary input',
         excelBPSCacheCreationAsInputDesc: 'Off by default. Bill cache creation at the input price while keeping cache reads unchanged. Only affects local billing, not upstream caching.',
-        excelBPSDesc: 'Forward requests through the Excel BPS endpoint using this account’s ChatGPT OAuth credentials. Off by default; disabling restores the original route.',
-        excelBPSNotice: 'Start a new Codex session after saving. Supports image URLs and inline uploads. Images are uploaded to OpenAI with this account and reuse file IDs; no image host or public fetch endpoint is needed. OpenAI retains the files; deletion after 5 minutes is not guaranteed. Upload failures return an error. Uses HTTP/SSE instead of WebSocket or passthrough. max / ultra effort is sent as xhigh; model access depends on the upstream account.',
+        excelBPSModels: 'Models using Excel',
+        excelBPSModelsDesc: 'Defaults to the tested gpt-6-astra, gpt-5.6-sol and gpt-5.6-terra. Search or select other models as needed. Unselected models (or an empty selection) use the original route. Matches the exact model name after account mapping. Selected-model errors do not trigger a route fallback.',
+        excelBPSDesc: 'Use this account?s ChatGPT OAuth credentials to forward only selected models through Excel BPS. Unselected models retain the original request route.',
+        excelBPSNotice: 'Start a new Codex session after saving. Supports image URLs and inline uploads. Images are uploaded to OpenAI with this account and reuse file IDs; no image host or public fetch endpoint is needed. OpenAI retains the files; deletion after 5 minutes is not guaranteed. Upload failures return an error. Selected models use HTTP/SSE instead of WebSocket or passthrough; other models keep their saved transport settings. max / ultra effort is sent as xhigh; model access depends on the upstream account.',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',

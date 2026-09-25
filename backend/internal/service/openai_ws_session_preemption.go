@@ -12,6 +12,7 @@ import (
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 )
 
 var errOpenAIWSSessionPreempted = errors.New("openai ws session preempted by newer request")
@@ -80,6 +81,7 @@ func (s *OpenAIGatewayService) BeginOpenAIWSIngressSessionPreemptionWithClient(
 	firstClientMessage []byte,
 	clientConn openAIWSPreemptClientCloser,
 ) (context.Context, func(), bool) {
+	account = account.forOpenAIModel(gjson.GetBytes(firstClientMessage, "model").String())
 	if ctx == nil {
 		ctx = context.Background()
 	}

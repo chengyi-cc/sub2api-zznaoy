@@ -800,6 +800,7 @@ func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
 // would be sent for a given request, honoring the legacy compact-only mapping
 // when the caller is on the /responses/compact path.
 func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool) string {
+	account = account.forOpenAIModel(requestedModel)
 	if account.IsExcelBPSEnabled() {
 		return account.GetMappedModel(requestedModel)
 	}
