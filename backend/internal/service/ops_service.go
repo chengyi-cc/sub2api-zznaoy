@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/errorarchive"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -43,9 +44,10 @@ type OpsRuntimeSettingsRefreshHealth struct {
 
 // OpsService provides ingestion and query APIs for the Ops monitoring module.
 type OpsService struct {
-	opsRepo     OpsRepository
-	settingRepo SettingRepository
-	cfg         *config.Config
+	errorArchive *errorarchive.Store
+	opsRepo      OpsRepository
+	settingRepo  SettingRepository
+	cfg          *config.Config
 
 	accountRepo AccountRepository
 	userRepo    UserRepository
@@ -140,6 +142,7 @@ func NewOpsService(
 	}
 	svc.initRuntimeSettings(context.Background())
 	svc.applyRuntimeLogConfigOnStartup(context.Background())
+	svc.initErrorArchive()
 	return svc
 }
 
@@ -335,6 +338,9 @@ func (s *OpsService) logRuntimeSettingsRefreshFailure(err error) {
 func (s *OpsService) StopRuntimeSettingsRefresh() {
 	if s == nil {
 		return
+	}
+	if s.errorArchive != nil {
+		s.errorArchive.Close()
 	}
 	s.runtimeRefreshMu.Lock()
 	cancel := s.runtimeRefreshCancel

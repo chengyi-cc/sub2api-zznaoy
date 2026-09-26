@@ -355,6 +355,12 @@ export default {
         message: 'Message',
         rootCause: 'Root Cause',
         diagnosticPayloads: 'Diagnostic Payloads',
+        archiveNotice: 'Contains user conversation and tool content, for administrator diagnostics only. Requests are never replayed automatically.',
+        archiveExpires: 'Capture retained until:',
+        archiveTruncated: 'Request exceeds the capture limit and is truncated; it cannot be fully replayed.',
+        archiveReadError: 'Request read failure',
+        archiveDownload: 'Download diagnostic capture',
+        archiveUnavailable: 'Capture is pending, expired, over capacity, or on another server.',
         payloads: {
           client: 'Client Response',
           upstream_message: 'Upstream Message',

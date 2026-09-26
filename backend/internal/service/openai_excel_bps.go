@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/errorarchive"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
@@ -181,6 +182,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	var recoveredDigests []string
 	if resp.StatusCode == http.StatusBadRequest {
 		rejection, readErr := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+		errorarchive.AddDiagnostic(ctx, "upstream_rejection", upstreamBody, rejection)
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(rejection))
 		if readErr == nil && ctx.Err() == nil {
@@ -203,6 +205,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+		errorarchive.AddDiagnostic(ctx, "upstream_http_error", upstreamBody, raw)
 		s.excelBPSImages.invalidateRejected(imageScope, upstreamBody, raw)
 		if resp.StatusCode == http.StatusTooManyRequests && s.rateLimitService != nil {
 			stateCtx, cancel := openAIAccountStateContext(ctx)
@@ -261,7 +264,52 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		return fail(resp.StatusCode, "basispoints_upstream_error", message)
 	}
 	s.UpdateCodexUsageSnapshotFromHeaders(ctx, account.ID, resp.Header)
-	converted := bridge.Stream(resp.Body)
+	repairBody := upstreamBody
+	if errorarchive.HasTrace(ctx) {
+		bridge.ObserveToolFailure(func(failed map[string]any, validation error) {
+			raw, _ := json.Marshal(map[string]any{"response": failed, "validation_error": validation.Error()})
+			errorarchive.AddDiagnostic(ctx, "tool_validation", repairBody, raw)
+		})
+	}
+	converted := bridge.StreamWithToolRepair(requestCtx, resp.Body, func(repairCtx context.Context, failed map[string]any, validation error) (map[string]any, error) {
+		correctedBody, buildErr := basispoints.BuildToolRepairRequest(repairBody, failed, validation)
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		// Limit the total time spent on an individual corrective continuation.
+		repairCtx, cancel := context.WithTimeout(repairCtx, 45*time.Second)
+		defer cancel()
+		repairReq, buildErr := newExcelBPSRequest(repairCtx, correctedBody, token, accountID)
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		repairResp, callErr := s.httpUpstream.Do(repairReq, proxyURL, account.ID, account.Concurrency)
+		if callErr != nil {
+			if repairCtx.Err() != nil {
+				return nil, repairCtx.Err()
+			}
+			return nil, fmt.Errorf("excel BPS correction connection failed")
+		}
+		defer func() { _ = repairResp.Body.Close() }()
+		stop := context.AfterFunc(repairCtx, func() { _ = repairResp.Body.Close() })
+		defer stop()
+		if repairResp.StatusCode < 200 || repairResp.StatusCode >= 300 {
+			raw, _ := io.ReadAll(io.LimitReader(repairResp.Body, 512<<10))
+			errorarchive.AddDiagnostic(ctx, "tool_correction_http_error", correctedBody, raw)
+			if repairResp.StatusCode == http.StatusTooManyRequests && s.rateLimitService != nil {
+				stateCtx, stateCancel := openAIAccountStateContext(repairCtx)
+				s.rateLimitService.handle429Cooldown(stateCtx, account, repairResp.Header, raw)
+				stateCancel()
+			}
+			if repairResp.StatusCode == http.StatusForbidden {
+				s.disableExcelBPSOn403(repairCtx, account)
+			}
+			return nil, fmt.Errorf("excel BPS correction returned HTTP %d", repairResp.StatusCode)
+		}
+		s.UpdateCodexUsageSnapshotFromHeaders(repairCtx, account.ID, repairResp.Header)
+		repairBody = correctedBody
+		return basispoints.ReadToolRepairResponse(repairResp.Body)
+	})
 	defer func() { _ = converted.Close() }()
 	requestedEffort := coalesceRequestedReasoningEffort(RequestedReasoningEffortFromContext(ctx), &bridge.RequestedEffort)
 	result := &OpenAIForwardResult{Model: originalModel, UpstreamModel: model, UpstreamEndpoint: "/basispoints/api/responses", Stream: stream, ReasoningEffort: &bridge.Effort, RequestedReasoningEffort: requestedEffort, RequestID: resp.Header.Get("x-request-id")}

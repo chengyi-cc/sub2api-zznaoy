@@ -606,6 +606,10 @@ func (b *Bridge) translateResponse(response object) error {
 	if response == nil {
 		return nil
 	}
+	// Dry-run the entire batch before committing any replay entries.
+	if err := b.validateToolResponse(response); err != nil {
+		return err
+	}
 	output, _ := response["output"].([]any)
 	callIDs, itemIDs := map[string]bool{}, map[string]bool{}
 	count := 0

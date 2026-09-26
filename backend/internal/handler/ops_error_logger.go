@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/errorarchive"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -1076,6 +1077,13 @@ func (state *opsCaptureWriterState) shouldCapture() bool {
 // - Streaming errors after the response has started (SSE) may still need explicit logging.
 func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		archive := beginOpsErrorArchive(c, ops)
+		if c.Request != nil {
+			if capture, ok := c.Request.Body.(*errorarchive.Capture); ok {
+				// Also release the bounded capture slot when a downstream handler panics.
+				defer capture.Release()
+			}
+		}
 		originalWriter := c.Writer
 		w := acquireOpsCaptureWriter(originalWriter)
 		w.setContext(c)
@@ -1090,6 +1098,12 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		c.Writer = w
 		c.Next()
 		w.finalizeCapture()
+		var archiveRef errorarchive.Ref
+		if archive != nil {
+			_, failed := w.capturedTerminalError()
+			archiveRef = archive(c.Writer.Status(), w.capturedBytes(), failed || len(service.GetOpsStreamErrors(c)) > 0)
+			c.Set(opsErrorArchiveRefKey, archiveRef)
+		}
 
 		if _, rejected := middleware2.GetIngressRejectReason(c); rejected {
 			return
@@ -1232,7 +1246,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 			ErrorMessage: parsed.Message,
 			// Sanitize each SSE data payload before the body enters the async queue.
-			ErrorBody:   sanitizeOpsSSEDataForPersistence(body),
+			ErrorBody:   withOpsArchiveRef(sanitizeOpsSSEDataForPersistence(body), archiveRef),
 			ErrorSource: errorSource,
 			ErrorOwner:  errorOwner,
 
@@ -1283,6 +1297,8 @@ func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatu
 	}
 
 	entry := &service.OpsInsertErrorLogInput{StatusCode: finalStatus}
+	archiveRef, _ := c.Get(opsErrorArchiveRefKey)
+	ref, _ := archiveRef.(errorarchive.Ref)
 	applyOpsUpstreamFieldsFromContext(c, entry)
 	if len(entry.UpstreamErrors) > 0 {
 		visibleEvents := make([]*service.OpsUpstreamErrorEvent, 0, len(entry.UpstreamErrors))
@@ -1297,7 +1313,7 @@ func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatu
 		applyOpsUpstreamErrorEvents(entry, visibleEvents)
 	}
 	if entry.UpstreamStatusCode == nil && entry.UpstreamErrorMessage == nil &&
-		entry.UpstreamErrorDetail == nil && len(entry.UpstreamErrors) == 0 {
+		entry.UpstreamErrorDetail == nil && len(entry.UpstreamErrors) == 0 && ref.ID == "" {
 		return
 	}
 
@@ -1332,6 +1348,10 @@ func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatu
 	entry.IsCountTokens = isCountTokensRequest(c)
 	entry.CreatedAt = time.Now()
 	entry.ErrorMessage = "Recovered upstream error"
+	entry.ErrorBody = withOpsArchiveRef("", ref)
+	if lastStatus == 0 && ref.ID != "" {
+		entry.ErrorMessage = "Recovered BPS request error"
+	}
 	if lastStage == string(service.GatewayFailureStageAccountAuth) {
 		entry.ErrorPhase = string(service.GatewayFailureStageAccountAuth)
 		entry.ErrorMessage = "Recovered account authentication failure"
@@ -1546,7 +1566,7 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 		IsCountTokens:     isCountTokensRequest(c),
 
 		ErrorMessage: streamErr.Message,
-		ErrorBody:    errorBody,
+		ErrorBody:    withOpsArchiveRef(errorBody, opsArchiveRefFromContext(c)),
 		ErrorSource:  errorSource,
 		ErrorOwner:   errorOwner,
 

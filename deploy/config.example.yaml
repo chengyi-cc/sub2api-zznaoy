@@ -902,6 +902,15 @@ redis:
 # 运维监控 (可选)
 # =============================================================================
 ops:
+  # Error-only captures, encrypted with a key derived from jwt.secret.
+  # Contains user conversation/tool content: administrator access only.
+  # Normal successes are discarded; recovered BPS failures may be captured.
+  error_archive:
+    enabled: true
+    directory: "" # DATA_DIR/error-archives, otherwise ./data/error-archives
+    retention_hours: 72
+    max_request_kb: 4096 # larger requests marked truncated, never silently replayed
+    max_disk_mb: 512 # evict oldest first if full
   # Enable ops monitoring features (background jobs and APIs)
   # 是否启用运维监控功能（后台任务和接口）
   # Set to false to hide ops menu in sidebar and disable all ops features

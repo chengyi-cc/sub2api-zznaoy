@@ -1,22 +1,25 @@
 import { flushPromises, shallowMount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import OpsErrorDetailModal from '../OpsErrorDetailModal.vue'
 
 const mocks = vi.hoisted(() => ({
   getRequestErrorDetail: vi.fn(),
-  listRequestErrorUpstreamErrors: vi.fn()
+  listRequestErrorUpstreamErrors: vi.fn(),
+  downloadErrorArchive: vi.fn(),
+  showError: vi.fn()
 }))
 
 vi.mock('@/api/admin/ops', () => ({
   opsAPI: {
     getRequestErrorDetail: mocks.getRequestErrorDetail,
     getUpstreamErrorDetail: vi.fn(),
-    listRequestErrorUpstreamErrors: mocks.listRequestErrorUpstreamErrors
+    listRequestErrorUpstreamErrors: mocks.listRequestErrorUpstreamErrors,
+    downloadErrorArchive: mocks.downloadErrorArchive
   }
 }))
 
 vi.mock('@/stores', () => ({
-  useAppStore: () => ({ showError: vi.fn() })
+  useAppStore: () => ({ showError: mocks.showError })
 }))
 
 vi.mock('vue-i18n', async (importOriginal) => {
@@ -29,9 +32,53 @@ vi.mock('vue-i18n', async (importOriginal) => {
 
 describe('OpsErrorDetailModal', () => {
   beforeEach(() => {
+    mocks.downloadErrorArchive.mockReset()
+    mocks.showError.mockReset()
     mocks.getRequestErrorDetail.mockReset()
     mocks.listRequestErrorUpstreamErrors.mockReset()
     mocks.listRequestErrorUpstreamErrors.mockResolvedValue({ items: [] })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it('downloads an archived request only after the administrator clicks', async () => {
+    vi.useFakeTimers()
+    const id = 'a'.repeat(32)
+    mocks.getRequestErrorDetail.mockResolvedValue({ id: 2, error_body: JSON.stringify({ diagnostic_archive: { id, expires_at: '2026-09-29T00:00:00Z', request_truncated: true, read_error_kind: 'truncated_body' } }) })
+    mocks.downloadErrorArchive.mockResolvedValue(new Blob(['{}'], { type: 'application/json' }))
+    const createObjectURL = vi.fn().mockReturnValue('blob:diagnostic')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const wrapper = shallowMount(OpsErrorDetailModal, { props: { show: true, errorId: 2, errorType: 'request' }, global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } } })
+    await flushPromises()
+    expect(mocks.downloadErrorArchive).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('admin.ops.errorDetail.archiveTruncated')
+    expect(wrapper.text()).toContain('truncated_body')
+    await wrapper.get('[data-testid="download-error-archive"]').trigger('click')
+    await flushPromises()
+    expect(mocks.downloadErrorArchive).toHaveBeenCalledOnce()
+    expect(mocks.downloadErrorArchive).toHaveBeenCalledWith(id)
+    expect(click).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(1000)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:diagnostic')
+    wrapper.unmount()
+  })
+
+  it('reports expired captures without attempting to replay the request', async () => {
+    mocks.getRequestErrorDetail.mockResolvedValue({ id: 2, error_body: JSON.stringify({ diagnostic_archive: { id: 'b'.repeat(32) } }) })
+    mocks.downloadErrorArchive.mockRejectedValue({ status: 404 })
+    const wrapper = shallowMount(OpsErrorDetailModal, { props: { show: true, errorId: 2, errorType: 'request' }, global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } } })
+    await flushPromises()
+    await wrapper.get('[data-testid="download-error-archive"]').trigger('click')
+    await flushPromises()
+    expect(mocks.showError).toHaveBeenCalledWith('admin.ops.errorDetail.archiveUnavailable')
+    expect(mocks.downloadErrorArchive).toHaveBeenCalledOnce()
+    wrapper.unmount()
   })
 
   it('prioritizes upstream root cause and deduplicates diagnostic payloads', async () => {

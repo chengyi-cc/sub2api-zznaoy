@@ -132,6 +132,16 @@
 
       <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
         <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.diagnosticPayloads') }}</h3>
+        <div v-if="archiveRef" class="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+          <p>{{ t('admin.ops.errorDetail.archiveNotice') }}</p>
+          <p v-if="archiveRef.expires_at">{{ t('admin.ops.errorDetail.archiveExpires') }} {{ formatDateTime(archiveRef.expires_at) }}</p>
+          <p v-if="archiveRef.request_truncated">{{ t('admin.ops.errorDetail.archiveTruncated') }}</p>
+          <p v-if="archiveRef.read_error_kind">{{ t('admin.ops.errorDetail.archiveReadError') }}: {{ archiveRef.read_error_kind }}</p>
+          <button v-if="archiveRef.id" type="button" class="btn btn-secondary" data-testid="download-error-archive" :disabled="archiveDownloading" @click="downloadArchive">
+            {{ archiveDownloading ? t('common.loading') : t('admin.ops.errorDetail.archiveDownload') }}
+          </button>
+          <p v-else>{{ t('admin.ops.errorDetail.archiveUnavailable') }}</p>
+        </div>
         <div v-if="!diagnosticPayloadSections.length" class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ t('common.noData') }}</div>
         <div v-else class="mt-4 space-y-4">
           <div v-for="section in diagnosticPayloadSections" :key="section.key">
@@ -254,6 +264,38 @@ const appStore = useAppStore()
 
 const loading = ref(false)
 const detail = ref<OpsErrorDetail | null>(null)
+const archiveDownloading = ref(false)
+const archiveRef = computed(() => {
+  try {
+    const ref = JSON.parse(detail.value?.error_body || '{}').diagnostic_archive
+    if (!ref || typeof ref !== 'object') return null
+    return {
+      id: typeof ref.id === 'string' && /^[a-f0-9]{32}$/.test(ref.id) ? ref.id : '',
+      expires_at: typeof ref.expires_at === 'string' ? ref.expires_at : '',
+      request_truncated: ref.request_truncated === true,
+      read_error_kind: typeof ref.read_error_kind === 'string' ? ref.read_error_kind : ''
+    }
+  } catch { return null }
+})
+
+async function downloadArchive() {
+  const id = archiveRef.value?.id
+  if (!id || archiveDownloading.value) return
+  archiveDownloading.value = true
+  try {
+    const blob = await opsAPI.downloadErrorArchive(id)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'error-capture-' + id + '.json'
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch {
+    appStore.showError(t('admin.ops.errorDetail.archiveUnavailable'))
+  } finally {
+    archiveDownloading.value = false
+  }
+}
 
 const showUpstreamList = computed(() => props.errorType === 'request')
 

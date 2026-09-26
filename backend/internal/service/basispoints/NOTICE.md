@@ -128,3 +128,18 @@ Reference update review, 2026-09-26:
 - Did not import f35414792's additional model correction requests: those alter
   retry/latency/usage behavior and require a separate operation-preservation
   review. Existing strict validation still withholds invalid tool batches.
+
+Bounded correction update, 2026-09-26 (supersedes the preceding deferral):
+- Reviewed ranxi2001/sub2api production ca9a0c806004976c7324b0e786ba7240f528000d.
+  Adapted f354147925eee287f731d7542cc31618b8c831bb's tool-repair implementation
+  and tests, plus f405108e3's exact raw-payload restoration. No unrelated rate
+  limit, attachment, account, or deployment changes are imported.
+- At most two same-account model continuations, before any client dispatch,
+  each bounded to 45 seconds and canceled when the downstream closes. Normal
+  requests keep their original prepared body and perform no extra model call.
+- Added operation and metadata preservation checks, native-plan text fallback,
+  single-operation correction when the client forbids parallel tools, and
+  regression tests for withheld calls, stable output indexes and usage totals.
+- Short-lived encrypted diagnostic archives and administrator downloads are
+  local gateway integrations. They never automatically execute or replay a
+  captured customer request. Retention, capacity and capture size are bounded.

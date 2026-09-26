@@ -1148,6 +1148,11 @@ export async function getRequestErrorDetail(id: number): Promise<OpsErrorDetail>
   return data
 }
 
+export async function downloadErrorArchive(id: string): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>('/admin/ops/error-archives/' + encodeURIComponent(id), { responseType: 'blob' })
+  return data
+}
+
 export async function getUpstreamErrorDetail(id: number): Promise<OpsErrorDetail> {
   const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/upstream-errors/${id}`)
   return data
@@ -1311,6 +1316,7 @@ async function updateMetricThresholds(thresholds: OpsMetricThresholds): Promise<
 }
 
 export const opsAPI = {
+  downloadErrorArchive,
   getDashboardSnapshotV2,
   getDashboardOverview,
   getThroughputTrend,

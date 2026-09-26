@@ -1626,6 +1626,7 @@ func (r *RedisConfig) Address() string {
 }
 
 type OpsConfig struct {
+	ErrorArchive OpsErrorArchiveConfig `mapstructure:"error_archive"`
 	// Enabled controls whether ops features should run.
 	//
 	// NOTE: vNext still has a DB-backed feature flag (ops_monitoring_enabled) for runtime on/off.
@@ -1643,6 +1644,14 @@ type OpsConfig struct {
 
 	// Pre-aggregation configuration.
 	Aggregation OpsAggregationConfig `mapstructure:"aggregation"`
+}
+
+type OpsErrorArchiveConfig struct {
+	Enabled        bool   `mapstructure:"enabled"`
+	Directory      string `mapstructure:"directory"`
+	RetentionHours int    `mapstructure:"retention_hours"`
+	MaxRequestKB   int    `mapstructure:"max_request_kb"`
+	MaxDiskMB      int    `mapstructure:"max_disk_mb"`
 }
 
 type OpsCleanupConfig struct {
@@ -2285,6 +2294,11 @@ func setDefaults() {
 
 	// Ops (vNext)
 	viper.SetDefault("ops.enabled", true)
+	viper.SetDefault("ops.error_archive.enabled", true)
+	viper.SetDefault("ops.error_archive.directory", "")
+	viper.SetDefault("ops.error_archive.retention_hours", 72)
+	viper.SetDefault("ops.error_archive.max_request_kb", 4096)
+	viper.SetDefault("ops.error_archive.max_disk_mb", 512)
 	viper.SetDefault("ops.use_preaggregated_tables", true)
 	viper.SetDefault("ops.cleanup.enabled", true)
 	viper.SetDefault("ops.cleanup.schedule", "0 2 * * *")
@@ -3735,6 +3749,17 @@ func (c *Config) Validate() error {
 	}
 	if c.Ops.MetricsCollectorCache.TTL < 0 {
 		return fmt.Errorf("ops.metrics_collector_cache.ttl must be non-negative")
+	}
+	if a := c.Ops.ErrorArchive; a.Enabled {
+		if a.RetentionHours < 1 || a.RetentionHours > 720 {
+			return fmt.Errorf("ops.error_archive.retention_hours must be between 1 and 720")
+		}
+		if a.MaxRequestKB < 1 || a.MaxRequestKB > 16384 {
+			return fmt.Errorf("ops.error_archive.max_request_kb must be between 1 and 16384")
+		}
+		if a.MaxDiskMB < 16 || a.MaxDiskMB > 10240 || int64(a.MaxDiskMB)*1024 < int64(a.MaxRequestKB)*4 {
+			return fmt.Errorf("ops.error_archive.max_disk_mb must be between 16 and 10240 and cover four captures")
+		}
 	}
 	if c.Ops.Cleanup.ErrorLogRetentionDays < 0 {
 		return fmt.Errorf("ops.cleanup.error_log_retention_days must be non-negative")

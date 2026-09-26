@@ -17,16 +17,21 @@ const ResponsesURL = "https://bps.openai.com/basispoints/api/responses"
 type object = map[string]any
 
 type Bridge struct {
-	RequestedEffort  string
-	Effort           string
-	Warnings         []string
-	tools            map[string]tool
-	unsupportedTools map[string]bool
-	structured       *structuredOutput
-	replay           *ReplayCache
-	scope            string
-	parallelTools    bool
+	RequestedEffort    string
+	Effort             string
+	Warnings           []string
+	tools              map[string]tool
+	unsupportedTools   map[string]bool
+	structured         *structuredOutput
+	replay             *ReplayCache
+	scope              string
+	parallelTools      bool
+	observeToolFailure func(map[string]any, error)
 }
+
+// ObserveToolFailure supplies diagnostic evidence before any invalid tool batch
+// is released. Callbacks must be bounded and must not dispatch tools.
+func (b *Bridge) ObserveToolFailure(fn func(map[string]any, error)) { b.observeToolFailure = fn }
 
 func decode(raw []byte, target any) error {
 	d := json.NewDecoder(bytes.NewReader(raw))

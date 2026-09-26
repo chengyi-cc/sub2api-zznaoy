@@ -355,6 +355,12 @@ export default {
         message: '消息',
         rootCause: '根因',
         diagnosticPayloads: '诊断载荷',
+        archiveNotice: '诊断样本包含用户会话和工具内容，仅供管理员排查；不会自动重放请求。',
+        archiveExpires: '样本保留至：',
+        archiveTruncated: '请求超过采集上限，样本已截断，不能直接完整重放。',
+        archiveReadError: '请求读取原因',
+        archiveDownload: '下载诊断样本',
+        archiveUnavailable: '样本尚未落盘、已过期、容量不足或不在当前服务器。',
         payloads: {
           client: '客户端响应',
           upstream_message: '上游消息',

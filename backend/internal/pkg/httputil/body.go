@@ -63,7 +63,14 @@ func (p *PrereadBody) Bytes() []byte {
 // client used to compress the body (zstd, gzip, deflate).
 // 已由 PrereadBody 回填的请求体直接返回其完整切片（零拷贝），不检查内部
 // reader 是否已被消费——见 PrereadBody 的文档说明。
-func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
+func ReadRequestBodyWithPrealloc(req *http.Request) (body []byte, readErr error) {
+	defer func() {
+		if req != nil && readErr != nil {
+			if observer, ok := req.Body.(interface{ OnBodyReadError(error) }); ok {
+				observer.OnBodyReadError(readErr)
+			}
+		}
+	}()
 	if req == nil || req.Body == nil {
 		return nil, nil
 	}
