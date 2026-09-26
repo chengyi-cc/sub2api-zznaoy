@@ -211,7 +211,7 @@ func (s *ExcelBPSImageService) upload(ctx context.Context, wire []byte, plan *ex
 	if err != nil {
 		return nil, fmt.Errorf("cannot attach Excel BPS image file IDs")
 	}
-	return updated, nil
+	return normalizeExcelBPSToolOutputImages(updated)
 }
 
 // Only explicit invalid-file rejections invalidate cache entries. Never replay

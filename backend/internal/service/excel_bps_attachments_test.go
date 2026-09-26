@@ -273,4 +273,21 @@ func TestExcelBPSAttachmentsToolOutputImages(t *testing.T) {
 	require.Equal(t, 1, up.models)
 	require.NotContains(t, string(up.modelBodies[0]), "inline-image.invalid")
 	require.Contains(t, string(up.modelBodies[0]), `"file_id":"file-test-1"`)
+	items := gjson.GetBytes(up.modelBodies[0], "input").Array()
+	result, attachment := items[len(items)-2], items[len(items)-1]
+	require.Equal(t, "function_call_output", result.Get("type").String())
+	require.Equal(t, "call_picture", result.Get("call_id").String())
+	require.Equal(t, "input_text", result.Get("output.0.type").String())
+	require.Equal(t, "user", attachment.Get("role").String())
+	require.Equal(t, "input_image", attachment.Get("content.1.type").String())
+	require.Equal(t, "file-test-1", attachment.Get("content.1.file_id").String())
+	require.Equal(t, "high", attachment.Get("content.1.detail").String())
+	require.False(t, attachment.Get("content.1.image_url").Exists())
+	for _, item := range items {
+		if item.Get("type").String() == "function_call_output" {
+			for _, part := range item.Get("output").Array() {
+				require.NotEqual(t, "input_image", part.Get("type").String(), "BPS rejects file_id images inside tool outputs with HTTP 422")
+			}
+		}
+	}
 }
