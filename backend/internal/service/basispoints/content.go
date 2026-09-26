@@ -36,7 +36,7 @@ func contentTypeDiagnostic(part object) string {
 	switch kind {
 	case "image", "image_url", "input_file", "file", "document",
 		"input_audio", "output_audio", "audio", "reasoning_text", "summary_text",
-		"tool_use", "tool_result", "thinking", "redacted_thinking":
+		"tool_use", "tool_result", "thinking", "redacted_thinking", "encrypted_content":
 		return kind
 	default:
 		return "unknown"

@@ -148,6 +148,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if accountID == "" {
 		return fail(400, "basispoints_account_id_missing", "Excel BPS requires chatgpt_account_id")
 	}
+	// Keep recovery state separate from ordinary Responses and isolate it by
+	// account identity, API key, thread and target model. No identity, no reuse.
+	encryptedScope := ""
+	if identity != "" {
+		encryptedScope = "excel-bps:" + scope + "/owner:" + openAIEncryptedContentDigest(accountID+"\x00"+model)
+		invalid := s.sessionInvalidEncryptedContentDigests(0, encryptedScope)
+		upstreamBody, _ = excelBPSDropRejectedReasoning(upstreamBody, invalid)
+	}
 	imageScope := excelBPSAttachmentScope{account.ID, getAPIKeyIDFromContext(c), accountID}
 	upstreamBody, err = s.excelBPSImages.upload(ctx, upstreamBody, imagePlan, imageScope, token, account, s.httpUpstream)
 	if err != nil {
@@ -169,6 +177,28 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
 	if err != nil {
 		return fail(502, "basispoints_transport_error", "Excel BPS connection failed; request was not replayed")
+	}
+	var recoveredDigests []string
+	if resp.StatusCode == http.StatusBadRequest {
+		rejection, readErr := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(rejection))
+		if readErr == nil && ctx.Err() == nil {
+			retryBody, digests := excelBPSRejectedReasoningRetry(upstreamBody, rejection)
+			if len(digests) != 0 {
+				retryReq, buildErr := newExcelBPSRequest(requestCtx, retryBody, token, accountID)
+				if buildErr == nil {
+					_ = resp.Body.Close()
+					logger.LegacyPrintf("service.openai_excel_bps", "retrying once after rejected optional reasoning: account_id=%d digests=%d", account.ID, len(digests))
+					upstreamBody, recoveredDigests = retryBody, digests
+					resp, err = s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
+					SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
+					if err != nil {
+						return fail(502, "basispoints_transport_error", "Excel BPS recovery connection failed; no further retry was attempted")
+					}
+				}
+			}
+		}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -194,6 +224,17 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 				upstreamMessage = truncateString(message, 2048)
 			}
 		}
+		if resp.StatusCode == http.StatusBadRequest && gjson.GetBytes(raw, "error.code").String() == "invalid_encrypted_content" {
+			if upstreamDetail == "" || !json.Valid([]byte(upstreamDetail)) {
+				upstreamDetail = `{"error":{"code":"invalid_encrypted_content"}}`
+			}
+			if detail, detailErr := sjson.SetRaw(upstreamDetail, "gateway_diagnostics.encrypted_categories", excelBPSEncryptedHistoryDiagnostic(upstreamBody)); detailErr == nil {
+				upstreamDetail = detail
+			}
+			if detail, detailErr := sjson.Set(upstreamDetail, "gateway_diagnostics.recovery_attempted", len(recoveredDigests) != 0); detailErr == nil {
+				upstreamDetail = detail
+			}
+		}
 		setOpsUpstreamError(c, resp.StatusCode, upstreamMessage, upstreamDetail)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
@@ -203,6 +244,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			Message: upstreamMessage, Detail: upstreamDetail, UpstreamResponseBody: upstreamDetail,
 		})
 		code := gjson.GetBytes(raw, "error.code").String()
+		if resp.StatusCode == http.StatusBadRequest && code == "invalid_encrypted_content" {
+			logger.LegacyPrintf("service.openai_excel_bps", "encrypted history rejected: account_id=%d retry_attempted=%t categories=%s", account.ID, len(recoveredDigests) != 0, excelBPSEncryptedHistoryDiagnostic(upstreamBody))
+			return fail(resp.StatusCode, code, "Encrypted conversation history could not be verified. Automatic recovery was unavailable or unsuccessful; restore the original history or start a new conversation with a saved summary.")
+		}
 		if code == "basispoints_model_access_changed" {
 			return fail(resp.StatusCode, code, "This model is not available on the account's Excel BPS endpoint")
 		}
@@ -306,6 +351,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	}
 	if terminal != "response.completed" {
 		return result, fmt.Errorf("excel BPS terminal: %s", terminal)
+	}
+	// A rejected request alone does not prove recovery works. Remember only
+	// digests whose removal led to a fully completed response.
+	if encryptedScope != "" && len(recoveredDigests) != 0 {
+		s.markOpenAIWSInvalidEncryptedContentLineage(0, encryptedScope, recoveredDigests)
 	}
 	s.bindHTTPResponseAccount(ctx, c, account, result.ResponseID)
 	return result, nil
