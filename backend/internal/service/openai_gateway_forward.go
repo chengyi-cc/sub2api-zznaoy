@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -33,6 +34,12 @@ func shouldForceOpenAIPriority(c *gin.Context) bool {
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	account = account.forOpenAIModel(gjson.GetBytes(body, "model").String())
+	if c.GetBool(bpsAccountProbeRequiredContextKey) && (!account.IsExcelBPSEnabled() || basispoints.NativeFallbackReason(body) != "") {
+		return nil, errors.New("bps probe path is unavailable")
+	}
+	if account.IsExcelBPSEnabled() && basispoints.NativeFallbackReason(body) != "" {
+		account = account.withoutExcelBPS()
+	}
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {

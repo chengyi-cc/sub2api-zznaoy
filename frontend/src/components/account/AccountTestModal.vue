@@ -293,13 +293,15 @@ const testPrompt = ref('')
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
-const testMode = ref<'default' | 'compact' | 'candy'>('default')
+const testMode = ref<'default' | 'compact' | 'candy' | 'bps_tools'>('default')
 const supportsCandyTest = computed(() => supportsAccountCandyTest(props.account, selectedModelId.value))
 const candyResult = ref<CandyTestResult | null>(null)
 watch(supportsCandyTest, supported => { if (!supported && testMode.value === 'candy') testMode.value = 'default' })
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const isBPSAccount = computed(() => isOpenAIAccount.value && props.account?.type === 'oauth' && props.account.extra?.openai_excel_bps === true)
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
+  ...(isBPSAccount.value ? [{ value: 'bps_tools', label: t('admin.accounts.openai.testModeBPSTools') }] : []),
   ...(isOpenAIAccount.value ? [{ value: 'compact', label: t('admin.accounts.openai.testModeCompact') }] : []),
   ...(supportsCandyTest.value ? [{ value: 'candy', label: t('admin.accounts.candy.mode') }] : [])
 ])

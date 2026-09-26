@@ -44,3 +44,25 @@ Protocol compatibility update, reviewed 2026-09-26:
 - The native fallback routing and local image relay from ranxi are not imported.
   Our official attachment uploads, per-account model routing, templates and
   candy monitoring remain independent integrations.
+
+
+Additional gateway/compatibility sync, 2026-09-26, same pinned references:
+- Adapted ranxi commits 3355086e0 (bulk settings), 6df263ef2 (opt-in protocol-only
+  HTTP 403 disable), 19becb835 (quota snapshots and immediate 429 cooldown),
+  49bb7b049 (client-visible cache-write accounting), 1dfbc6f4d (bounded admin
+  tool roundtrip), beb86d6ca (requested effort), a2d3ea37d (x/image v0.45.0).
+- Reviewed bridge 2181910 (parallel calls); implemented the behavior in Go with
+  full terminal validation, per-call identity preservation, parallel setting
+  enforcement and result-round iteration tracking. No silent tool truncation.
+- Implemented pre-dispatch native-capability routing, broader than ranxi's
+  forced/high-context hosted-tool check; this never retries an already-sent call.
+- Added missing Excel keys to our scheduler projection. Original model defaults,
+  OAuth lifecycle, official attachments and existing candy monitor remain intact.
+- Earlier note excluding fallback refers to the prior tool-only update. The
+  current capability routing and deferred/non-applicable features are documented
+  in docs/EXCEL_BPS.md; no Excel image-generation endpoints are imported.
+
+Final head check on 2026-09-26: ranxi production advanced to
+f671a8d30c34706d8526accadf6a6ad5f40f855e (client onboarding documentation only,
+no feature-code differences from the reviewed 594cdf0d6); latest release remains
+v2.8.14. The bridge main remains 8a277df / v0.5.1.

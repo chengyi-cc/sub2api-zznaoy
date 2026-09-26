@@ -553,6 +553,29 @@ func (b *Bridge) translateResponse(response object) error {
 		return nil
 	}
 	output, _ := response["output"].([]any)
+	callIDs, itemIDs := map[string]bool{}, map[string]bool{}
+	count := 0
+	for _, raw := range output {
+		item, _ := raw.(object)
+		if !isTool(item) {
+			continue
+		}
+		count++
+		id, itemID := text(item["call_id"]), text(item["id"])
+		if id == "" || callIDs[id] || (itemID != "" && itemIDs[itemID]) {
+			return fmt.Errorf("basispoints returned missing or duplicate tool call identities")
+		}
+		callIDs[id] = true
+		if itemID != "" {
+			itemIDs[itemID] = true
+		}
+	}
+	if count > 1024 {
+		return fmt.Errorf("basispoints returned too many tool calls")
+	}
+	if !b.parallelTools && count > 1 {
+		return fmt.Errorf("basispoints returned parallel tool calls when the client disabled them; no tools were dispatched")
+	}
 	for i, raw := range output {
 		item, _ := raw.(object)
 		if isTool(item) {
@@ -564,7 +587,7 @@ func (b *Bridge) translateResponse(response object) error {
 		}
 	}
 	response["reasoning"] = object{"effort": b.Effort}
-	response["parallel_tool_calls"] = false
+	response["parallel_tool_calls"] = b.parallelTools
 	return nil
 }
 

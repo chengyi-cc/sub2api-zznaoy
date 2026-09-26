@@ -522,3 +522,8 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 		return fmt.Errorf("unsupported platform: %s", account.Platform)
 	}
 }
+
+// Conditional protocol-only write; credentials and opt-in must still match.
+type AccountExcelBPSRepository interface {
+	DisableExcelBPSOn403(context.Context, *Account) (bool, error)
+}

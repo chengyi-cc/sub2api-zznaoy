@@ -25,6 +25,7 @@ type Bridge struct {
 	structured       *structuredOutput
 	replay           *ReplayCache
 	scope            string
+	parallelTools    bool
 }
 
 func decode(raw []byte, target any) error {
@@ -99,7 +100,15 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 	if err != nil {
 		return nil, nil, err
 	}
-	b := &Bridge{RequestedEffort: requested, Effort: effort, tools: make(map[string]tool), unsupportedTools: make(map[string]bool), structured: structured, replay: replay, scope: scope}
+	parallelTools := true
+	if raw, exists := source["parallel_tool_calls"]; exists && raw != nil {
+		allowed, ok := raw.(bool)
+		if !ok {
+			return nil, nil, fmt.Errorf("parallel_tool_calls must be a boolean")
+		}
+		parallelTools = allowed
+	}
+	b := &Bridge{RequestedEffort: requested, Effort: effort, tools: make(map[string]tool), unsupportedTools: make(map[string]bool), structured: structured, replay: replay, scope: scope, parallelTools: parallelTools}
 	choice := source["tool_choice"]
 	if choice != nil && text(choice) != "auto" && text(choice) != "none" {
 		return nil, nil, fmt.Errorf("basispoints supports tool_choice auto or none only")
@@ -140,6 +149,10 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 	if instructions := text(source["instructions"]); instructions != "" {
 		prologue = append(prologue, message("developer", instructions))
 	}
+	parallelInstructions := "Call one client tool at a time."
+	if b.parallelTools {
+		parallelInstructions = "Independent client tools may be called in parallel: emit a separate native run_officejs call for each tool in the same response. Each outer call carries exactly one catalog tool; never put an array or batch of tools inside one code field. Wait for results before dependent calls."
+	}
 	protocol := "This request comes from an external Responses client. Return assistant text. Do not call Excel, Office, workbook or connector tools."
 	if len(catalog) > 0 {
 		protocol = "This request comes from an external Responses client. Use only the client tools in the catalog below. " +
@@ -151,11 +164,11 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 			"For example, custom functions.exec uses summary=codex2api.custom/functions.exec and code containing its raw JavaScript; custom functions.apply_patch uses its exact patch text. The marker is mandatory for raw input. " +
 			"CATALOG_NAME includes its exact namespace. Outer arguments also include extended_summary, destructive=false and references=[]. For ordinary FUNCTION transport, use a descriptive summary; FUNCTION_CODE uses its exact marker and metadata JSON instead. " +
 			"Never nest run_officejs inside code. Serialize outer native arguments with proper JSON escaping. For FUNCTION envelopes also escape all quotes, backslashes, newline, carriage return and tab characters within JSON string values. " +
-			"Call one client tool at a time, including update_plan through this transport. After receiving its result continue the task; do not repeat completed calls. " +
+			parallelInstructions + " Use this transport for update_plan too. After receiving results continue the task; do not repeat completed calls. " +
 			"Tool results replayed under run_officejs are the named client tool's results. When a tool is needed, emit its call in this response instead of only announcing it. " +
 			"Do not call other native tools or claim that shell, filesystem or workspace access is unavailable when a suitable catalog tool exists. " +
 			"If no tool is needed, answer as assistant text. Client tool catalog:\n" + describeCatalog(catalog) +
-			"\nEnd of catalog. Invoke native run_officejs once. Follow each tool's specified transport: FUNCTION uses a JSON envelope; FUNCTION_CODE uses raw code plus metadata JSON in extended_summary; CUSTOM uses its exact marker and raw input. No Office code is executed by the proxy."
+			"\nEnd of catalog. Follow each tool's specified transport: FUNCTION uses a JSON envelope; FUNCTION_CODE uses raw code plus metadata JSON in extended_summary; CUSTOM uses its exact marker and raw input. No Office code is executed by the proxy."
 	}
 	if len(b.unsupportedTools) > 0 {
 		kinds := make([]string, 0, len(b.unsupportedTools))
@@ -181,15 +194,18 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 		turnEnd = 1
 	}
 	iteration := 1
+	inResults := false
 	for i := len(input) - 1; i >= 0; i-- {
 		item, _ := input[i].(object)
 		if text(item["role"]) == "user" {
 			turnEnd = i + 1
 			break
 		}
-		if strings.HasSuffix(text(item["type"]), "_call_output") {
+		isResult := strings.HasSuffix(text(item["type"]), "_call_output")
+		if isResult && !inResults {
 			iteration++
 		}
+		inResults = isResult
 	}
 	output := object{
 		"model": model, "model_selection": "explicit", "stream": true, "store": false,

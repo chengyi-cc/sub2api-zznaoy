@@ -59,6 +59,13 @@ func (a *Account) forOpenAIModel(requestedModel string) *Account {
 	if !a.IsExcelBPSEnabled() || a.UsesExcelBPSForModel(requestedModel) {
 		return a
 	}
+	return a.withoutExcelBPS()
+}
+
+func (a *Account) withoutExcelBPS() *Account {
+	if !a.IsExcelBPSEnabled() {
+		return a
+	}
 	scoped := *a
 	scoped.Extra = make(map[string]any, len(a.Extra))
 	for key, value := range a.Extra {

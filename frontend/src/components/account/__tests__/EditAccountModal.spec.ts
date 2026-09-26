@@ -399,11 +399,13 @@ describe('EditAccountModal', () => {
     const billing = wrapper.get('[data-testid="excel-bps-cache-creation-as-input"]')
     expect((billing.element as HTMLInputElement).checked).toBe(false)
     await billing.setValue(true)
+    await wrapper.get('[data-testid="excel-bps-auto-disable-on-403"]').setValue(true)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent'); await flushPromises()
     let saved = updateAccountMock.mock.lastCall?.[1]
     expect(saved.extra).toMatchObject({ openai_excel_bps: true, unrelated: 'preserve', openai_passthrough: true, openai_oauth_responses_websockets_v2_mode: 'ctx_pool' })
     expect(saved.credentials).toMatchObject(account.credentials)
     expect(saved.extra.openai_excel_bps_cache_creation_as_input).toBe(true)
+    expect(saved.extra.openai_excel_bps_auto_disable_on_403).toBe(true)
     expect(saved.extra.openai_excel_bps_models).toEqual(['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra'])
     expect(saved.status).toBe('error')
     expect(saved.schedulable).not.toBe(true)
@@ -416,6 +418,7 @@ describe('EditAccountModal', () => {
     saved = updateAccountMock.mock.lastCall?.[1]
     expect(saved.extra).not.toHaveProperty('openai_excel_bps')
     expect(saved.extra).not.toHaveProperty('openai_excel_bps_models')
+    expect(saved.extra).not.toHaveProperty('openai_excel_bps_auto_disable_on_403')
     expect(saved.extra).not.toHaveProperty('openai_excel_bps_cache_creation_as_input')
     expect(saved.extra).toMatchObject({ unrelated: 'preserve', openai_passthrough: true, openai_oauth_responses_websockets_v2_mode: 'ctx_pool' })
     reopened.unmount()

@@ -3313,3 +3313,11 @@ func (a *Account) QuotaDimensionOrDefault() string {
 	}
 	return a.QuotaDimension
 }
+
+func (a *Account) IsExcelBPSAutoDisableOn403Enabled() bool {
+	if !a.IsExcelBPSEnabled() {
+		return false
+	}
+	enabled, _ := a.Extra["openai_excel_bps_auto_disable_on_403"].(bool)
+	return enabled
+}

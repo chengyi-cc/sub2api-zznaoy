@@ -122,6 +122,7 @@ func (b *Bridge) transform(reader io.Reader, writer io.Writer) error {
 			return nil
 		}
 		if response, ok := payload["response"].(object); ok {
+			response["parallel_tool_calls"] = b.parallelTools
 			if b.structured != nil {
 				config, _ := response["text"].(object)
 				if config == nil {

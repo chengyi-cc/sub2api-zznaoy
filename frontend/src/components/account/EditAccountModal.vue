@@ -44,6 +44,11 @@
             <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSCacheCreationAsInputDesc') }}</span>
           </span>
         </label>
+        <label v-if="excelBPSEnabled" class="mt-3 flex cursor-pointer items-start gap-3">
+          <input v-model="excelBPSAutoDisableOn403" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600" data-testid="excel-bps-auto-disable-on-403" />
+          <span><span class="block text-sm font-medium">{{ t('admin.accounts.openai.excelBPSAutoDisableOn403') }}</span>
+          <span class="mt-1 block text-xs text-gray-500">{{ t('admin.accounts.openai.excelBPSAutoDisableOn403Desc') }}</span></span>
+        </label>
         <p v-if="excelBPSEnabled" class="mt-2 text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.excelBPSNotice') }}</p>
       </div>
       <div>
@@ -3735,6 +3740,7 @@ const defaultExcelBPSModels = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra']
 const excelBPSEnabled = ref(false)
 const excelBPSModels = ref<string[]>([...defaultExcelBPSModels])
 const excelBPSCacheCreationAsInput = ref(false)
+const excelBPSAutoDisableOn403 = ref(false)
 const supportsExcelBPS = computed(() => {
   const account = props.account
   if (account?.platform !== 'openai' || account.type !== 'oauth' || isSparkShadow.value) return false
@@ -4260,6 +4266,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
   excelBPSEnabled.value = supportsExcelBPS.value && extra?.openai_excel_bps === true
+  excelBPSAutoDisableOn403.value = supportsExcelBPS.value && extra?.openai_excel_bps_auto_disable_on_403 === true
   const savedExcelModels = extra?.openai_excel_bps_models
   excelBPSModels.value = savedExcelModels === undefined
     ? [...defaultExcelBPSModels]
@@ -5771,6 +5778,9 @@ const handleSubmit = async () => {
         delete newExtra.openai_excel_bps
         delete newExtra.openai_excel_bps_models
       }
+      if (supportsExcelBPS.value && excelBPSEnabled.value && excelBPSAutoDisableOn403.value) {
+        newExtra.openai_excel_bps_auto_disable_on_403 = true
+      } else { delete newExtra.openai_excel_bps_auto_disable_on_403 }
       if (supportsExcelBPS.value && excelBPSEnabled.value && excelBPSCacheCreationAsInput.value) {
         newExtra.openai_excel_bps_cache_creation_as_input = true
       } else {

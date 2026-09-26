@@ -98,6 +98,39 @@ describe('BulkEditAccountModal', () => {
     } as any)
   })
 
+  it('leaves Excel unchanged until the bulk field is selected', async () => {
+    const wrapper=mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['oauth'] })
+    expect(wrapper.get('#bulk-edit-excel-bps-body').attributes('disabled')).toBeDefined()
+    await wrapper.get('#bulk-edit-rate-multiplier-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const payload=vi.mocked(adminAPI.accounts.bulkUpdate).mock.lastCall?.[1] as any
+    expect(payload.extra?.openai_excel_bps).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it.each([['gpt-6-sol'], []] as string[][])('saves the explicit Excel bulk model selection %j', async (...models) => {
+    const wrapper=mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['oauth'] })
+    await wrapper.get('#bulk-edit-excel-bps-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-excel-bps-toggle"]').trigger('click')
+    const selector=wrapper.get('[data-testid="bulk-excel-bps-model-selection"]').findComponent(ModelWhitelistSelector)
+    expect(selector.props('modelValue')).toEqual(['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra'])
+    selector.vm.$emit('update:modelValue', models)
+    await wrapper.get('[data-testid="bulk-excel-bps-cache-creation-as-input"]').setValue(true)
+    await wrapper.get('[data-testid="bulk-excel-bps-auto-disable-on-403"]').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const payload=vi.mocked(adminAPI.accounts.bulkUpdate).mock.lastCall?.[1] as any
+    expect(payload.extra).toMatchObject({ openai_excel_bps: true, openai_excel_bps_models: models, openai_excel_bps_cache_creation_as_input: true, openai_excel_bps_auto_disable_on_403: true })
+    wrapper.unmount()
+  })
+
+  it('hides Excel bulk settings for API key targets', () => {
+    const wrapper=mountModal({selectedPlatforms:['openai'],selectedTypes:['apikey']})
+    expect(wrapper.find('#bulk-edit-excel-bps-enabled').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('批量修改倍率时提示自动同步账号需要先关闭同步', async () => {
     const wrapper = mountModal()
 

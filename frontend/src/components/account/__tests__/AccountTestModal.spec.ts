@@ -148,6 +148,22 @@ describe('AccountTestModal', () => {
     })
   })
 
+  it('exposes the bounded Excel tool roundtrip test without replacing candy or compact', async () => {
+    const wrapper=mount(AccountTestModal, {
+      props: {show:true,account:{...buildAccount(),extra:{openai_excel_bps:true}}},
+      global:{stubs:{BaseDialog:BaseDialogStub,Select:SelectStub,TextArea:TextAreaStub,Icon:true}}
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('admin.accounts.openai.testModeBPSTools')
+    expect(wrapper.text()).toContain('admin.accounts.openai.testModeCompact')
+    ;(wrapper.vm as any).selectedModelId='gpt-6-astra'
+    ;(wrapper.vm as any).testMode='bps_tools'
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+    expect(JSON.parse((global.fetch as any).mock.calls[0][1].body)).toMatchObject({model_id:'gpt-6-astra',mode:'bps_tools'})
+    wrapper.unmount()
+  })
+
   it('renders Chat Completions path status from test SSE', async () => {
     const encoder = new TextEncoder()
     const chunks = [
