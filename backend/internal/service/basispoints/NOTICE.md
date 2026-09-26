@@ -27,3 +27,20 @@ Additional review reference: JaxsonWang/cpa-plugin-oai-basispoints at
 were compared with this package. We retain scoped caches, incremental text
 streaming and multiple-terminal-tool handling rather than its global call-ID
 cache and single-transport extraction. No CPA plugin ABI is imported.
+
+
+Protocol compatibility update, reviewed 2026-09-26:
+- Reviewed ranxi2001/sub2api production 594cdf0d6027fe7097ef42fe029c22713b9cc989
+  (latest release v2.8.14). Ported only single-invocation recovery and safe content
+  diagnostics (3fb62aeb5 / 1fb21644f), plaintext collaboration argument metadata
+  (d815d4a23), and raw string-code transport (5c1839b28), with their tests.
+- Compared Kaixxrua/excel-codex-bridge main
+  8a277df (latest release v0.5.1): parallel tool handling, official attachments,
+  image generation and Codex sign-in changes. Its skip-unusable-calls behavior
+  is not imported; this bridge validates every terminal tool before dispatch.
+- Local fix resolves one optional `functions.` host display prefix for wrapped
+  catalog calls just as for direct calls. Exact declared names take priority;
+  unknown tools, ambiguous calls and arbitrary namespace suffixes remain denied.
+- The native fallback routing and local image relay from ranxi are not imported.
+  Our official attachment uploads, per-account model routing, templates and
+  candy monitoring remain independent integrations.

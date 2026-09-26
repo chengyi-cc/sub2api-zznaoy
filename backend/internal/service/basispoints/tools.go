@@ -223,7 +223,7 @@ func isUnsupportedHostedTool(kind string) bool {
 // rebuildNativeHistoryCall uses only the complete call supplied by the client.
 // It does not execute a tool or require that an old tool remain in today's
 // catalog. Cached native items remain authoritative when available.
-func rebuildNativeHistoryCall(item object) (object, error) {
+func (b *Bridge) rebuildNativeHistoryCall(item object) (object, error) {
 	id, name := text(item["call_id"]), text(item["name"])
 	if id == "" || strings.TrimSpace(id) != id || name == "" || strings.TrimSpace(name) != name {
 		return nil, fmt.Errorf("basispoints history recovery requires a complete tool call with nonempty call_id and name")
@@ -263,11 +263,21 @@ func rebuildNativeHistoryCall(item object) (object, error) {
 	if err != nil {
 		return nil, fmt.Errorf("basispoints history tool arguments cannot be serialized")
 	}
-	arguments, err := json.Marshal(object{
+	outer := object{
 		"code": string(code), "summary": "Replay a previously requested client tool",
 		"extended_summary": "The supplied client history contains this tool call; consume its recorded result without repeating it.",
 		"destructive":      false, "references": []any{},
-	})
+	}
+	if info, ok := b.tools[name]; ok && text(item["type"]) == "function_call" && supportsFunctionCodeTransport(name, info.Kind, info.Parameters) {
+		args, _ := envelope["arguments"].(object)
+		if _, hasCode := args["code"].(string); hasCode {
+			outer, err = encodeFunctionCodeTransport(name, args)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	arguments, err := json.Marshal(outer)
 	if err != nil {
 		return nil, fmt.Errorf("basispoints history transport cannot be serialized")
 	}
@@ -285,7 +295,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 	result := make([]any, 0, len(input))
 	seenCalls := make(map[string]bool)
 	var trigger any
-	for _, raw := range input {
+	for index, raw := range input {
 		item, ok := raw.(object)
 		if !ok {
 			return nil, fmt.Errorf("invalid Basispoints input item")
@@ -309,7 +319,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 			if native := b.replay.getForCall(b.scope, id, item); native != nil {
 				item = native
 			} else {
-				native, err := rebuildNativeHistoryCall(item)
+				native, err := b.rebuildNativeHistoryCall(item)
 				if err != nil {
 					return nil, err
 				}
@@ -328,7 +338,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 				seenCalls[id] = true
 			}
 			item["type"] = "function_call_output"
-			if err := validateHistoryContent(item["output"]); err != nil {
+			if err := validateHistoryContent(item["output"], index, "output"); err != nil {
 				return nil, err
 			}
 			// Codex custom results carry ctco_ IDs. After lowering to a function
@@ -344,7 +354,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 		case "configuration_update":
 			return nil, fmt.Errorf("basispoints does not support configuration_update; start a new request with the desired effort")
 		}
-		if err := validateHistoryContent(item["content"]); err != nil {
+		if err := validateHistoryContent(item["content"], index, "content"); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -353,23 +363,6 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 		result = append(result, trigger)
 	}
 	return result, nil
-}
-
-func validateHistoryContent(value any) error {
-	content, _ := value.([]any)
-	for _, rawPart := range content {
-		part, _ := rawPart.(object)
-		switch text(part["type"]) {
-		case "input_text", "output_text", "text", "refusal":
-		case "input_image":
-			if err := validateImage(part); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("basispoints supports text and HTTPS input_image content only")
-		}
-	}
-	return nil
 }
 
 func isTool(item object) bool {
@@ -396,8 +389,17 @@ func (b *Bridge) translateCall(native object) (object, error) {
 		return nil, fmt.Errorf("basispoints returned empty tool transport arguments")
 	}
 	envelope, marked, err := customTransportEnvelope(arguments)
+	rawCustom := marked
+	if !marked && err == nil {
+		envelope, marked, err = b.functionCodeTransportEnvelope(arguments)
+	}
 	if !marked && err == nil {
 		envelope, err = decodeTransportEnvelope(arguments["code"])
+		if err != nil {
+			if recovered, ok := recoverTransportEnvelope(arguments["code"], b.tools); ok {
+				envelope, err = recovered, nil
+			}
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -406,17 +408,30 @@ func (b *Bridge) translateCall(native object) (object, error) {
 	if err != nil {
 		return nil, err
 	}
-	info, allowed := b.tools[toolName]
+	info, allowed := b.resolveCatalogTool(toolName)
 	if !allowed {
 		return nil, fmt.Errorf("basispoints returned a tool outside the client's catalog")
 	}
-	result, err := b.finishClientToolCall(native, info, envelope, marked)
+	result, err := b.finishClientToolCall(native, info, envelope, rawCustom)
 	if err != nil {
 		return nil, err
 	}
 	// run_officejs is a real BPS-native tool, so its item replays upstream verbatim.
 	b.replay.put(b.scope, text(native["call_id"]), native, result)
 	return result, nil
+}
+
+// Resolve only exact declarations or a single host display prefix. Never match
+// arbitrary suffixes: separate namespaces can contain tools with the same name.
+func (b *Bridge) resolveCatalogTool(name string) (tool, bool) {
+	if info, ok := b.tools[name]; ok {
+		return info, true
+	}
+	if trimmed := strings.TrimPrefix(name, "functions."); trimmed != name {
+		info, ok := b.tools[trimmed]
+		return info, ok
+	}
+	return tool{}, false
 }
 
 // translateDirectCatalogCall recovers a native tool call the model addressed by the
@@ -428,12 +443,7 @@ func (b *Bridge) translateCall(native object) (object, error) {
 // native tool remains an unsupported-native-tool error.
 func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 	name := text(native["name"])
-	info, ok := b.tools[name]
-	if !ok {
-		if trimmed := strings.TrimPrefix(name, "functions."); trimmed != name {
-			info, ok = b.tools[trimmed]
-		}
-	}
+	info, ok := b.resolveCatalogTool(name)
 	if !ok {
 		return nil, fmt.Errorf("basispoints returned an unsupported native tool; no tool was executed")
 	}
@@ -461,10 +471,15 @@ func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Direct calls can carry real upstream encryption metadata. Only relay
+	// that metadata when the arguments still belong to the same client tool.
+	if encrypted := native["encrypted_function_args"]; encrypted != nil && info.Kind == "function" {
+		result["encrypted_function_args"] = encrypted
+	}
 	// The model bypassed run_officejs, so the bare native name is not a BPS tool.
 	// Cache a transport-wrapped replay so the next turn presents a BPS-known
 	// run_officejs item, matching how absent history is rebuilt.
-	wrapped, err := rebuildNativeHistoryCall(result)
+	wrapped, err := b.rebuildNativeHistoryCall(result)
 	if err != nil {
 		return nil, err
 	}
@@ -524,6 +539,11 @@ func (b *Bridge) finishClientToolCall(native object, info tool, envelope object,
 		}
 		encoded, _ := json.Marshal(args)
 		result["arguments"] = string(encoded)
+		// The relay envelope contains plaintext, even when a catalog parameter
+		// declares encrypted:true. Codex collaboration tools distinguish an
+		// explicit empty list from a missing field: without it, they incorrectly
+		// package plaintext messages as encrypted_content for the child agent.
+		result["encrypted_function_args"] = []string{}
 	}
 	return result, nil
 }
