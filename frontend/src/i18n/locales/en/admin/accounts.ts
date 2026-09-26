@@ -677,6 +677,8 @@ export default {
         apiKeyHint: 'Your OpenAI API Key',
         oauthPassthrough: 'Auto passthrough (auth only)',
         excelBPS: 'Excel / BPS protocol',
+        codexTimezoneRewrite: 'Timezone and Date Rewrite',
+        codexTimezoneRewriteDesc: 'Off by default. Uses the account egress timezone from the allowed list, falling back to Singapore, and updates the current date in the request environment. Does not change the server clock.',
         excelBPSCacheCreationAsInput: 'Bill cache creation as ordinary input',
         excelBPSCacheCreationAsInputDesc: 'Off by default. Bill cache creation at the input price while keeping cache reads unchanged. Applies consistently to local billing and client-visible cache-write usage, without changing upstream caching.',
         excelBPSAutoDisableOn403: 'Disable Excel after an upstream 403',

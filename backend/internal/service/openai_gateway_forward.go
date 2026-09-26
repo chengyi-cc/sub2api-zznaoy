@@ -79,6 +79,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
+	body = s.applyCodexTimezone(ctx, account, body)
+
 	// Excel owns tool declarations, replay and compaction; keep their original
 	// structure by routing before generic Codex normalization and passthrough.
 	if account.IsExcelBPSEnabled() {

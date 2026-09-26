@@ -382,6 +382,34 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('places the default-off timezone switch before Excel BPS and persists enable/disable independently', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { unrelated: 'preserve', openai_excel_bps: true, openai_passthrough: true, codex_fingerprint_mode: 'off' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="codex-timezone-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    const timezoneCard = wrapper.get('[data-testid="codex-timezone-card"]').element
+    const excelCard = wrapper.get('[data-testid="excel-bps-card"]').element
+    expect(timezoneCard.nextElementSibling).toBe(excelCard)
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    let saved = updateAccountMock.mock.lastCall?.[1]
+    expect(saved.extra).toMatchObject({ openai_codex_timezone_rewrite: true, openai_excel_bps: true, unrelated: 'preserve', openai_passthrough: true })
+    wrapper.unmount()
+    const reopened = mountModal({ ...account, extra: saved.extra })
+    expect(reopened.get('[data-testid="codex-timezone-toggle"]').attributes('aria-checked')).toBe('true')
+    await reopened.get('[data-testid="codex-timezone-toggle"]').trigger('click')
+    await reopened.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    saved = updateAccountMock.mock.lastCall?.[1]
+    expect(saved.extra).not.toHaveProperty('openai_codex_timezone_rewrite')
+    expect(saved.extra).toMatchObject({ openai_excel_bps: true, unrelated: 'preserve', openai_passthrough: true })
+    reopened.unmount()
+  })
+
   it('saves and disables Excel BPS without changing native transport, credentials or scheduling', async () => {
     const account = buildAccount()
     account.type = 'oauth'
@@ -434,6 +462,7 @@ describe('EditAccountModal', () => {
   ])('hides Excel BPS for unsupported accounts: %o', overrides => {
     const wrapper = mountModal({ ...buildAccount(), ...overrides })
     expect(wrapper.find('[data-testid="excel-bps-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="codex-timezone-toggle"]').exists()).toBe(false)
     wrapper.unmount()
   })
 

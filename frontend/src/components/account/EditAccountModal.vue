@@ -18,6 +18,20 @@
         :bindings="openaiTemplateBindings"
         :proxies="proxies" :groups="groups" :profiles="tlsFingerprintProfiles"
       />
+      <div v-if="supportsExcelBPS" data-testid="codex-timezone-card" class="rounded-xl border border-primary-200 bg-primary-50/50 p-5 dark:border-primary-800 dark:bg-primary-950/20">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ t('admin.accounts.openai.codexTimezoneRewrite') }}</label>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexTimezoneRewriteDesc') }}</p>
+          </div>
+          <button type="button" role="switch" :aria-checked="codexTimezoneRewriteEnabled"
+            :aria-label="t('admin.accounts.openai.codexTimezoneRewrite')" data-testid="codex-timezone-toggle"
+            :class="['relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2', codexTimezoneRewriteEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600']"
+            @click="codexTimezoneRewriteEnabled = !codexTimezoneRewriteEnabled">
+            <span :class="['pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow transition', codexTimezoneRewriteEnabled ? 'translate-x-6' : 'translate-x-0']" />
+          </button>
+        </div>
+      </div>
       <!-- Optional Excel protocol for direct OpenAI OAuth accounts. -->
       <div v-if="supportsExcelBPS" data-testid="excel-bps-card" class="rounded-xl border border-primary-200 bg-primary-50/50 p-5 dark:border-primary-800 dark:bg-primary-950/20">
         <div class="flex items-center justify-between gap-4">
@@ -3738,6 +3752,7 @@ const customBaseUrl = ref('')
 const openaiPassthroughEnabled = ref(false)
 const defaultExcelBPSModels = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra']
 const excelBPSEnabled = ref(false)
+const codexTimezoneRewriteEnabled = ref(false)
 const excelBPSModels = ref<string[]>([...defaultExcelBPSModels])
 const excelBPSCacheCreationAsInput = ref(false)
 const excelBPSAutoDisableOn403 = ref(false)
@@ -4266,6 +4281,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
   excelBPSEnabled.value = supportsExcelBPS.value && extra?.openai_excel_bps === true
+  codexTimezoneRewriteEnabled.value = supportsExcelBPS.value && extra?.openai_codex_timezone_rewrite === true
   excelBPSAutoDisableOn403.value = supportsExcelBPS.value && extra?.openai_excel_bps_auto_disable_on_403 === true
   const savedExcelModels = extra?.openai_excel_bps_models
   excelBPSModels.value = savedExcelModels === undefined
@@ -5771,6 +5787,11 @@ const handleSubmit = async () => {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
+      if (supportsExcelBPS.value && codexTimezoneRewriteEnabled.value) {
+        newExtra.openai_codex_timezone_rewrite = true
+      } else {
+        delete newExtra.openai_codex_timezone_rewrite
+      }
       if (supportsExcelBPS.value && excelBPSEnabled.value) {
         newExtra.openai_excel_bps = true
         newExtra.openai_excel_bps_models = [...new Set(excelBPSModels.value.map(model => model.trim()).filter(Boolean))]

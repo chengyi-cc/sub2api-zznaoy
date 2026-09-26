@@ -795,6 +795,8 @@ export default {
         apiKeyHint: '您的 OpenAI API Key',
         oauthPassthrough: '自动透传（仅替换认证）',
         excelBPS: 'Excel / BPS 协议',
+        codexTimezoneRewrite: '时区与日期改写',
+      codexTimezoneRewriteDesc: '默认关闭。开启后按账号出口地址选择支持的时区，不可用时回退新加坡，并同步请求环境中的当前日期；不修改服务器时间。',
         excelBPSCacheCreationAsInput: '创建缓存按普通输入计费',
         excelBPSCacheCreationAsInputDesc: '默认关闭。勾选后，缓存创建用量按普通输入价格计费，缓存读取不变；本系统计费与返回给客户的缓存创建用量同步调整，不影响上游缓存。',
         excelBPSAutoDisableOn403: '遇到 Excel 403 时自动关闭协议',
