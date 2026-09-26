@@ -271,6 +271,16 @@ func (b *Bridge) rebuildNativeHistoryCall(item object) (object, error) {
 		"extended_summary": "The supplied client history contains this tool call; consume its recorded result without repeating it.",
 		"destructive":      false, "references": []any{},
 	}
+	// Rebuilt history is an example for later model turns. Match the active
+	// custom contract, preserving raw input exactly. Cached native items are
+	// reused before this function; unavailable historical tools stay unchanged.
+	if info, ok := b.tools[name]; ok && info.Kind == "custom" && text(item["type"]) == "custom_tool_call" {
+		outer["summary"] = customTransportPrefix + name
+		outer["code"] = envelope["input"]
+		if _, _, err := customTransportEnvelope(outer); err != nil {
+			return nil, err
+		}
+	}
 	if info, ok := b.tools[name]; ok && text(item["type"]) == "function_call" && supportsFunctionCodeTransport(name, info.Kind, info.Parameters) {
 		args, _ := envelope["arguments"].(object)
 		if _, hasCode := args["code"].(string); hasCode {

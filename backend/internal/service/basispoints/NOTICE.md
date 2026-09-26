@@ -113,3 +113,18 @@ Whole-catalog compatibility audit, 2026-09-26:
 - This update changes no injected catalog text, message-ID algorithm, cache key
   or account scheduling. It does not promise compatibility with arbitrary new
   upstream formats or client-specific tools absent from the tested contracts.
+
+Reference update review, 2026-09-26:
+- Compared ranxi2001/sub2api production f671a8d30..1c5151cc6 (v2.8.15),
+  including c2d27c12c's raw CUSTOM history and original image-detail fixes.
+  Reproduced both gaps locally before applying the corresponding small fixes.
+- Rebuild only declared CUSTOM history with its raw marker and exact input;
+  preserve cached native calls and unavailable historical tools as before.
+  Repeated reconstruction remains deterministic. A first reconstruction after
+  upgrading can differ from the old envelope representation and affect its
+  prompt prefix once; unchanged cache identifiers do not promise a cache hit.
+- Accept and preserve original image detail through validation, upload and
+  attachment caching, without downgrading it. Invalid details remain rejected.
+- Did not import f35414792's additional model correction requests: those alter
+  retry/latency/usage behavior and require a separate operation-preservation
+  review. Existing strict validation still withholds invalid tool batches.

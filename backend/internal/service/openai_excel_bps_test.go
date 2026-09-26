@@ -268,9 +268,9 @@ func TestExcelBPSToolReplayIsolatedByAccountKeyAndThread(t *testing.T) {
 			replayed = true
 			require.Equal(t, "call_scope_test", item.Get("call_id").String())
 			require.Equal(t, "run_officejs", item.Get("name").String())
-			envelope := gjson.Parse(gjson.Get(item.Get("arguments").String(), "code").String())
-			require.Equal(t, "functions.exec", envelope.Get("name").String())
-			require.Equal(t, native["input"], envelope.Get("input").String())
+			outer := gjson.Parse(item.Get("arguments").String())
+			require.Equal(t, "codex2api.custom/functions.exec", outer.Get("summary").String())
+			require.Equal(t, native["input"], outer.Get("code").String())
 		}
 	}
 	require.True(t, replayed)
