@@ -9,12 +9,13 @@ import (
 )
 
 type tool struct {
-	Name          string
-	Namespace     string
-	Kind          string
-	Definition    string
-	Parameters    object
-	ExecFunctions map[string]bool
+	Name               string
+	Namespace          string
+	Kind               string
+	Definition         string
+	Parameters         object
+	ExecFunctions      map[string]bool
+	ExecRuntimeCatalog bool
 }
 
 type replayEntry struct {
@@ -203,7 +204,7 @@ func (b *Bridge) collectTools(value any, namespace string) ([]any, error) {
 			continue
 		}
 		parameters, _ := entry["parameters"].(object)
-		b.tools[key] = tool{Name: name, Namespace: namespace, Kind: kind, Definition: definition, Parameters: parameters, ExecFunctions: declaredExecFunctions(entry)}
+		b.tools[key] = tool{Name: name, Namespace: namespace, Kind: kind, Definition: definition, Parameters: parameters, ExecFunctions: declaredExecFunctions(entry), ExecRuntimeCatalog: execRuntimeCatalog(entry)}
 		catalog = append(catalog, entry)
 	}
 	return catalog, nil

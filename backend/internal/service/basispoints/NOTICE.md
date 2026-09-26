@@ -82,3 +82,16 @@ Nested exec relay fix, 2026-09-26:
   The repaired client call ran a harmless echo; replaying its actual output
   completed successfully. This does not claim full production deployment or
   equivalence to every client workflow.
+
+Nested exec follow-up, 2026-09-26:
+- The updated original session completed its shell command, then failed on a
+  subsequent tool. Controlled continuation reproduced mcp__node_repl.js; the
+  client exposes mcp__node_repl__js through exec, including deferred discovery.
+- Normalize only MCP's specific server.method spelling. For an exec contract
+  that advertises normalized names and ALL_TOOLS, generate a client-side exact
+  runtime-catalog check before invoking a deferred method. Missing, duplicate
+  or non-callable entries return tool_not_available without executing anything.
+- Validated the actual captured conversion, a real Node invocation, unchanged
+  arguments and the missing/duplicate/non-callable/absent-catalog branches.
+  Added a shell-to-Node multi-step replay regression instead of relying only
+  on a single echo roundtrip. No account settings or cache identities change.

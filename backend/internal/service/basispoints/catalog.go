@@ -19,8 +19,11 @@ func describeCatalog(catalog []any) string {
 		}
 		if text(entry["type"]) == "custom" {
 			line += " Set run_officejs summary to " + quoted("codex2api.custom/"+text(entry["name"])) + " and pass its exact raw text directly in code."
-			if len(declaredExecFunctions(entry)) > 0 {
+			if len(declaredExecFunctions(entry)) > 0 || execRuntimeCatalog(entry) {
 				line += " Functions declared on tools inside this exec description are nested JavaScript APIs, not separate catalog tools. Call them only inside this exec tool's raw JavaScript and display the result with text; never use a nested function name as the JSON envelope name."
+			}
+			if execRuntimeCatalog(entry) {
+				line += " Discover deferred tools in ALL_TOOLS and use its exact normalized JavaScript name: for example mcp__server.method is invoked as tools.mcp__server__method inside exec."
 			}
 			if format := entry["format"]; format != nil {
 				line += " Input format: " + quoted(format) + "."
