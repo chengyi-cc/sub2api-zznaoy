@@ -9,11 +9,12 @@ import (
 )
 
 type tool struct {
-	Name       string
-	Namespace  string
-	Kind       string
-	Definition string
-	Parameters object
+	Name          string
+	Namespace     string
+	Kind          string
+	Definition    string
+	Parameters    object
+	ExecFunctions map[string]bool
 }
 
 type replayEntry struct {
@@ -202,7 +203,7 @@ func (b *Bridge) collectTools(value any, namespace string) ([]any, error) {
 			continue
 		}
 		parameters, _ := entry["parameters"].(object)
-		b.tools[key] = tool{Name: name, Namespace: namespace, Kind: kind, Definition: definition, Parameters: parameters}
+		b.tools[key] = tool{Name: name, Namespace: namespace, Kind: kind, Definition: definition, Parameters: parameters, ExecFunctions: declaredExecFunctions(entry)}
 		catalog = append(catalog, entry)
 	}
 	return catalog, nil
@@ -418,6 +419,14 @@ func (b *Bridge) translateCall(native object) (object, error) {
 	}
 	info, allowed := b.resolveCatalogTool(toolName)
 	if !allowed {
+		if !marked {
+			if result, recovered, err := b.recoverExecCall(native, envelope); recovered || err != nil {
+				if err == nil {
+					b.replay.put(b.scope, text(native["call_id"]), native, result)
+				}
+				return result, err
+			}
+		}
 		return nil, fmt.Errorf("basispoints returned a tool outside the client's catalog")
 	}
 	result, err := b.finishClientToolCall(native, info, envelope, rawCustom)
@@ -453,6 +462,17 @@ func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 	name := text(native["name"])
 	info, ok := b.resolveCatalogTool(name)
 	if !ok {
+		if result, recovered, err := b.recoverExecCall(native, object{"name": name, "arguments": native["arguments"]}); recovered || err != nil {
+			if err != nil {
+				return nil, err
+			}
+			wrapped, err := b.rebuildNativeHistoryCall(result)
+			if err != nil {
+				return nil, err
+			}
+			b.replay.put(b.scope, text(native["call_id"]), wrapped, result)
+			return result, nil
+		}
 		return nil, fmt.Errorf("basispoints returned an unsupported native tool; no tool was executed")
 	}
 	kind := text(native["type"])

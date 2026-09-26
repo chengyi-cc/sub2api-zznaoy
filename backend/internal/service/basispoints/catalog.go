@@ -19,6 +19,9 @@ func describeCatalog(catalog []any) string {
 		}
 		if text(entry["type"]) == "custom" {
 			line += " Set run_officejs summary to " + quoted("codex2api.custom/"+text(entry["name"])) + " and pass its exact raw text directly in code."
+			if len(declaredExecFunctions(entry)) > 0 {
+				line += " Functions declared on tools inside this exec description are nested JavaScript APIs, not separate catalog tools. Call them only inside this exec tool's raw JavaScript and display the result with text; never use a nested function name as the JSON envelope name."
+			}
 			if format := entry["format"]; format != nil {
 				line += " Input format: " + quoted(format) + "."
 			}

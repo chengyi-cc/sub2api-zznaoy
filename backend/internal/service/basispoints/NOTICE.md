@@ -66,3 +66,19 @@ Final head check on 2026-09-26: ranxi production advanced to
 f671a8d30c34706d8526accadf6a6ad5f40f855e (client onboarding documentation only,
 no feature-code differences from the reviewed 594cdf0d6); latest release remains
 v2.8.14. The bridge main remains 8a277df / v0.5.1.
+
+Nested exec relay fix, 2026-09-26:
+- Rechecked both remote heads: ranxi production f671a8d30c34706d8526accadf6a6ad5f40f855e
+  and excel-codex-bridge main 8a277dfcdbb647d2ef4d714e31b6a98260a63a79.
+  Neither recovers a function documented inside Codex's custom exec tool when
+  the model emits that function as the transport envelope's top-level name.
+  Ranxi rejects it; the Python bridge skips calls it cannot translate.
+- Local implementation recovers only explicit tools declarations in the active
+  exec description, through that existing custom tool. Exact catalog names win;
+  ambiguous hosts, unknown names and raw-code guesses remain rejected. The
+  gateway does not execute the generated JavaScript or dispatch tools itself.
+- Live controlled reproduction with existing compacted history returned an
+  exec_command envelope despite functions.exec being the only catalog entry.
+  The repaired client call ran a harmless echo; replaying its actual output
+  completed successfully. This does not claim full production deployment or
+  equivalence to every client workflow.
