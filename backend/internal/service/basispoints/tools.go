@@ -302,6 +302,14 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 		}
 		delete(item, "internal_chat_message_metadata_passthrough")
 		switch text(item["type"]) {
+		case "message", "":
+			// Codex may persist messages with local item_ IDs. BPS requires
+			// msg_ IDs; keep the replacement stable across history replays.
+			if text(item["type"]) == "message" || text(item["role"]) != "" {
+				if id := text(item["id"]); id != "" && (!strings.HasPrefix(id, "msg_") || len(id) > 64) {
+					item["id"] = "msg_" + fingerprint(id)
+				}
+			}
 		case "additional_tools":
 			continue
 		case "item_reference":
