@@ -1080,7 +1080,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		archive := beginOpsErrorArchive(c, ops)
 		if c.Request != nil {
 			if capture, ok := c.Request.Body.(*errorarchive.Capture); ok {
-				// Also release the bounded capture slot when a downstream handler panics.
+				// Also release capture buffers and diagnostics when a handler panics.
 				defer capture.Release()
 			}
 		}

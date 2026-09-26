@@ -41,7 +41,7 @@ func beginOpsErrorArchive(c *gin.Context, ops *service.OpsService) func(int, []b
 	var trace *errorarchive.Trace
 	if capture != nil {
 		c.Request.Body = capture
-		ctx, t := errorarchive.WithTrace(c.Request.Context())
+		ctx, t := capture.WithTrace(c.Request.Context())
 		trace = t
 		c.Request = c.Request.WithContext(ctx)
 	}

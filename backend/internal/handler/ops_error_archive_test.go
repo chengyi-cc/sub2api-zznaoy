@@ -88,6 +88,38 @@ func TestOpsErrorArchiveDiscardsHealthyAndUnauthenticatedRequests(t *testing.T) 
 	}
 }
 
+func TestOpsErrorArchiveRetainsReadCauseUnderCaptureMemoryPressure(t *testing.T) {
+	ops := archiveTestService(t)
+	// Eight long-running requests retain their full individual capture buffers.
+	for i := 0; i < 8; i++ {
+		capture, enabled := ops.CaptureErrorRequest(context.Background(), io.NopCloser(strings.NewReader(strings.Repeat("x", 4096))))
+		require.True(t, enabled)
+		require.NotNil(t, capture)
+		defer capture.Release()
+		_, err := io.ReadAll(capture)
+		require.NoError(t, err)
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader("bad gzip"))
+	c.Request.Header.Set("Content-Encoding", "gzip")
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{ID: 42})
+	finish := beginOpsErrorArchive(c, ops)
+	_, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
+	require.Error(t, err)
+	ref := finish(400, []byte("Failed to read request body"), false)
+	require.NotEmpty(t, ref.ID)
+	require.Equal(t, "decode_content_encoding", ref.ReadError)
+	require.True(t, ref.CaptureLimited)
+	ops.StopRuntimeSettingsRefresh()
+	entry, err := ops.ReadErrorArchive(context.Background(), ref.ID)
+	require.NoError(t, err)
+	require.Equal(t, "decode_content_encoding", entry.ReadError)
+	require.False(t, entry.Complete)
+	require.Empty(t, entry.Request)
+	require.Equal(t, int64(8), entry.ReceivedBytes)
+	require.Equal(t, "gzip", entry.ContentEncoding)
+}
+
 func TestOpsErrorArchiveMiddlewareReleasesSlotOnPanic(t *testing.T) {
 	ops := archiveTestService(t)
 	router := gin.New()

@@ -81,6 +81,28 @@ describe('OpsErrorDetailModal', () => {
     wrapper.unmount()
   })
 
+  it.each(['capacity_exhausted', 'queue_full'])('explains missing samples for %s without displaying year one', async (state) => {
+    mocks.getRequestErrorDetail.mockResolvedValue({ id: 3, error_body: JSON.stringify({ diagnostic_archive: { state, expires_at: '0001-01-01T00:00:00Z', read_error_kind: 'read_timeout' } }) })
+    const wrapper = shallowMount(OpsErrorDetailModal, { props: { show: true, errorId: 3, errorType: 'request' }, global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="download-error-archive"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="archive-not-captured"]').text()).toContain(state === 'queue_full' ? 'archiveQueueFull' : 'archiveCapacityExhausted')
+    expect(wrapper.text()).not.toContain('admin.ops.errorDetail.archiveExpires')
+    expect(wrapper.text()).toContain('read_timeout')
+    expect(mocks.downloadErrorArchive).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('allows downloading metadata when the body memory budget is exhausted', async () => {
+    mocks.getRequestErrorDetail.mockResolvedValue({ id: 4, error_body: JSON.stringify({ diagnostic_archive: { id: 'c'.repeat(32), state: 'queued', capture_limited: true, request_truncated: true, read_error_kind: 'truncated_body' } }) })
+    const wrapper = shallowMount(OpsErrorDetailModal, { props: { show: true, errorId: 4, errorType: 'request' }, global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="download-error-archive"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('admin.ops.errorDetail.archiveMemoryLimited')
+    expect(wrapper.text()).toContain('truncated_body')
+    wrapper.unmount()
+  })
+
   it('prioritizes upstream root cause and deduplicates diagnostic payloads', async () => {
     mocks.getRequestErrorDetail.mockResolvedValue({
       id: 1,

@@ -17,6 +17,15 @@ type Trace struct {
 	mu        sync.Mutex
 	remaining int
 	items     []Diagnostic
+	slots     chan struct{}
+	reserved  bool
+	closed    bool
+}
+
+func (c *Capture) WithTrace(ctx context.Context) (context.Context, *Trace) {
+	t := &Trace{remaining: 2 << 20, slots: c.store.traceSlots}
+	c.trace = t
+	return context.WithValue(ctx, traceKey{}, t), t
 }
 
 func WithTrace(ctx context.Context) (context.Context, *Trace) {
@@ -31,8 +40,20 @@ func AddDiagnostic(ctx context.Context, phase string, request, response []byte) 
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.remaining == 0 || len(t.items) >= 6 {
+	if t.closed || t.remaining == 0 || len(t.items) >= 6 {
 		return
+	}
+	// Reserve heavy diagnostics only when a failure is observed, never for the
+	// entire lifetime of each healthy stream.
+	if t.slots != nil && !t.reserved {
+		select {
+		case t.slots <- struct{}{}:
+			t.reserved = true
+		default:
+			t.remaining = 0
+			t.items = append(t.items, Diagnostic{Phase: phase, Truncated: true})
+			return
+		}
 	}
 	d := Diagnostic{Phase: phase}
 	copyPart := func(raw []byte, max int) []byte {
@@ -62,4 +83,18 @@ func (t *Trace) Snapshot() json.RawMessage {
 	}
 	raw, _ := json.Marshal(t.items)
 	return raw
+}
+
+func (t *Trace) Release() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.closed = true
+	t.items = nil
+	if t.reserved {
+		<-t.slots
+		t.reserved = false
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -87,20 +88,150 @@ func TestArchiveCapacityNeverBlocksAndShutdown(t *testing.T) {
 	s, err := New(testConfig(t))
 	require.NoError(t, err)
 	var captures []*Capture
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 32; i++ {
 		c := s.Capture(io.NopCloser(strings.NewReader("body")))
 		require.NotNil(t, c)
+		_, err := io.ReadAll(c)
+		require.NoError(t, err)
 		captures = append(captures, c)
 	}
-	require.Nil(t, s.Capture(io.NopCloser(strings.NewReader("overflow"))))
-	require.Equal(t, uint64(1), s.dropped.Load())
+	failure := s.Capture(io.NopCloser(strings.NewReader("new failure")))
+	_, err = io.ReadAll(failure)
+	require.NoError(t, err)
+	ref := failure.Save(&Entry{ContentLength: 11, Status: 400})
+	require.NotEmpty(t, ref.ID, "healthy streams must not exclude a later failure")
+	require.Equal(t, uint64(0), s.dropped.Load())
 	s.Close()
+	entry, err := s.Read(ref.ID)
+	require.NoError(t, err)
+	require.Equal(t, "new failure", string(entry.Request))
 	for _, c := range captures {
 		require.Equal(t, "unavailable", c.Save(&Entry{}).State)
 		c.Release()
 	}
-	require.Empty(t, s.slots)
+	require.Zero(t, s.buffered.Load())
+	require.Zero(t, s.active.Load())
 	require.Nil(t, s.Capture(io.NopCloser(strings.NewReader("closed"))))
+}
+
+func TestArchiveMemoryPressurePreservesReadCauseAndMetadata(t *testing.T) {
+	s, err := New(testConfig(t))
+	require.NoError(t, err)
+	defer s.Close()
+	for i := 0; i < 8; i++ {
+		c := s.Capture(io.NopCloser(strings.NewReader(strings.Repeat("x", 1024))))
+		_, err := io.ReadAll(c)
+		require.NoError(t, err)
+		defer c.Release()
+	}
+	require.Equal(t, int64(8192), s.buffered.Load())
+	c := s.Capture(io.NopCloser(strings.NewReader("partial upload")))
+	_, err = io.ReadAll(c)
+	require.NoError(t, err)
+	c.OnBodyReadError(io.ErrUnexpectedEOF)
+	ref := c.Save(&Entry{ContentLength: 30, Status: 400})
+	require.NotEmpty(t, ref.ID)
+	require.Equal(t, "truncated_body", ref.ReadError)
+	require.True(t, ref.CaptureLimited)
+	require.True(t, ref.Truncated)
+	s.Close()
+	entry, err := s.Read(ref.ID)
+	require.NoError(t, err)
+	require.Empty(t, entry.Request)
+	require.Equal(t, int64(14), entry.ReceivedBytes)
+	require.Equal(t, "truncated_body", entry.ReadError)
+	require.False(t, entry.Complete)
+	require.True(t, entry.CaptureLimited)
+	require.Equal(t, int64(8192), s.buffered.Load())
+}
+
+func TestArchiveFullWriterQueueRetainsReadCauseWithoutZeroExpiry(t *testing.T) {
+	s, err := New(testConfig(t))
+	require.NoError(t, err)
+	defer s.Close()
+	// Hold writes to simulate a slow disk. Save must remain nonblocking.
+	s.fileMu.Lock()
+	defer s.fileMu.Unlock()
+	var ref Ref
+	for i := 0; i < 10; i++ {
+		c := s.Capture(io.NopCloser(strings.NewReader("body")))
+		_, err := io.ReadAll(c)
+		require.NoError(t, err)
+		c.OnBodyReadError(context.DeadlineExceeded)
+		ref = c.Save(&Entry{Status: 400})
+		if ref.State == "queue_full" {
+			break
+		}
+	}
+	require.Equal(t, "queue_full", ref.State)
+	require.Empty(t, ref.ID)
+	require.Equal(t, "read_timeout", ref.ReadError)
+	raw, err := json.Marshal(ref)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "expires_at")
+	require.Zero(t, s.active.Load())
+}
+
+func TestArchiveDiagnosticSlotsReservedOnlyOnFailure(t *testing.T) {
+	s, err := New(testConfig(t))
+	require.NoError(t, err)
+	defer s.Close()
+	var traces []*Trace
+	var contexts []context.Context
+	for i := 0; i < 20; i++ {
+		c := s.Capture(io.NopCloser(strings.NewReader("body")))
+		defer c.Release()
+		ctx, trace := c.WithTrace(context.Background())
+		contexts = append(contexts, ctx)
+		traces = append(traces, trace)
+	}
+	require.Empty(t, s.traceSlots)
+	for i := 0; i < 9; i++ {
+		AddDiagnostic(contexts[i], "validation", []byte("request"), []byte("failure"))
+	}
+	require.Len(t, s.traceSlots, 8)
+	require.Empty(t, traces[8].items[0].Request)
+	require.True(t, traces[8].items[0].Truncated)
+	traces[0].Release()
+	AddDiagnostic(contexts[9], "validation", []byte("request"), []byte("failure"))
+	require.Equal(t, []byte("failure"), traces[9].items[0].Response)
+	AddDiagnostic(contexts[0], "after_release", nil, []byte("ignored"))
+	require.Empty(t, traces[0].items)
+}
+
+func TestArchiveConcurrentCaptureMemoryIsBoundedAndReleased(t *testing.T) {
+	s, err := New(testConfig(t))
+	require.NoError(t, err)
+	defer s.Close()
+	var captures []*Capture
+	for i := 0; i < 64; i++ {
+		captures = append(captures, s.Capture(io.NopCloser(strings.NewReader(strings.Repeat("x", 1024)))))
+	}
+	var workers sync.WaitGroup
+	readErrors := make(chan error, len(captures))
+	for _, c := range captures {
+		workers.Add(1)
+		go func(c *Capture) {
+			defer workers.Done()
+			_, err := io.ReadAll(c)
+			readErrors <- err
+		}(c)
+	}
+	workers.Wait()
+	close(readErrors)
+	for err := range readErrors {
+		require.NoError(t, err)
+	}
+	require.LessOrEqual(t, s.buffered.Load(), int64(8192))
+	require.Positive(t, s.limited.Load())
+	for _, c := range captures {
+		workers.Add(1)
+		go func(c *Capture) { defer workers.Done(); c.Save(&Entry{Status: 400, ContentLength: 1024}) }(c)
+	}
+	workers.Wait()
+	s.Close()
+	require.Zero(t, s.buffered.Load())
+	require.Zero(t, s.active.Load())
 }
 func TestArchiveDiskCapAndIdleCleanup(t *testing.T) {
 	cfg := testConfig(t)

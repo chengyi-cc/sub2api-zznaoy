@@ -43,6 +43,7 @@ type Entry struct {
 	Request           []byte          `json:"request_wire_base64"`
 	Truncated         bool            `json:"request_truncated"`
 	Complete          bool            `json:"request_complete"`
+	CaptureLimited    bool            `json:"capture_limited,omitempty"`
 	ReadError         string          `json:"read_error_kind,omitempty"`
 	Response          []byte          `json:"response_base64"`
 	ResponseTruncated bool            `json:"response_truncated"`
@@ -50,26 +51,30 @@ type Entry struct {
 }
 
 type Ref struct {
-	ID        string    `json:"id,omitempty"`
-	State     string    `json:"state"`
-	ExpiresAt time.Time `json:"expires_at,omitempty"`
-	Truncated bool      `json:"request_truncated,omitempty"`
-	ReadError string    `json:"read_error_kind,omitempty"`
+	ID             string    `json:"id,omitempty"`
+	State          string    `json:"state"`
+	ExpiresAt      time.Time `json:"expires_at,omitzero"`
+	Truncated      bool      `json:"request_truncated,omitempty"`
+	ReadError      string    `json:"read_error_kind,omitempty"`
+	CaptureLimited bool      `json:"capture_limited,omitempty"`
 }
 
 type Store struct {
-	cfg     Config
-	aead    cipher.AEAD
-	mu      sync.Mutex
-	queue   chan *Entry
-	slots   chan struct{}
-	done    chan struct{}
-	stop    sync.Once
-	closed  bool
-	fileMu  sync.Mutex
-	saved   atomic.Uint64
-	dropped atomic.Uint64
-	failed  atomic.Uint64
+	cfg        Config
+	aead       cipher.AEAD
+	mu         sync.Mutex
+	queue      chan *Entry
+	traceSlots chan struct{}
+	buffered   atomic.Int64
+	active     atomic.Int64
+	limited    atomic.Uint64
+	done       chan struct{}
+	stop       sync.Once
+	closed     bool
+	fileMu     sync.Mutex
+	saved      atomic.Uint64
+	dropped    atomic.Uint64
+	failed     atomic.Uint64
 }
 
 var validID = regexp.MustCompile("^[a-f0-9]{32}$")
@@ -96,7 +101,7 @@ func New(cfg Config) (*Store, error) {
 	if err = os.Chmod(cfg.Directory, 0700); err != nil {
 		return nil, err
 	}
-	s := &Store{cfg: cfg, aead: aead, queue: make(chan *Entry, 8), slots: make(chan struct{}, 8), done: make(chan struct{})}
+	s := &Store{cfg: cfg, aead: aead, queue: make(chan *Entry, 8), traceSlots: make(chan struct{}, 8), done: make(chan struct{})}
 	if err = s.cleanup(time.Now(), 0); err != nil {
 		return nil, err
 	}
@@ -119,7 +124,8 @@ func (s *Store) run() {
 			} else {
 				s.saved.Add(1)
 			}
-			<-s.slots
+			s.buffered.Add(-int64(cap(entry.Request)))
+			entry.Request = nil
 		case <-ticker.C:
 			if err := s.cleanup(time.Now(), 0); err != nil {
 				s.failed.Add(1)
@@ -136,7 +142,7 @@ func (s *Store) Close() {
 }
 
 func (s *Store) Stats() map[string]any {
-	return map[string]any{"saved": s.saved.Load(), "skipped_capacity": s.dropped.Load(), "write_failures": s.failed.Load(), "in_flight": len(s.slots), "retention_hours": s.cfg.Retention.Hours(), "capture_bytes": s.cfg.CaptureBytes, "max_disk_bytes": s.cfg.MaxBytes}
+	return map[string]any{"saved": s.saved.Load(), "skipped_capacity": s.dropped.Load(), "write_failures": s.failed.Load(), "in_flight": int(s.active.Load()), "queued": len(s.queue), "buffered_bytes": s.buffered.Load(), "buffer_limit_bytes": int64(s.cfg.CaptureBytes) * 8, "memory_limited": s.limited.Load(), "retention_hours": s.cfg.Retention.Hours(), "capture_bytes": s.cfg.CaptureBytes, "max_disk_bytes": s.cfg.MaxBytes}
 }
 
 func (s *Store) Capture(body io.ReadCloser) *Capture {
@@ -148,12 +154,21 @@ func (s *Store) Capture(body io.ReadCloser) *Capture {
 	if s.closed {
 		return nil
 	}
-	select {
-	case s.slots <- struct{}{}:
-		return &Capture{ReadCloser: body, store: s, limit: s.cfg.CaptureBytes}
-	default:
-		s.dropped.Add(1)
-		return nil
+	// Long, healthy streams must not monopolize eight archive writer slots.
+	// Admit a lightweight observer for every request; allocate bytes only as read.
+	s.active.Add(1)
+	return &Capture{ReadCloser: body, store: s, limit: s.cfg.CaptureBytes}
+}
+
+func (s *Store) reserveBytes(n int) bool {
+	for {
+		used := s.buffered.Load()
+		if used+int64(n) > int64(s.cfg.CaptureBytes)*8 {
+			return false
+		}
+		if s.buffered.CompareAndSwap(used, used+int64(n)) {
+			return true
+		}
 	}
 }
 
@@ -314,6 +329,8 @@ type Capture struct {
 	errKind  string
 	eof      bool
 	released bool
+	limited  bool
+	trace    *Trace
 }
 
 func (c *Capture) Read(p []byte) (int, error) {
@@ -322,15 +339,38 @@ func (c *Capture) Read(p []byte) (int, error) {
 		c.eof = true
 	}
 	c.total += int64(n)
+	if err != nil && err != io.EOF {
+		c.OnBodyReadError(err)
+	}
 	remaining := c.limit - len(c.buf)
 	if remaining > n {
 		remaining = n
 	}
-	if remaining > 0 {
+	if remaining > 0 && !c.limited && !c.released {
+		need := len(c.buf) + remaining
+		if need > cap(c.buf) {
+			next := cap(c.buf) * 2
+			if next < need {
+				next = need
+			}
+			if next > c.limit {
+				next = c.limit
+			}
+			reserved := c.store.reserveBytes(next - cap(c.buf))
+			if !reserved && next != need {
+				next = need
+				reserved = c.store.reserveBytes(next - cap(c.buf))
+			}
+			if !reserved {
+				c.limited = true
+				c.store.limited.Add(1)
+				return n, err
+			}
+			buf := make([]byte, len(c.buf), next)
+			copy(buf, c.buf)
+			c.buf = buf
+		}
 		c.buf = append(c.buf, p[:remaining]...)
-	}
-	if err != nil && err != io.EOF {
-		c.OnBodyReadError(err)
 	}
 	return n, err
 }
@@ -339,8 +379,10 @@ func (c *Capture) Read(p []byte) (int, error) {
 func (c *Capture) Release() {
 	if c != nil && !c.released {
 		c.released = true
+		c.store.buffered.Add(-int64(cap(c.buf)))
 		c.buf = nil
-		<-c.store.slots
+		c.store.active.Add(-1)
+		c.trace.Release()
 	}
 }
 
@@ -362,23 +404,26 @@ func (c *Capture) Save(entry *Entry) Ref {
 	entry.Request = c.buf
 	entry.ReceivedBytes = c.total
 	entry.Truncated = c.total > int64(len(c.buf))
+	entry.CaptureLimited = c.limited
 	entry.ReadError = c.errKind
 	entry.Complete = c.errKind == "" && !entry.Truncated && (entry.ContentLength == c.total || (entry.ContentLength < 0 && c.eof))
-	ref := Ref{ID: entry.ID, State: "queued", ExpiresAt: entry.ExpiresAt, Truncated: entry.Truncated, ReadError: entry.ReadError}
+	ref := Ref{ID: entry.ID, State: "queued", ExpiresAt: entry.ExpiresAt, Truncated: entry.Truncated, ReadError: entry.ReadError, CaptureLimited: c.limited}
 	c.store.mu.Lock()
 	defer c.store.mu.Unlock()
 	if c.store.closed {
 		c.Release()
-		return Ref{State: "unavailable"}
+		return Ref{State: "unavailable", Truncated: entry.Truncated, ReadError: entry.ReadError, CaptureLimited: c.limited}
 	}
 	select {
 	case c.store.queue <- entry:
-		c.released = true
+		// Transfer the reserved request buffer to the writer, then release the
+		// request observer and diagnostic slot. The writer releases its bytes.
 		c.buf = nil
+		c.Release()
 		return ref
 	default:
 		c.store.dropped.Add(1)
 		c.Release()
-		return Ref{State: "capacity_exhausted"}
+		return Ref{State: "queue_full", Truncated: entry.Truncated, ReadError: entry.ReadError, CaptureLimited: c.limited}
 	}
 }

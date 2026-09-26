@@ -136,11 +136,12 @@
           <p>{{ t('admin.ops.errorDetail.archiveNotice') }}</p>
           <p v-if="archiveRef.expires_at">{{ t('admin.ops.errorDetail.archiveExpires') }} {{ formatDateTime(archiveRef.expires_at) }}</p>
           <p v-if="archiveRef.request_truncated">{{ t('admin.ops.errorDetail.archiveTruncated') }}</p>
+          <p v-if="archiveRef.capture_limited">{{ t('admin.ops.errorDetail.archiveMemoryLimited') }}</p>
           <p v-if="archiveRef.read_error_kind">{{ t('admin.ops.errorDetail.archiveReadError') }}: {{ archiveRef.read_error_kind }}</p>
           <button v-if="archiveRef.id" type="button" class="btn btn-secondary" data-testid="download-error-archive" :disabled="archiveDownloading" @click="downloadArchive">
             {{ archiveDownloading ? t('common.loading') : t('admin.ops.errorDetail.archiveDownload') }}
           </button>
-          <p v-else>{{ t('admin.ops.errorDetail.archiveUnavailable') }}</p>
+          <p v-else data-testid="archive-not-captured">{{ archiveStateMessage }}</p>
         </div>
         <div v-if="!diagnosticPayloadSections.length" class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ t('common.noData') }}</div>
         <div v-else class="mt-4 space-y-4">
@@ -271,11 +272,19 @@ const archiveRef = computed(() => {
     if (!ref || typeof ref !== 'object') return null
     return {
       id: typeof ref.id === 'string' && /^[a-f0-9]{32}$/.test(ref.id) ? ref.id : '',
-      expires_at: typeof ref.expires_at === 'string' ? ref.expires_at : '',
+      expires_at: typeof ref.expires_at === 'string' && !ref.expires_at.startsWith('0001-') && Number.isFinite(Date.parse(ref.expires_at)) ? ref.expires_at : '',
+      state: typeof ref.state === 'string' ? ref.state : '',
+      capture_limited: ref.capture_limited === true,
       request_truncated: ref.request_truncated === true,
       read_error_kind: typeof ref.read_error_kind === 'string' ? ref.read_error_kind : ''
     }
   } catch { return null }
+})
+
+const archiveStateMessage = computed(() => {
+  if (archiveRef.value?.state === 'capacity_exhausted') return t('admin.ops.errorDetail.archiveCapacityExhausted')
+  if (archiveRef.value?.state === 'queue_full') return t('admin.ops.errorDetail.archiveQueueFull')
+  return t('admin.ops.errorDetail.archiveNotCaptured')
 })
 
 async function downloadArchive() {
