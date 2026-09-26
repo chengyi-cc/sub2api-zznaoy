@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/errorarchive"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -114,7 +115,7 @@ func groupModelAllowlistModelsFromBody(c *gin.Context) ([]string, bool) {
 	body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil {
 		status := http.StatusBadRequest
-		message := "Failed to read request body"
+		message := errorarchive.ReadErrorMessage(err)
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
 			status = http.StatusRequestEntityTooLarge

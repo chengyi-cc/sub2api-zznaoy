@@ -149,6 +149,20 @@ func TestGroupModelAllowlistRequestBodyTooLargePassesThrough413(t *testing.T) {
 	}
 }
 
+func TestGroupModelAllowlistIncompleteUploadNeverReachesHandler(t *testing.T) {
+	router, calls := newGroupModelAllowlistTestRouter(allowlistAPIKey(true, "test"), "/v1")
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"test"}`))
+	req.ContentLength += 100
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "upload was incomplete") {
+		t.Fatalf("wrong read failure: %d %s", w.Code, w.Body.String())
+	}
+	if len(*calls) != 0 {
+		t.Fatal("incomplete upload reached handler")
+	}
+}
+
 func TestGroupModelAllowlistJSONBodyAllowed(t *testing.T) {
 	router, calls := newGroupModelAllowlistTestRouter(allowlistAPIKey(true, "claude-sonnet-4.5"), "/v1")
 

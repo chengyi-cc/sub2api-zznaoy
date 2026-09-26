@@ -145,4 +145,21 @@ describe('OpsErrorDetailModal', () => {
     expect(wrapper.findAll('pre')).toHaveLength(2)
     expect(wrapper.text()).not.toContain('admin.ops.errorDetail.payloads.upstream_detail')
   })
+
+  it.each([true, false, undefined])('separates upload status %s from archive truncation', async (complete) => {
+    mocks.getRequestErrorDetail.mockResolvedValue({ id: 5, error_body: JSON.stringify({ diagnostic_archive: {
+      id: 'd'.repeat(32), state: 'queued', request_truncated: true,
+      upload_complete: complete, received_bytes: 15925230, content_length: 22870745,
+      missing_bytes: complete === false ? 6945515 : 0
+    } }) })
+    const wrapper = shallowMount(OpsErrorDetailModal, { props: { show: true, errorId: 5, errorType: 'request' }, global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('archiveTruncated')
+    expect(wrapper.find('[data-testid="archive-upload-complete"]').exists()).toBe(complete === true)
+    expect(wrapper.find('[data-testid="archive-upload-incomplete"]').exists()).toBe(complete === false)
+    expect(wrapper.find('[data-testid="archive-upload-bytes"]').exists()).toBe(complete !== undefined)
+    if (complete !== undefined) expect(wrapper.get('[data-testid="archive-upload-bytes"]').text()).toContain('15925230')
+    if (complete === false) expect(wrapper.text()).toContain('6945515')
+    wrapper.unmount()
+  })
 })

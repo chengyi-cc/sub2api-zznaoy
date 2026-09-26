@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/errorarchive"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -600,7 +601,7 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 		body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 		if err != nil {
 			status := http.StatusBadRequest
-			message := "Failed to read request body"
+			message := errorarchive.ReadErrorMessage(err)
 			var maxErr *http.MaxBytesError
 			if errors.As(err, &maxErr) {
 				status = http.StatusRequestEntityTooLarge

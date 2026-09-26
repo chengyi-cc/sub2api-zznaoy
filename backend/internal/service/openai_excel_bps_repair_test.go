@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/errorarchive"
 	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -146,4 +147,49 @@ func TestExcelBPSToolCorrectionStopsOnHTTPRejection(t *testing.T) {
 			require.NotContains(t, rec.Body.String(), "response.output_item.added")
 		})
 	}
+}
+
+func TestExcelBPSArchivesOriginalAndRejectedCorrectionWithoutHistoryEcho(t *testing.T) {
+	initialCode := `{"name":"functions.exec","arguments":{"cmd":"echo original"}}`
+	correctedCode := `text(await tools.exec_command({cmd:"echo changed"}));`
+	upstream := &httpUpstreamRecorder{}
+	for i, code := range []string{initialCode, correctedCode} {
+		summary := "Run"
+		if i == 1 {
+			summary = "codex2api.custom/functions.exec"
+		}
+		args, err := json.Marshal(map[string]any{"summary": summary, "code": code, "extended_summary": "{}", "references": []any{}, "destructive": false})
+		require.NoError(t, err)
+		wire, err := json.Marshal(map[string]any{"type": "response.completed", "response": map[string]any{
+			"id": fmt.Sprintf("resp_%d", i), "status": "completed", "instructions": strings.Repeat("private echoed history", 50000),
+			"output": []any{map[string]any{"type": "function_call", "name": "run_officejs", "id": fmt.Sprintf("fc_%d", i), "call_id": fmt.Sprintf("call_%d", i), "arguments": string(args)}},
+		}})
+		require.NoError(t, err)
+		upstream.responses = append(upstream.responses, &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("data: " + string(wire) + "\n\n"))})
+	}
+	body := []byte(`{"model":"gpt-5.6-sol","stream":true,"input":"test","tools":[{"type":"namespace","name":"functions","tools":[{"type":"custom","name":"exec"}]}]}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	ctx, trace := errorarchive.WithTrace(context.Background())
+	defer trace.Release()
+	_, err := openAIClientToolsTestService(upstream).Forward(ctx, c, excelAccount(), body)
+	require.Error(t, err)
+	require.Contains(t, rec.Body.String(), "changed an operation")
+	require.NotContains(t, rec.Body.String(), "response.custom_tool_call_input.done")
+	require.Len(t, upstream.requests, 2)
+	var diagnostics []errorarchive.Diagnostic
+	require.NoError(t, json.Unmarshal(trace.Snapshot(), &diagnostics))
+	require.Len(t, diagnostics, 2)
+	for i, d := range diagnostics {
+		require.False(t, d.Truncated)
+		require.Empty(t, d.Request)
+		require.Equal(t, "exec", gjson.GetBytes(d.RequestSummary, "tool_catalog.0.name").String())
+		require.NotContains(t, string(d.Response), "private echoed history")
+		require.Equal(t, fmt.Sprintf("resp_%d", i), gjson.GetBytes(d.Response, "response.id").String())
+		args := gjson.GetBytes(d.Response, "response.output.0.arguments").String()
+		require.Equal(t, []string{initialCode, correctedCode}[i], gjson.Get(args, "code").String())
+	}
+	require.Equal(t, "tool_validation", diagnostics[0].Phase)
+	require.Equal(t, "tool_correction_rejected", diagnostics[1].Phase)
 }

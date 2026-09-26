@@ -363,6 +363,11 @@ export default {
         archiveQueueFull: 'No sample was created: the error archive write queue was full. Available read failure details are retained, but the body cannot be downloaded.',
         archiveNotCaptured: 'No downloadable diagnostic sample exists for this request. Missing request bytes cannot be recovered.',
         archiveReadError: 'Request read failure',
+        archiveUploadComplete: 'The request was fully received. Archive truncation does not mean the upload was interrupted.',
+        archiveUploadIncomplete: 'The request was not fully received. The server cannot reconstruct missing bytes.',
+        archiveReceivedBytes: 'Received bytes',
+        archiveExpectedBytes: 'Declared bytes',
+        archiveMissingBytes: 'Missing bytes',
         archiveDownload: 'Download diagnostic capture',
         archiveUnavailable: 'Capture is pending, expired, over capacity, or on another server.',
         payloads: {

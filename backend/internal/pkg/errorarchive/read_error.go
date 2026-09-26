@@ -46,3 +46,21 @@ func ReadErrorKind(err error) string {
 	}
 	return "io_read"
 }
+
+// Fixed public messages never echo error strings, paths, or request content.
+func ReadErrorMessage(err error) string {
+	switch ReadErrorKind(err) {
+	case "truncated_body":
+		return "Request body upload was incomplete; resend the complete request"
+	case "client_disconnect":
+		return "Request body upload was interrupted; resend the complete request"
+	case "read_timeout":
+		return "Request body upload timed out; resend the complete request"
+	case "unsupported_content_encoding":
+		return "Unsupported request Content-Encoding"
+	case "decode_content_encoding":
+		return "Failed to decode the compressed request body"
+	default:
+		return "Failed to read request body"
+	}
+}

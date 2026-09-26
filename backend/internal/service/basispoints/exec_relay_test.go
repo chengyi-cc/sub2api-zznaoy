@@ -1,12 +1,95 @@
 package basispoints
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestLegacyExecCommandPreservesArgumentsWithoutModelRepair(t *testing.T) {
+	for _, direct := range []bool{false, true} {
+		for _, encoded := range []bool{false, true} {
+			source := execTestSource()
+			_, bridge := mustPrepare(t, source, "legacy-exec", new(ReplayCache))
+			args := object{"cmd": "Write-Output '你好'\n# literal: \"\\ ); throw 1; //", "shell": "powershell", "workdir": "C:/example folder", "yield_time_ms": json.Number("30000"), "max_output_tokens": json.Number("12000"), "login": false}
+			var value any = args
+			if encoded {
+				raw, _ := json.Marshal(args)
+				value = string(raw)
+			}
+			native := nativeCall(object{"name": "functions.exec", "arguments": value})
+			if direct {
+				native["name"], native["arguments"] = "functions.exec", value
+			}
+			call, err := bridge.translateCall(native)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if call["type"] != "custom_tool_call" || call["name"] != "exec" || call["namespace"] != "functions" || call["call_id"] != native["call_id"] {
+				t.Fatal("tool identity changed")
+			}
+			code := text(call["input"])
+			prefix, suffix := "text(await tools[\"exec_command\"](JSON.parse(", ")));"
+			if !strings.HasPrefix(code, prefix) || !strings.HasSuffix(code, suffix) {
+				t.Fatal("unexpected transport")
+			}
+			var literal string
+			if err := json.Unmarshal([]byte(strings.TrimSuffix(strings.TrimPrefix(code, prefix), suffix)), &literal); err != nil {
+				t.Fatal(err)
+			}
+			var restored object
+			if err := decode([]byte(literal), &restored); err != nil || !reflect.DeepEqual(restored, args) {
+				t.Fatal("command arguments changed")
+			}
+			response := object{"id": "resp_legacy", "status": "completed", "output": []any{native}}
+			err = bridge.translateCompleted(context.Background(), response, func(context.Context, object, error) (object, error) {
+				t.Fatal("unexpected model repair")
+				return nil, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			source["input"] = []any{message("user", "test"), call, object{"type": "custom_tool_call_output", "call_id": call["call_id"], "output": "ok"}}
+			first, _ := mustPrepare(t, source, "legacy-exec", bridge.replay)
+			again, _ := mustPrepare(t, source, "legacy-exec", bridge.replay)
+			if !reflect.DeepEqual(first, again) {
+				t.Fatal("unstable follow-up request")
+			}
+		}
+	}
+}
+
+func TestLegacyExecCommandRequiresExactDeclaredContract(t *testing.T) {
+	_, bridge := mustPrepare(t, execTestSource(), "", nil)
+	for _, envelope := range []object{
+		{"name": "functions.exec", "arguments": object{"cmd": "pwd", "code": "text(99)"}},
+		{"name": "functions.exec", "arguments": object{"cmd": "pwd"}, "input": "text(99)"},
+		{"name": "functions.exec", "arguments": object{"cmd": "pwd"}, "args": object{}},
+		{"name": "functions.exec", "arguments": object{"cmd": json.Number("123")}},
+		{"name": "functions.exec", "arguments": object{"cmd": "  "}},
+	} {
+		if _, err := bridge.translateCall(nativeCall(envelope)); err == nil {
+			t.Fatal("accepted conflicting or invalid command")
+		}
+	}
+	for _, description := range []string{"Example tools.exec_command({cmd:'pwd'})", "declare const tools: { exec_command(input: string): Promise<unknown>; };"} {
+		source := testSource()
+		source["tools"] = []any{object{"type": "custom", "name": "exec", "description": description}}
+		_, b := mustPrepare(t, source, "", nil)
+		if _, err := b.translateCall(nativeCall(object{"name": "exec", "arguments": object{"cmd": "pwd"}})); err == nil {
+			t.Fatal("undeclared command contract accepted")
+		}
+	}
+	// A marked custom payload is always raw source, even if it resembles legacy arguments.
+	marked := repairCall("raw", "codex2api.custom/functions.exec", `{"cmd":"pwd"}`)
+	call, err := bridge.translateCall(marked)
+	if err != nil || call["input"] != `{"cmd":"pwd"}` {
+		t.Fatal("raw custom input changed")
+	}
+}
 
 const execTestDescription = "Run JavaScript orchestration. tools holds callable tools; text(value) displays output.\n" +
 	"declare const tools: { exec_command(args: { cmd: string }): Promise<unknown>; };\n" +

@@ -8,10 +8,11 @@ import (
 
 type traceKey struct{}
 type Diagnostic struct {
-	Phase     string `json:"phase"`
-	Request   []byte `json:"prepared_request_base64,omitempty"`
-	Response  []byte `json:"upstream_response_base64,omitempty"`
-	Truncated bool   `json:"truncated"`
+	Phase          string          `json:"phase"`
+	Request        []byte          `json:"prepared_request_base64,omitempty"`
+	RequestSummary json.RawMessage `json:"request_summary,omitempty"`
+	Response       []byte          `json:"upstream_response_base64,omitempty"`
+	Truncated      bool            `json:"truncated"`
 }
 type Trace struct {
 	mu        sync.Mutex
@@ -34,6 +35,16 @@ func WithTrace(ctx context.Context) (context.Context, *Trace) {
 }
 func HasTrace(ctx context.Context) bool { _, ok := ctx.Value(traceKey{}).(*Trace); return ok }
 func AddDiagnostic(ctx context.Context, phase string, request, response []byte) {
+	addDiagnostic(ctx, phase, request, nil, response)
+}
+
+// Summaries keep structural evidence from the entire request without repeated
+// image/history prefixes consuming the space needed for a rejected correction.
+func AddDiagnosticSummary(ctx context.Context, phase string, summary json.RawMessage, response []byte) {
+	addDiagnostic(ctx, phase, nil, summary, response)
+}
+
+func addDiagnostic(ctx context.Context, phase string, request []byte, summary json.RawMessage, response []byte) {
 	t, _ := ctx.Value(traceKey{}).(*Trace)
 	if t == nil {
 		return
@@ -69,6 +80,14 @@ func AddDiagnostic(ctx context.Context, phase string, request, response []byte) 
 	}
 	// Preserve the invalid tool response first; long input must not crowd it out.
 	d.Response = copyPart(response, 512<<10)
+	if len(summary) > 0 {
+		if len(summary) <= 64<<10 && len(summary) <= t.remaining && json.Valid(summary) {
+			d.RequestSummary = append(json.RawMessage(nil), summary...)
+			t.remaining -= len(summary)
+		} else {
+			d.Truncated = true
+		}
+	}
 	d.Request = copyPart(request, 768<<10)
 	t.items = append(t.items, d)
 }

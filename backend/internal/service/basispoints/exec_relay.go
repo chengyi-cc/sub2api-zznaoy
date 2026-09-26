@@ -168,6 +168,48 @@ func (b *Bridge) recoverExecCall(native, envelope object) (object, bool, error) 
 			return nil, true, fmt.Errorf("basispoints nested function arguments must be an object")
 		}
 	}
+	return b.finishExecRelayCall(native, host, method, args, checkRuntime)
+}
+
+// Older exec examples use the shell-command argument object directly. Recover
+// only this known shape and only on the explicitly selected orchestration host
+// whose active description declares exec_command. Do not guess from raw code.
+func (b *Bridge) recoverLegacyExecCommand(native object, host tool, envelope object) (object, bool, error) {
+	if host.Kind != "custom" || (host.Name != "exec" && host.Name != "functions.exec") ||
+		!host.ExecFunctions["exec_command"] || host.ExecStringFunctions["exec_command"] || text(native["type"]) != "function_call" {
+		return nil, false, nil
+	}
+	if _, exists := envelope["input"]; exists {
+		return nil, false, nil
+	}
+	if _, exists := envelope["args"]; exists {
+		return nil, false, nil
+	}
+	value, exists := envelope["arguments"]
+	if !exists {
+		return nil, false, nil
+	}
+	if raw, ok := value.(string); ok {
+		if len(raw) > maxEnvelopeBytes || decode([]byte(raw), &value) != nil {
+			return nil, false, nil
+		}
+	}
+	args, ok := value.(object)
+	if !ok || strings.TrimSpace(text(args["cmd"])) == "" {
+		return nil, false, nil
+	}
+	for key := range args {
+		switch key {
+		case "cmd", "workdir", "shell", "login", "tty", "yield_time_ms", "max_output_tokens", "sandbox_permissions", "justification", "prefix_rule":
+		default:
+			return nil, false, nil
+		}
+	}
+	call, _, err := b.finishExecRelayCall(native, host, "exec_command", args, false)
+	return call, true, err
+}
+
+func (b *Bridge) finishExecRelayCall(native object, host tool, method string, args any, checkRuntime bool) (object, bool, error) {
 	raw, err := json.Marshal(args)
 	if err != nil || len(raw) > maxEnvelopeBytes {
 		return nil, true, fmt.Errorf("basispoints nested function arguments exceed the transport contract")

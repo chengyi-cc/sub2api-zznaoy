@@ -136,6 +136,13 @@
           <p>{{ t('admin.ops.errorDetail.archiveNotice') }}</p>
           <p v-if="archiveRef.expires_at">{{ t('admin.ops.errorDetail.archiveExpires') }} {{ formatDateTime(archiveRef.expires_at) }}</p>
           <p v-if="archiveRef.request_truncated">{{ t('admin.ops.errorDetail.archiveTruncated') }}</p>
+          <p v-if="archiveRef.upload_complete === true" data-testid="archive-upload-complete">{{ t('admin.ops.errorDetail.archiveUploadComplete') }}</p>
+          <p v-else-if="archiveRef.upload_complete === false" data-testid="archive-upload-incomplete">{{ t('admin.ops.errorDetail.archiveUploadIncomplete') }}</p>
+          <p v-if="archiveRef.upload_complete !== null" data-testid="archive-upload-bytes">
+            {{ t('admin.ops.errorDetail.archiveReceivedBytes') }}: {{ archiveRef.received_bytes ?? '—' }};
+            {{ t('admin.ops.errorDetail.archiveExpectedBytes') }}: {{ archiveRef.content_length !== null && archiveRef.content_length >= 0 ? archiveRef.content_length : '—' }}
+            <span v-if="archiveRef.missing_bytes">; {{ t('admin.ops.errorDetail.archiveMissingBytes') }}: {{ archiveRef.missing_bytes }}</span>
+          </p>
           <p v-if="archiveRef.capture_limited">{{ t('admin.ops.errorDetail.archiveMemoryLimited') }}</p>
           <p v-if="archiveRef.read_error_kind">{{ t('admin.ops.errorDetail.archiveReadError') }}: {{ archiveRef.read_error_kind }}</p>
           <button v-if="archiveRef.id" type="button" class="btn btn-secondary" data-testid="download-error-archive" :disabled="archiveDownloading" @click="downloadArchive">
@@ -276,6 +283,10 @@ const archiveRef = computed(() => {
       state: typeof ref.state === 'string' ? ref.state : '',
       capture_limited: ref.capture_limited === true,
       request_truncated: ref.request_truncated === true,
+      upload_complete: typeof ref.upload_complete === 'boolean' ? ref.upload_complete : null,
+      received_bytes: Number.isSafeInteger(ref.received_bytes) && ref.received_bytes >= 0 ? ref.received_bytes : null,
+      content_length: Number.isSafeInteger(ref.content_length) && ref.content_length >= -1 ? ref.content_length : null,
+      missing_bytes: Number.isSafeInteger(ref.missing_bytes) && ref.missing_bytes > 0 ? ref.missing_bytes : null,
       read_error_kind: typeof ref.read_error_kind === 'string' ? ref.read_error_kind : ''
     }
   } catch { return null }

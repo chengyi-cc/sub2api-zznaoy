@@ -170,7 +170,7 @@ func (b *Bridge) translateCompleted(ctx context.Context, response object, repair
 			want = 1
 		}
 		if !ok || len(items) != want {
-			return fmt.Errorf("basispoints tool transport correction changed the tool batch; no tool was executed")
+			return b.observeCorrectionFailure(corrected, fmt.Errorf("basispoints tool transport correction changed the tool batch; no tool was executed"))
 		}
 		validation = b.validateToolResponse(corrected)
 		if validation != nil && b.observeToolFailure != nil {
@@ -183,10 +183,10 @@ func (b *Bridge) translateCompleted(ctx context.Context, response object, repair
 			}
 			items, err = b.restoreRawToolPayloads(compare, items)
 			if err != nil {
-				return err
+				return b.observeCorrectionFailure(corrected, err)
 			}
 			if !b.preservesToolOperations(compare, items) {
-				return fmt.Errorf("basispoints tool transport correction changed an operation; no tool was executed")
+				return b.observeCorrectionFailure(corrected, fmt.Errorf("basispoints tool transport correction changed an operation; no tool was executed"))
 			}
 			// Text has already streamed. Replace only its withheld tool slots,
 			// keeping one downstream response identity and stable output indexes.
@@ -210,6 +210,15 @@ func (b *Bridge) translateCompleted(ctx context.Context, response object, repair
 		failed = corrected
 	}
 	return fmt.Errorf("basispoints tool transport remains invalid after %d corrections; no tool was executed: %w", maxToolRepairs, validation)
+}
+
+// Keep the rejected correction as well as the initial invalid call. Otherwise
+// the archive cannot explain why an individually valid correction was refused.
+func (b *Bridge) observeCorrectionFailure(corrected object, err error) error {
+	if b.observeToolFailure != nil {
+		b.observeToolFailure(corrected, err)
+	}
+	return err
 }
 
 func hasOnlyPlanText(response object) bool {

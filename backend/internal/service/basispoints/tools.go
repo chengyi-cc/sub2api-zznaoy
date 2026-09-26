@@ -511,7 +511,12 @@ func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 		envelope = object{"name": info.Name, "arguments": native["arguments"]}
 	case "custom":
 		if kind != "custom_tool_call" {
-			return nil, fmt.Errorf("basispoints returned client custom tool %q as a %q; no tool was executed", info.Name, kind)
+			legacy := object{"arguments": native["arguments"]}
+			if _, recovered, err := b.recoverLegacyExecCommand(native, info, legacy); !recovered || err != nil {
+				return nil, fmt.Errorf("basispoints returned client custom tool %q as a %q; no tool was executed", info.Name, kind)
+			}
+			envelope = legacy
+			break
 		}
 		input, ok := native["input"].(string)
 		if !ok {
@@ -561,6 +566,9 @@ func (b *Bridge) finishClientToolCall(native object, info tool, envelope object,
 		result["namespace"] = info.Namespace
 	}
 	if info.Kind == "custom" {
+		if recovered, ok, err := b.recoverLegacyExecCommand(native, info, envelope); ok || err != nil {
+			return recovered, err
+		}
 		value, hasInput := envelope["input"]
 		if alias, hasAlias := envelope["args"]; hasAlias {
 			if hasInput {

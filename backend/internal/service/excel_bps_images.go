@@ -17,7 +17,6 @@ import (
 
 const excelBPSMaxImageBytes = 20 << 20
 const excelBPSMaxTotalImageBytes = 32 << 20
-const excelBPSMaxImages = 16
 
 type excelBPSInlineImage struct {
 	placeholder, mime string
@@ -49,16 +48,12 @@ func excelBPSImageParts(body []byte, visit func(string, gjson.Result) error) err
 func prepareExcelBPSImages(body []byte) ([]byte, *excelBPSImagePlan, error) {
 	plan := &excelBPSImagePlan{}
 	seen := make(map[string]bool)
-	total, count := 0, 0
+	total := 0
 	updated := body
 	err := excelBPSImageParts(body, func(path string, part gjson.Result) error {
 		raw := part.Get("image_url").String()
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "data:") {
 			return nil
-		}
-		count++
-		if count > excelBPSMaxImages {
-			return fmt.Errorf("Excel BPS accepts at most 16 inline images per request")
 		}
 		mime, data, err := decodeExcelBPSImage(raw)
 		if err != nil {

@@ -40,6 +40,11 @@ type Entry struct {
 	ContentEncoding   string          `json:"content_encoding"`
 	ContentLength     int64           `json:"content_length"`
 	ReceivedBytes     int64           `json:"received_bytes"`
+	UploadComplete    *bool           `json:"upload_complete,omitempty"`
+	MissingBytes      int64           `json:"missing_bytes,omitempty"`
+	CapturedBytes     int             `json:"captured_bytes"`
+	CaptureLimitBytes int             `json:"capture_limit_bytes"`
+	TruncationReason  string          `json:"capture_truncation_reason,omitempty"`
 	Request           []byte          `json:"request_wire_base64"`
 	Truncated         bool            `json:"request_truncated"`
 	Complete          bool            `json:"request_complete"`
@@ -57,6 +62,10 @@ type Ref struct {
 	Truncated      bool      `json:"request_truncated,omitempty"`
 	ReadError      string    `json:"read_error_kind,omitempty"`
 	CaptureLimited bool      `json:"capture_limited,omitempty"`
+	UploadComplete *bool     `json:"upload_complete,omitempty"`
+	ReceivedBytes  int64     `json:"received_bytes"`
+	ContentLength  int64     `json:"content_length"`
+	MissingBytes   int64     `json:"missing_bytes,omitempty"`
 }
 
 type Store struct {
@@ -406,13 +415,28 @@ func (c *Capture) Save(entry *Entry) Ref {
 	entry.Truncated = c.total > int64(len(c.buf))
 	entry.CaptureLimited = c.limited
 	entry.ReadError = c.errKind
-	entry.Complete = c.errKind == "" && !entry.Truncated && (entry.ContentLength == c.total || (entry.ContentLength < 0 && c.eof))
-	ref := Ref{ID: entry.ID, State: "queued", ExpiresAt: entry.ExpiresAt, Truncated: entry.Truncated, ReadError: entry.ReadError, CaptureLimited: c.limited}
+	// Transport completeness is independent of the bounded archive copy. A fully
+	// received compressed body may still fail decoding; ReadError records that.
+	uploadComplete := entry.ContentLength == c.total || (entry.ContentLength < 0 && c.eof)
+	entry.UploadComplete = &uploadComplete
+	if entry.ContentLength > c.total {
+		entry.MissingBytes = entry.ContentLength - c.total
+	}
+	entry.CapturedBytes, entry.CaptureLimitBytes = len(c.buf), c.limit
+	if entry.Truncated {
+		entry.TruncationReason = "request_limit"
+		if c.limited {
+			entry.TruncationReason = "memory_budget"
+		}
+	}
+	entry.Complete = c.errKind == "" && !entry.Truncated && uploadComplete
+	ref := Ref{ID: entry.ID, State: "queued", ExpiresAt: entry.ExpiresAt, Truncated: entry.Truncated, ReadError: entry.ReadError, CaptureLimited: c.limited, UploadComplete: &uploadComplete, ReceivedBytes: c.total, ContentLength: entry.ContentLength, MissingBytes: entry.MissingBytes}
 	c.store.mu.Lock()
 	defer c.store.mu.Unlock()
 	if c.store.closed {
 		c.Release()
-		return Ref{State: "unavailable", Truncated: entry.Truncated, ReadError: entry.ReadError, CaptureLimited: c.limited}
+		ref.ID, ref.State, ref.ExpiresAt = "", "unavailable", time.Time{}
+		return ref
 	}
 	select {
 	case c.store.queue <- entry:
@@ -424,6 +448,7 @@ func (c *Capture) Save(entry *Entry) Ref {
 	default:
 		c.store.dropped.Add(1)
 		c.Release()
-		return Ref{State: "queue_full", Truncated: entry.Truncated, ReadError: entry.ReadError, CaptureLimited: c.limited}
+		ref.ID, ref.State, ref.ExpiresAt = "", "queue_full", time.Time{}
+		return ref
 	}
 }

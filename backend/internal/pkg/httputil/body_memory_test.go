@@ -19,6 +19,14 @@ func TestReadRequestBodyChunksPreservesContent(t *testing.T) {
 			t.Run(fmt.Sprintf("size_%d_length_%d", size, declared), func(t *testing.T) {
 				req := &http.Request{Body: io.NopCloser(bodyReaderOnly{bytes.NewReader(body)}), ContentLength: declared, Header: make(http.Header)}
 				got, err := ReadRequestBodyWithPrealloc(req)
+				if declared > int64(size) {
+					// A huge untrusted length must neither trigger eager allocation
+					// nor make a short upload appear complete.
+					if !errors.Is(err, io.ErrUnexpectedEOF) || got != nil {
+						t.Fatalf("short upload accepted: len=%d err=%v", len(got), err)
+					}
+					return
+				}
 				if err != nil || !bytes.Equal(got, body) {
 					t.Fatalf("body was lost or changed: %v", err)
 				}

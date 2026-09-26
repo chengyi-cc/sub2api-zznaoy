@@ -104,3 +104,29 @@ func TestToolRepairCannotChangeFunctionCodeMetadata(t *testing.T) {
 	require.True(t, b.preservesToolOperations([]object{original}, []object{same}))
 	require.False(t, b.preservesToolOperations([]object{original}, []object{changed}))
 }
+
+func TestToolRepairArchivesRejectedCorrectionWithoutDispatch(t *testing.T) {
+	for _, changeBatch := range []bool{false, true} {
+		_, b := repairBridge(t, new(ReplayCache))
+		b.parallelTools = false
+		initial := repairResponse("original", 1, 1, repairCall("first", "codex2api.custom/functions.exec", "text(1)"), repairCall("second", "codex2api.custom/functions.exec", "text(2)"))
+		var observed []string
+		b.ObserveToolFailure(func(response object, err error) {
+			require.Error(t, err)
+			observed = append(observed, text(response["id"]))
+		})
+		body := b.StreamWithToolRepair(context.Background(), io.NopCloser(strings.NewReader(sse(object{"type": "response.completed", "response": initial}))), func(context.Context, object, error) (object, error) {
+			if changeBatch {
+				return repairResponse("corrected", 1, 1), nil
+			}
+			return repairResponse("corrected", 1, 1, repairCall("changed", "codex2api.custom/functions.exec", "text(3)")), nil
+		})
+		events := repairEvents(t, body)
+		require.Equal(t, []string{"original", "corrected"}, observed)
+		require.Equal(t, "response.failed", events[len(events)-1]["type"])
+		require.Nil(t, b.replay.get(b.scope, "changed"))
+		for _, event := range events {
+			require.NotEqual(t, "response.custom_tool_call_input.done", event["type"])
+		}
+	}
+}

@@ -94,6 +94,11 @@ func ReadRequestBodyWithPrealloc(req *http.Request) (body []byte, readErr error)
 	if err != nil {
 		return nil, err
 	}
+	// The chunk reader also accepts allocation hints from non-HTTP callers.
+	// Validate declared transport length only at the HTTP request boundary.
+	if req.ContentLength > 0 && int64(len(raw)) < req.ContentLength {
+		return nil, io.ErrUnexpectedEOF
+	}
 
 	enc := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
 	if enc == "" || enc == "identity" {

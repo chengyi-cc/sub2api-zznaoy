@@ -74,7 +74,23 @@ func newExcelBPSRequest(ctx context.Context, body []byte, token, accountID strin
 // BPS deliberately bypasses Codex ticket/cookie injection and OAuth plugins:
 // only the selected account's bearer and ChatGPT account ID belong on this host.
 func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Context, account *Account, body []byte, start time.Time) (*OpenAIForwardResult, error) {
+	// Generated only on failure. Healthy requests do not pay for a second JSON
+	// traversal, and long image histories do not crowd out correction evidence.
+	var diagnosticSummary json.RawMessage
+	archiveDiagnostic := func(phase string, response []byte) {
+		if !errorarchive.HasTrace(ctx) {
+			return
+		}
+		if diagnosticSummary == nil {
+			diagnosticSummary = errorarchive.RequestSummary(body)
+		}
+		errorarchive.AddDiagnosticSummary(ctx, phase, diagnosticSummary, response)
+	}
 	fail := func(status int, code, message string) (*OpenAIForwardResult, error) {
+		if diagnosticSummary == nil {
+			raw, _ := json.Marshal(map[string]any{"code": code, "message": message})
+			archiveDiagnostic("request_failure", raw)
+		}
 		// A compact keepalive may already have committed SSE headers. Otherwise
 		// finish a single JSON response so the handler cannot append another error.
 		committed := StopOpenAICompactSSEKeepaliveCommitted(c)
@@ -182,7 +198,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	var recoveredDigests []string
 	if resp.StatusCode == http.StatusBadRequest {
 		rejection, readErr := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
-		errorarchive.AddDiagnostic(ctx, "upstream_rejection", upstreamBody, rejection)
+		archiveDiagnostic("upstream_rejection", rejection)
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(rejection))
 		if readErr == nil && ctx.Err() == nil {
@@ -205,7 +221,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
-		errorarchive.AddDiagnostic(ctx, "upstream_http_error", upstreamBody, raw)
+		archiveDiagnostic("upstream_http_error", raw)
 		s.excelBPSImages.invalidateRejected(imageScope, upstreamBody, raw)
 		if resp.StatusCode == http.StatusTooManyRequests && s.rateLimitService != nil {
 			stateCtx, cancel := openAIAccountStateContext(ctx)
@@ -266,9 +282,27 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	s.UpdateCodexUsageSnapshotFromHeaders(ctx, account.ID, resp.Header)
 	repairBody := upstreamBody
 	if errorarchive.HasTrace(ctx) {
+		failureIndex := 0
 		bridge.ObserveToolFailure(func(failed map[string]any, validation error) {
-			raw, _ := json.Marshal(map[string]any{"response": failed, "validation_error": validation.Error()})
-			errorarchive.AddDiagnostic(ctx, "tool_validation", repairBody, raw)
+			phase := "tool_validation"
+			if failureIndex > 0 {
+				phase = "tool_correction_rejected"
+			}
+			failureIndex++
+			// Upstream responses may echo the entire instructions/catalog. Keep
+			// the actual tool calls and usage so both failed attempts fit.
+			compact := map[string]any{"id": failed["id"], "status": failed["status"], "model": failed["model"], "usage": failed["usage"]}
+			var calls []any
+			if output, ok := failed["output"].([]any); ok {
+				for _, value := range output {
+					if item, ok := value.(map[string]any); ok && (item["type"] == "function_call" || item["type"] == "custom_tool_call") {
+						calls = append(calls, item)
+					}
+				}
+			}
+			compact["output"] = calls
+			raw, _ := json.Marshal(map[string]any{"response": compact, "validation_error": validation.Error(), "attempt": failureIndex - 1})
+			archiveDiagnostic(phase, raw)
 		})
 	}
 	converted := bridge.StreamWithToolRepair(requestCtx, resp.Body, func(repairCtx context.Context, failed map[string]any, validation error) (map[string]any, error) {
@@ -295,7 +329,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		defer stop()
 		if repairResp.StatusCode < 200 || repairResp.StatusCode >= 300 {
 			raw, _ := io.ReadAll(io.LimitReader(repairResp.Body, 512<<10))
-			errorarchive.AddDiagnostic(ctx, "tool_correction_http_error", correctedBody, raw)
+			archiveDiagnostic("tool_correction_http_error", raw)
 			if repairResp.StatusCode == http.StatusTooManyRequests && s.rateLimitService != nil {
 				stateCtx, stateCancel := openAIAccountStateContext(repairCtx)
 				s.rateLimitService.handle429Cooldown(stateCtx, account, repairResp.Header, raw)

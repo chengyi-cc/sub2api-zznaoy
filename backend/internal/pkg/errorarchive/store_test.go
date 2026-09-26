@@ -19,6 +19,48 @@ import (
 func testConfig(t *testing.T) Config {
 	return Config{Directory: t.TempDir(), Key: bytes.Repeat([]byte{7}, 32), Retention: time.Hour, MaxBytes: 1 << 20, CaptureBytes: 1024}
 }
+
+func TestArchiveDistinguishesUploadFromCaptureCompleteness(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		received, expected int
+		readErr            error
+		complete           bool
+		missing            int64
+	}{
+		{"full-upload-truncated-archive", 2048, 2048, nil, true, 0},
+		{"incomplete-upload", 2048, 3000, io.ErrUnexpectedEOF, false, 952},
+		{"unknown-length-eof", 2048, -1, nil, true, 0},
+		{"fully-received-bad-compression", 2048, 2048, errors.New("decode Content-Encoding: invalid"), true, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, err := New(testConfig(t))
+			require.NoError(t, err)
+			c := s.Capture(io.NopCloser(strings.NewReader(strings.Repeat("x", tc.received))))
+			_, err = io.ReadAll(c)
+			require.NoError(t, err)
+			if tc.readErr != nil {
+				c.OnBodyReadError(tc.readErr)
+			}
+			ref := c.Save(&Entry{ContentLength: int64(tc.expected), Status: 400})
+			s.Close()
+			entry, err := s.Read(ref.ID)
+			require.NoError(t, err)
+			require.Equal(t, tc.complete, *entry.UploadComplete)
+			require.Equal(t, tc.complete, *ref.UploadComplete)
+			require.Equal(t, tc.missing, entry.MissingBytes)
+			require.Equal(t, entry.MissingBytes, ref.MissingBytes)
+			require.Equal(t, int64(tc.received), ref.ReceivedBytes)
+			require.Equal(t, int64(tc.expected), ref.ContentLength)
+			require.False(t, entry.Complete)
+			require.Equal(t, 1024, entry.CapturedBytes)
+			require.Equal(t, "request_limit", entry.TruncationReason)
+		})
+	}
+	var legacy Entry
+	require.NoError(t, json.Unmarshal([]byte(`{"request_complete":false}`), &legacy))
+	require.Nil(t, legacy.UploadComplete, "old archives have unknown upload status")
+}
 func TestArchiveEncryptedRoundTripExpiryAndIsolation(t *testing.T) {
 	cfg := testConfig(t)
 	s, err := New(cfg)

@@ -363,6 +363,11 @@ export default {
         archiveQueueFull: '这条请求未生成诊断样本：错误样本写入队列已满。已保留可用的读取失败原因，无法下载正文。',
         archiveNotCaptured: '这条请求没有可下载的诊断样本；不存在的请求正文无法补回。',
         archiveReadError: '请求读取原因',
+        archiveUploadComplete: '请求已完整接收；存档截断不代表用户上传中断。',
+        archiveUploadIncomplete: '请求未完整接收，未收齐的正文不能由服务端还原。',
+        archiveReceivedBytes: '已接收字节',
+        archiveExpectedBytes: '声明字节',
+        archiveMissingBytes: '缺少字节',
         archiveDownload: '下载诊断样本',
         archiveUnavailable: '样本尚未落盘、已过期、容量不足或不在当前服务器。',
         payloads: {

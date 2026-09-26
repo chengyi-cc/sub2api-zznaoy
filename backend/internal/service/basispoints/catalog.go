@@ -22,6 +22,9 @@ func describeCatalog(catalog []any) string {
 			if len(declaredExecFunctions(entry)) > 0 || execRuntimeCatalog(entry) {
 				line += " Functions declared on tools inside this exec description are nested JavaScript APIs, not separate catalog tools. Call them only inside this exec tool's raw JavaScript and display the result with text; never use a nested function name as the JSON envelope name."
 			}
+			if declaredExecFunctions(entry)["exec_command"] {
+				line += " Shell commands belong in tools.exec_command({cmd: ..., ...}) inside raw JavaScript. Do not pass cmd, shell or workdir as this exec tool's envelope arguments."
+			}
 			if execRuntimeCatalog(entry) {
 				line += " Discover deferred tools in ALL_TOOLS and use its exact normalized JavaScript name: for example mcp__server.method is invoked as tools.mcp__server__method inside exec."
 			}

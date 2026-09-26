@@ -45,12 +45,13 @@ func TestExcelBPSImagesValidateBeforeUpload(t *testing.T) {
 			require.NotContains(t, err.Error(), raw)
 		})
 	}
-	tooMany := make([]string, 17)
-	for i := range tooMany {
-		tooMany[i] = valid
+	history := make([]string, 40)
+	for i := range history {
+		history[i] = valid
 	}
-	_, _, err := prepareExcelBPSImages(inlineTestBody(t, tooMany...))
-	require.ErrorContains(t, err, "at most 16")
+	_, plan, err := prepareExcelBPSImages(inlineTestBody(t, history...))
+	require.NoError(t, err)
+	require.Len(t, plan.images, 1, "repeated history images share an upload without a count limit")
 }
 
 func TestExcelBPSImagesPreserveOpaqueFieldsAndNumbers(t *testing.T) {
@@ -67,6 +68,31 @@ func TestExcelBPSImagesPreserveOpaqueFieldsAndNumbers(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, plan.images)
 	require.Equal(t, urlBody, got)
+}
+
+func TestExcelBPSImagesKeepMoreThanSixteenDistinctHistoryImages(t *testing.T) {
+	var input []any
+	for i := 0; i < 40; i++ {
+		part := []any{map[string]any{"type": "input_image", "image_url": inlineTestImage(t, uint8(i)), "detail": "high"}}
+		if i%2 == 0 {
+			input = append(input, map[string]any{"role": "user", "content": part})
+		} else {
+			input = append(input, map[string]any{"type": "function_call_output", "call_id": fmt.Sprintf("image_%d", i), "output": part})
+		}
+	}
+	body, err := json.Marshal(map[string]any{"input": input})
+	require.NoError(t, err)
+	prepared, plan, err := prepareExcelBPSImages(body)
+	require.NoError(t, err)
+	require.Len(t, plan.images, 40)
+	require.Len(t, gjson.GetBytes(prepared, "input").Array(), 40)
+	for i := range input {
+		field := "content"
+		if i%2 == 1 {
+			field = "output"
+		}
+		require.Contains(t, gjson.GetBytes(prepared, fmt.Sprintf("input.%d.%s.0.image_url", i, field)).String(), "https://inline-image.invalid/")
+	}
 }
 
 func imageGatewayContext() (*gin.Context, *httptest.ResponseRecorder) {
