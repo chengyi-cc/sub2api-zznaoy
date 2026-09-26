@@ -174,15 +174,10 @@ func recoverTransportEnvelope(value any, catalog map[string]tool) (object, bool)
 			return nil, false
 		}
 		name, err := envelopeName(envelope)
-		_, known := catalog[name]
+		_, _, known := resolveCatalogToolName(catalog, name)
 		return envelope, err == nil && known
 	}
-	name := match[1]
-	info, known := catalog[name]
-	if !known {
-		name = strings.TrimPrefix(name, "functions.")
-		info, known = catalog[name]
-	}
+	name, info, known := resolveCatalogToolName(catalog, match[1])
 	if !known {
 		return nil, false
 	}

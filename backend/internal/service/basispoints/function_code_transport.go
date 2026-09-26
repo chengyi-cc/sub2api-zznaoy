@@ -30,7 +30,7 @@ func (b *Bridge) functionCodeTransportEnvelope(arguments object) (object, bool, 
 		return nil, false, nil
 	}
 	name := strings.TrimPrefix(summary, functionCodeTransportPrefix)
-	info, allowed := b.tools[name]
+	info, allowed := b.resolveCatalogTool(name)
 	if !allowed || !supportsFunctionCodeTransport(name, info.Kind, info.Parameters) {
 		return nil, true, fmt.Errorf("basispoints function code transport requires an exact catalog function with a string code parameter")
 	}

@@ -95,3 +95,21 @@ Nested exec follow-up, 2026-09-26:
   arguments and the missing/duplicate/non-callable/absent-catalog branches.
   Added a shell-to-Node multi-step replay regression instead of relying only
   on a single echo roundtrip. No account settings or cache identities change.
+
+Whole-catalog compatibility audit, 2026-09-26:
+- Captured 64 active exec tool names and input kinds as non-production test data.
+  Added 3,668 combinations spanning exact/display/MCP names, direct calls, JSON
+  envelopes, single-literal invocations, raw transports, namespaces, additional
+  tools and deferred discovery. Separate tests cover direct-only collaboration
+  tools, name collisions, parallel batches, opt-out and replay after restart.
+- Fixed shared causes rather than maintaining a per-tool alias list: all
+  catalog transports share one name resolver, nested string tools preserve raw
+  input, nested literal invocations use the existing strict parser, and direct
+  calls honor their separate namespace field.
+- Executed 1,340 generated relay scripts with isolated mock tools; all preserved
+  their inputs, and 636 absent-runtime-tool cases dispatched nothing. Live
+  smoke checks covered a read-only app tool, Node output and a scratch patch.
+  No bulk live invocation of mutating tools was performed.
+- This update changes no injected catalog text, message-ID algorithm, cache key
+  or account scheduling. It does not promise compatibility with arbitrary new
+  upstream formats or client-specific tools absent from the tested contracts.

@@ -1,0 +1,258 @@
+[
+  {
+    "name": "apply_patch",
+    "kind": "string"
+  },
+  {
+    "name": "create_goal",
+    "kind": "object"
+  },
+  {
+    "name": "exec_command",
+    "kind": "object"
+  },
+  {
+    "name": "get_goal",
+    "kind": "object"
+  },
+  {
+    "name": "list_mcp_resource_templates",
+    "kind": "object"
+  },
+  {
+    "name": "list_mcp_resources",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__attach_artifact",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__automation_update",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__check_app_update",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__consume_usage_reset",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__create_sidebar_section",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__create_thread",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__create_worktree",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__delete_sidebar_section",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__fork_thread",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__get_handoff_status",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__get_usage_limits",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__handoff_thread",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__list_archived_threads",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__list_artifacts",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__list_projects",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__list_threads",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__load_workspace_dependencies",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__move_project_to_sidebar_section",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__move_thread_to_sidebar_section",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__navigate_to_codex_page",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__open_in_codex",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__read_thread",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__read_thread_terminal",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__remove_artifact",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__rename_sidebar_section",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__reorder_section",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__reorder_sidebar_projects",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__reorder_sidebar_sections",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__send_message_to_thread",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__set_thread_archived",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__set_thread_read_state",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__set_thread_title",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__share_thread",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__uninstall_plugin",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__update_sidebar_preferences",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_app__wait_threads",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__codex_document_control_execute_document_command",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__codex_document_control_get_document_tool_schemas",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__codex_document_control_list_document_sessions",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__plugin_management_get_app_permissions",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__plugin_management_get_plugin_dependencies",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__plugin_management_search_plugins",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__plugin_management_suggest_plugins",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__plugin_management_uninstall_app",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__plugin_management_update_app_permissions",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__safety_settings_get_family_info",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__safety_settings_get_parental_controls",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__safety_settings_get_trusted_contact",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__safety_settings_prepare_parental_control_update",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__codex_apps__safety_settings_update_parental_control",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__node_repl__js",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__node_repl__js_add_node_module_dir",
+    "kind": "object"
+  },
+  {
+    "name": "mcp__node_repl__js_reset",
+    "kind": "object"
+  },
+  {
+    "name": "read_mcp_resource",
+    "kind": "object"
+  },
+  {
+    "name": "request_plugin_install",
+    "kind": "object"
+  },
+  {
+    "name": "update_goal",
+    "kind": "object"
+  },
+  {
+    "name": "view_image",
+    "kind": "object"
+  },
+  {
+    "name": "write_stdin",
+    "kind": "object"
+  }
+]

@@ -150,7 +150,7 @@ func TestFunctionCodeTransportRequiresExplicitCatalogContract(t *testing.T) {
 		object{"type": "function", "name": "numeric", "parameters": object{"type": "object", "properties": object{"code": object{"type": "number"}}}},
 	}
 	_, bridge := mustPrepare(t, source, "scope", nil)
-	for _, name := range []string{"", "missing", "custom_code", "plain", "numeric", "run_code ", " run_code", "functions.run_code", "run_code\n", "run_code/extra"} {
+	for _, name := range []string{"", "missing", "custom_code", "plain", "numeric", "run_code ", " run_code", "functions.functions.run_code", "run_code\n", "run_code/extra"} {
 		if _, err := bridge.translateCall(functionCodeTestNative(t, name, "private payload", "{}")); err == nil {
 			t.Fatal("undeclared, wrong-kind or approximate catalog name was accepted")
 		}

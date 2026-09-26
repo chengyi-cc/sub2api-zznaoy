@@ -9,13 +9,14 @@ import (
 )
 
 type tool struct {
-	Name               string
-	Namespace          string
-	Kind               string
-	Definition         string
-	Parameters         object
-	ExecFunctions      map[string]bool
-	ExecRuntimeCatalog bool
+	Name                string
+	Namespace           string
+	Kind                string
+	Definition          string
+	Parameters          object
+	ExecFunctions       map[string]bool
+	ExecStringFunctions map[string]bool
+	ExecRuntimeCatalog  bool
 }
 
 type replayEntry struct {
@@ -204,7 +205,7 @@ func (b *Bridge) collectTools(value any, namespace string) ([]any, error) {
 			continue
 		}
 		parameters, _ := entry["parameters"].(object)
-		b.tools[key] = tool{Name: name, Namespace: namespace, Kind: kind, Definition: definition, Parameters: parameters, ExecFunctions: declaredExecFunctions(entry), ExecRuntimeCatalog: execRuntimeCatalog(entry)}
+		b.tools[key] = tool{Name: name, Namespace: namespace, Kind: kind, Definition: definition, Parameters: parameters, ExecFunctions: declaredExecFunctions(entry), ExecStringFunctions: declaredExecStringFunctions(entry), ExecRuntimeCatalog: execRuntimeCatalog(entry)}
 		catalog = append(catalog, entry)
 	}
 	return catalog, nil
@@ -383,6 +384,11 @@ func isTool(item object) bool {
 // It does not evaluate code or dispatch any Excel operation.
 func (b *Bridge) translateCall(native object) (object, error) {
 	name := text(native["name"])
+	if namespace, exists := native["namespace"]; exists {
+		if ns, ok := namespace.(string); !ok || (ns != "" && ns != "functions") {
+			return b.translateDirectCatalogCall(native)
+		}
+	}
 	if text(native["type"]) == "function_call" && (name == "update_plan" || name == "functions.update_plan") {
 		return b.translateNativePlan(native)
 	}
@@ -408,6 +414,8 @@ func (b *Bridge) translateCall(native object) (object, error) {
 		if err != nil {
 			if recovered, ok := recoverTransportEnvelope(arguments["code"], b.tools); ok {
 				envelope, err = recovered, nil
+			} else if recovered, ok := b.recoverExecInvocation(arguments["code"]); ok {
+				envelope, err = recovered, nil
 			}
 		}
 	}
@@ -420,7 +428,7 @@ func (b *Bridge) translateCall(native object) (object, error) {
 	}
 	info, allowed := b.resolveCatalogTool(toolName)
 	if !allowed {
-		if !marked {
+		if !marked || rawCustom {
 			if result, recovered, err := b.recoverExecCall(native, envelope); recovered || err != nil {
 				if err == nil {
 					b.replay.put(b.scope, text(native["call_id"]), native, result)
@@ -439,17 +447,11 @@ func (b *Bridge) translateCall(native object) (object, error) {
 	return result, nil
 }
 
-// Resolve only exact declarations or a single host display prefix. Never match
-// arbitrary suffixes: separate namespaces can contain tools with the same name.
+// All transports use exact declarations, one host display prefix and explicit
+// MCP spelling normalization. Never match arbitrary namespace suffixes.
 func (b *Bridge) resolveCatalogTool(name string) (tool, bool) {
-	if info, ok := b.tools[name]; ok {
-		return info, true
-	}
-	if trimmed := strings.TrimPrefix(name, "functions."); trimmed != name {
-		info, ok := b.tools[trimmed]
-		return info, ok
-	}
-	return tool{}, false
+	_, info, ok := resolveCatalogToolName(b.tools, name)
+	return info, ok
 }
 
 // translateDirectCatalogCall recovers a native tool call the model addressed by the
@@ -461,9 +463,22 @@ func (b *Bridge) resolveCatalogTool(name string) (tool, bool) {
 // native tool remains an unsupported-native-tool error.
 func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 	name := text(native["name"])
+	if namespace, exists := native["namespace"]; exists {
+		ns, ok := namespace.(string)
+		if !ok || strings.TrimSpace(ns) != ns {
+			return nil, fmt.Errorf("basispoints direct tool namespace must be a valid string")
+		}
+		if ns != "" {
+			name = ns + "." + name
+		}
+	}
 	info, ok := b.resolveCatalogTool(name)
 	if !ok {
-		if result, recovered, err := b.recoverExecCall(native, object{"name": name, "arguments": native["arguments"]}); recovered || err != nil {
+		envelope := object{"name": name, "arguments": native["arguments"]}
+		if text(native["type"]) == "custom_tool_call" {
+			envelope = object{"name": name, "input": native["input"]}
+		}
+		if result, recovered, err := b.recoverExecCall(native, envelope); recovered || err != nil {
 			if err != nil {
 				return nil, err
 			}

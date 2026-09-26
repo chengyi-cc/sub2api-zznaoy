@@ -11,6 +11,7 @@ import (
 // Only that explicit declaration grants a name; examples, history and arbitrary
 // prose must never turn into callable aliases.
 var execFunctionDeclaration = regexp.MustCompile("(?m)^[\\t ]*declare[\\t ]+const[\\t ]+tools[\\t ]*:[\\t ]*\\{[\\t \\r\\n]*([A-Za-z_][A-Za-z0-9_]*)[\\t ]*\\(")
+var execStringDeclaration = regexp.MustCompile("(?m)^[\\t ]*declare[\\t ]+const[\\t ]+tools[\\t ]*:[\\t ]*\\{[\\t \\r\\n]*([A-Za-z_][A-Za-z0-9_]*)[\\t ]*\\([\\t \\r\\n]*[A-Za-z_][A-Za-z0-9_]*[\\t ]*:[\\t ]*string[\\t \\r\\n]*\\)")
 
 var dottedExecMCPName = regexp.MustCompile("^(mcp__[A-Za-z0-9_]+)\\.([A-Za-z_][A-Za-z0-9_]*)$")
 var normalizedExecMCPName = regexp.MustCompile("^mcp__[A-Za-z0-9_]+__[A-Za-z_][A-Za-z0-9_]*$")
@@ -60,6 +61,63 @@ func declaredExecFunctions(entry object) map[string]bool {
 	return names
 }
 
+// String-input tools (notably apply_patch) must remain raw text; treating them
+// as an object function loses their contract even when the name is correct.
+func declaredExecStringFunctions(entry object) map[string]bool {
+	declared := declaredExecFunctions(entry)
+	if len(declared) == 0 {
+		return nil
+	}
+	result := make(map[string]bool)
+	for _, match := range execStringDeclaration.FindAllStringSubmatch(text(entry["description"]), -1) {
+		if declared[match[1]] {
+			result[match[1]] = true
+		}
+	}
+	return result
+}
+
+func (b *Bridge) execTarget(name string) (host tool, method string, checkRuntime, found bool, err error) {
+	name = strings.TrimPrefix(name, "functions.")
+	method, mcp := execMCPMethod(name)
+	if !mcp {
+		method = name
+	}
+	for _, info := range b.tools {
+		documented := info.ExecFunctions[method]
+		if !documented && !(mcp && info.ExecRuntimeCatalog) {
+			continue
+		}
+		if found {
+			return tool{}, "", false, true, fmt.Errorf("basispoints nested tool has ambiguous exec hosts")
+		}
+		host, found, checkRuntime = info, true, !documented
+	}
+	return
+}
+
+// Reuse the strict single-literal parser. Only the active exec contract can
+// select a nested callee; this never evaluates JavaScript or accepts a batch.
+func (b *Bridge) recoverExecInvocation(value any) (object, bool) {
+	raw, ok := value.(string)
+	if !ok || len(raw) > maxEnvelopeBytes {
+		return nil, false
+	}
+	match := catalogInvocation.FindStringSubmatch(strings.TrimSpace(raw))
+	if len(match) != 2 {
+		return nil, false
+	}
+	host, method, _, found, err := b.execTarget(match[1])
+	if !found || err != nil {
+		return nil, false
+	}
+	kind := "function"
+	if host.ExecStringFunctions[method] {
+		kind = "custom"
+	}
+	return recoverTransportEnvelope(raw, map[string]tool{match[1]: {Name: match[1], Kind: kind}})
+}
+
 // recoverExecCall repairs one skipped orchestration layer. It returns a custom
 // call to the client's existing exec tool; the gateway executes nothing. Exact
 // catalog calls are resolved first by the caller. Unknown or ambiguous nested
@@ -67,49 +125,48 @@ func declaredExecFunctions(entry object) map[string]bool {
 // A deferred MCP name is checked against the client's active ALL_TOOLS before
 // execution, only when the exec declaration advertises that runtime contract.
 func (b *Bridge) recoverExecCall(native, envelope object) (object, bool, error) {
-	if text(native["type"]) != "function_call" {
+	if text(native["type"]) != "function_call" && text(native["type"]) != "custom_tool_call" {
 		return nil, false, nil
 	}
 	name, err := envelopeName(envelope)
 	if err != nil {
 		return nil, false, err
 	}
-	name = strings.TrimPrefix(name, "functions.")
-	method, mcp := execMCPMethod(name)
-	if !mcp {
-		method = name
+	host, method, checkRuntime, found, err := b.execTarget(name)
+	if !found || err != nil {
+		return nil, found, err
 	}
-	var host tool
-	found := false
-	checkRuntime := false
-	for _, info := range b.tools {
-		documented := info.ExecFunctions[method]
-		if !documented && !(mcp && info.ExecRuntimeCatalog) {
-			continue
+	var args any
+	if host.ExecStringFunctions[method] {
+		for _, key := range []string{"arguments", "args"} {
+			if _, exists := envelope[key]; exists {
+				return nil, true, fmt.Errorf("basispoints nested string tool requires input text only")
+			}
 		}
-		if found {
-			return nil, true, fmt.Errorf("basispoints nested tool has ambiguous exec hosts")
+		input, ok := envelope["input"].(string)
+		if !ok || len(input) > maxEnvelopeBytes {
+			return nil, true, fmt.Errorf("basispoints nested string tool input must be bounded text")
 		}
-		host, found = info, true
-		checkRuntime = !documented
-	}
-	if !found {
-		return nil, false, nil
-	}
-	if _, exists := envelope["input"]; exists {
-		return nil, true, fmt.Errorf("basispoints nested function requires arguments, not raw input")
-	}
-	args, err := envelopeArguments(envelope)
-	if err != nil {
-		return nil, true, err
-	}
-	if raw, ok := args.(string); ok {
-		if len(raw) > maxEnvelopeBytes || decode([]byte(raw), &args) != nil {
-			return nil, true, fmt.Errorf("basispoints nested function arguments are invalid JSON")
+		args = input
+	} else {
+		if _, exists := envelope["input"]; exists {
+			return nil, true, fmt.Errorf("basispoints nested function requires arguments, not raw input")
 		}
-	}
-	if obj, ok := args.(object); !ok || obj == nil {
-		return nil, true, fmt.Errorf("basispoints nested function arguments must be an object")
+		if text(native["type"]) != "function_call" {
+			return nil, true, fmt.Errorf("basispoints nested function requires a function call")
+		}
+		args, err = envelopeArguments(envelope)
+		if err != nil {
+			return nil, true, err
+		}
+		if raw, ok := args.(string); ok {
+			if len(raw) > maxEnvelopeBytes || decode([]byte(raw), &args) != nil {
+				return nil, true, fmt.Errorf("basispoints nested function arguments are invalid JSON")
+			}
+		}
+		if obj, ok := args.(object); !ok || obj == nil {
+			return nil, true, fmt.Errorf("basispoints nested function arguments must be an object")
+		}
 	}
 	raw, err := json.Marshal(args)
 	if err != nil || len(raw) > maxEnvelopeBytes {
