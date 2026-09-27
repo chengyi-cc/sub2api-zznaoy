@@ -179,8 +179,9 @@ Follow-up adaptation, checked 2026-09-27 UTC (2026-09-26 Los Angeles):
   retaining all executable constraints. Unlike the reference, exec descriptions
   stay significant because local nested-tool resolution reads their declarations.
   Fresh explicit declarations still replace inherited stale catalog entries.
-- Adapted account lifetime statistics from
-  3d92bcb0a2f06c4a2ac94dc1bc3f7853682f67e2, retaining existing daily requests and
-  user/account cost rows. Totals cover retained local logs, not an immutable
-  lifetime ledger. Unavailable totals remain absent, distinct from valid zero.
+- Evaluated account lifetime statistics from
+  3d92bcb0a2f06c4a2ac94dc1bc3f7853682f67e2. The optional list totals were
+  initially adapted, then withdrawn at the user's request. Original daily
+  statistics and existing account usage reports are retained without extra
+  lifetime fields or queries; image/catalog fixes above remain included.
 - No release/version override, deployment, extra model retry or image omission.

@@ -1368,8 +1368,6 @@ export interface WindowStats {
   cost: number // Account cost (account multiplier)
   standard_cost?: number
   user_cost?: number
-  lifetime_tokens?: number | null // All retained local usage logs; absent when unavailable
-  lifetime_cost?: number | null
 }
 
 export interface UsageProgress {

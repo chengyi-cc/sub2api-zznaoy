@@ -169,7 +169,7 @@ export default {
         schedulerScore: '调度权值',
         status: '状态',
         schedulable: '调度',
-        todayStats: '今日 / 累计统计',
+        todayStats: '今日统计',
         groups: '分组',
         usageWindows: '用量窗口',
         proxy: '代理',
@@ -1707,9 +1707,6 @@ export default {
       usageStatistics: '使用统计',
       last30DaysUsage: '近30天使用统计（日均基于实际使用天数）',
       stats: {
-        lifetimeTokens: '累计 Token',
-        lifetimeCost: '累计账号费用',
-        lifetimeHint: '基于本地留存的用量记录，不随账号额度窗口重置；不可用时显示 —。',
         totalCost: '30天总费用',
         accumulatedCost: '累计成本',
         standardCost: '标准计费',

@@ -142,10 +142,6 @@ type WindowStats struct {
 	Cost         float64 `json:"cost"`
 	StandardCost float64 `json:"standard_cost"`
 	UserCost     float64 `json:"user_cost"`
-	// Lifetime means all retained local usage logs, independent of quota resets.
-	// Nil distinguishes unavailable totals from a successfully queried zero.
-	LifetimeTokens *int64   `json:"lifetime_tokens,omitempty"`
-	LifetimeCost   *float64 `json:"lifetime_cost,omitempty"`
 }
 
 // UsageProgress 使用量进度
@@ -1409,18 +1405,20 @@ func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Accou
 	}
 }
 
-// GetTodayStats 获取账号今日统计，并尽力附加本地留存记录的累计统计。
+// GetTodayStats 获取账号今日统计
 func (s *AccountUsageService) GetTodayStats(ctx context.Context, accountID int64) (*WindowStats, error) {
 	stats, err := s.usageLogRepo.GetAccountTodayStats(ctx, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("get today stats failed: %w", err)
 	}
 
-	ws := windowStatsFromAccountStats(stats)
-	if lifetime, err := s.usageLogRepo.GetAccountWindowStats(ctx, accountID, time.Time{}); err == nil {
-		attachLifetimeStats(ws, lifetime)
-	}
-	return ws, nil
+	return &WindowStats{
+		Requests:     stats.Requests,
+		Tokens:       stats.Tokens,
+		Cost:         stats.Cost,
+		StandardCost: stats.StandardCost,
+		UserCost:     stats.UserCost,
+	}, nil
 }
 
 // GetTodayStatsBatch 批量获取账号今日统计，优先走批量 SQL，失败时回退单账号查询。
@@ -1447,13 +1445,8 @@ func (s *AccountUsageService) GetTodayStatsBatch(ctx context.Context, accountIDs
 	if batchReader, ok := s.usageLogRepo.(accountWindowStatsBatchReader); ok {
 		statsByAccount, err := batchReader.GetAccountWindowStatsBatch(ctx, uniqueIDs, startTime)
 		if err == nil {
-			lifetimeByAccount, lifetimeErr := batchReader.GetAccountWindowStatsBatch(ctx, uniqueIDs, time.Time{})
 			for _, accountID := range uniqueIDs {
-				ws := windowStatsFromAccountStats(statsByAccount[accountID])
-				if lifetimeErr == nil {
-					attachLifetimeStats(ws, lifetimeByAccount[accountID])
-				}
-				result[accountID] = ws
+				result[accountID] = windowStatsFromAccountStats(statsByAccount[accountID])
 			}
 			return result, nil
 		}
@@ -1470,12 +1463,8 @@ func (s *AccountUsageService) GetTodayStatsBatch(ctx context.Context, accountIDs
 			if err != nil {
 				return nil
 			}
-			ws := windowStatsFromAccountStats(stats)
-			if lifetime, err := s.usageLogRepo.GetAccountWindowStats(gctx, id, time.Time{}); err == nil {
-				attachLifetimeStats(ws, lifetime)
-			}
 			mu.Lock()
-			result[id] = ws
+			result[id] = windowStatsFromAccountStats(stats)
 			mu.Unlock()
 			return nil
 		})
@@ -1502,14 +1491,6 @@ func windowStatsFromAccountStats(stats *usagestats.AccountStats) *WindowStats {
 		StandardCost: stats.StandardCost,
 		UserCost:     stats.UserCost,
 	}
-}
-
-func attachLifetimeStats(ws *WindowStats, lifetime *usagestats.AccountStats) {
-	if ws == nil || lifetime == nil {
-		return
-	}
-	tokens, cost := lifetime.Tokens, lifetime.Cost
-	ws.LifetimeTokens, ws.LifetimeCost = &tokens, &cost
 }
 
 func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now time.Time) *UsageProgress {
