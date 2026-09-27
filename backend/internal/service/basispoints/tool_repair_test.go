@@ -229,6 +229,14 @@ func TestToolRepairRejectsChangedBatchAndOperations(t *testing.T) {
 			})
 			events := repairEvents(t, body)
 			require.Equal(t, 1, calls)
+			if change == "valid_operation" {
+				last := events[len(events)-1]
+				require.Equal(t, "response.completed", last["type"])
+				output := last["response"].(object)["output"].([]any)
+				require.Len(t, output, 2)
+				require.JSONEq(t, "{\"cmd\":\"pwd\"}", text(output[1].(object)["arguments"]))
+				return
+			}
 			require.Len(t, events, 1)
 			require.Equal(t, "response.failed", events[0]["type"])
 			require.Nil(t, cache.get("repair-scope", "fixed"))

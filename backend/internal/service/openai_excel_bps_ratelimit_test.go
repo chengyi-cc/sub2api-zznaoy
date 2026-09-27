@@ -277,7 +277,7 @@ func TestExcelBPSNon429DoesNotChangeQuotaState(t *testing.T) {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: status, Header: excelBPSQuotaHeaders("100", "100"), Body: io.NopCloser(strings.NewReader("{}"))}}
 			svc := openAIClientToolsTestService(upstream)
-			repo := &excelBPSQuotaRepo{writes: make(chan excelBPSQuotaWrite, 4)}
+			repo := &excelBPSAuthRepo{excelBPSQuotaRepo: excelBPSQuotaRepo{writes: make(chan excelBPSQuotaWrite, 4)}}
 			svc.accountRepo = repo
 			svc.rateLimitService = NewRateLimitService(repo, nil, svc.cfg, nil, nil)
 			svc.rateLimitService.SetAccountRuntimeBlocker(svc)
@@ -288,8 +288,8 @@ func TestExcelBPSNon429DoesNotChangeQuotaState(t *testing.T) {
 			_, err := svc.Forward(context.Background(), c, account, []byte("{\"model\":\"gpt-6-astra\",\"input\":\"test\"}"))
 			require.Error(t, err)
 			require.Equal(t, status, rec.Code)
-			requireNoExcelBPSQuotaWrite(t, repo)
-			require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			requireNoExcelBPSQuotaWrite(t, &repo.excelBPSQuotaRepo)
+			require.Equal(t, status == http.StatusUnauthorized, svc.isOpenAIAccountRuntimeBlocked(account))
 			require.True(t, account.IsSchedulable())
 		})
 	}

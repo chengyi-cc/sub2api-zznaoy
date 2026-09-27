@@ -181,8 +181,18 @@ func (b *Bridge) translateCompleted(ctx context.Context, response object, repair
 			if serial {
 				compare = original[:1]
 			}
+			if !serial {
+				items = b.restoreValidatedMixedOperations(compare, items)
+			}
 			items, err = b.restoreRawToolPayloads(compare, items)
 			if err != nil {
+				return b.observeCorrectionFailure(corrected, err)
+			}
+			combined := make([]any, len(items))
+			for i, item := range items {
+				combined[i] = item
+			}
+			if err := b.validateToolResponse(object{"output": combined}); err != nil {
 				return b.observeCorrectionFailure(corrected, err)
 			}
 			if !b.preservesToolOperations(compare, items) {
@@ -316,7 +326,11 @@ func (b *Bridge) preservesToolOperations(original, corrected []object) bool {
 			}
 		} else {
 			var payload object
-			if decode([]byte(text(after["arguments"])), &payload) != nil || payload["code"] != code {
+			payloadKey := "code"
+			if strings.HasPrefix(text(transportArguments(corrected[i])["summary"]), functionCmdTransportPrefix) {
+				payloadKey = "cmd"
+			}
+			if decode([]byte(text(after["arguments"])), &payload) != nil || payload[payloadKey] != code {
 				return false
 			}
 			// Metadata such as a working directory or target also belongs to the
@@ -324,15 +338,15 @@ func (b *Bridge) preservesToolOperations(original, corrected []object) bool {
 			expected := object{}
 			metadata := text(args["extended_summary"])
 			if decode([]byte(metadata), &expected) != nil || expected == nil {
-				if strings.HasPrefix(text(args["summary"]), functionCodeTransportPrefix) {
+				if strings.HasPrefix(text(args["summary"]), functionCodeTransportPrefix) || strings.HasPrefix(text(args["summary"]), functionCmdTransportPrefix) {
 					return false
 				}
 				expected = object{}
 			}
-			if existing, exists := expected["code"]; exists && existing != code {
+			if existing, exists := expected[payloadKey]; exists && existing != code {
 				return false
 			}
-			expected["code"] = code
+			expected[payloadKey] = code
 			if !reflect.DeepEqual(expected, payload) {
 				return false
 			}
@@ -406,7 +420,7 @@ func transportArguments(native object) object {
 }
 
 func transportTarget(args object) string {
-	for _, prefix := range []string{customTransportPrefix, functionCodeTransportPrefix} {
+	for _, prefix := range []string{customTransportPrefix, functionCodeTransportPrefix, functionCmdTransportPrefix} {
 		if summary := text(args["summary"]); strings.HasPrefix(summary, prefix) {
 			return strings.TrimPrefix(summary, prefix)
 		}
@@ -578,7 +592,7 @@ func (b *Bridge) restoreRawToolPayloads(original, corrected []object) ([]object,
 		}
 		args := transportArguments(corrected[i])
 		summary := text(args["summary"])
-		if (!strings.HasPrefix(summary, customTransportPrefix) && !strings.HasPrefix(summary, functionCodeTransportPrefix)) || args["code"] == code {
+		if (!strings.HasPrefix(summary, customTransportPrefix) && !strings.HasPrefix(summary, functionCodeTransportPrefix) && !strings.HasPrefix(summary, functionCmdTransportPrefix)) || args["code"] == code {
 			continue
 		}
 		boundArgs := make(object, len(args))

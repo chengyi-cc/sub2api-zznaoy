@@ -29,11 +29,11 @@ func NativeFallbackReason(body []byte) string {
 		}
 		return false
 	}
-	if inspectTools(gjson.GetBytes(body, "tools")) {
+	if choice.String() != "none" && inspectTools(gjson.GetBytes(body, "tools")) {
 		return "hosted_tools"
 	}
 	for _, item := range gjson.GetBytes(body, "input").Array() {
-		if item.Get("type").String() == "additional_tools" && inspectTools(item.Get("tools")) {
+		if choice.String() != "none" && item.Get("type").String() == "additional_tools" && inspectTools(item.Get("tools")) {
 			return "hosted_tools"
 		}
 		for _, field := range []string{"content", "output"} {

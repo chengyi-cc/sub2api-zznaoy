@@ -13,6 +13,7 @@ type tool struct {
 	Namespace           string
 	Kind                string
 	Definition          string
+	Catalog             object
 	Parameters          object
 	ExecFunctions       map[string]bool
 	ExecStringFunctions map[string]bool
@@ -205,7 +206,7 @@ func (b *Bridge) collectTools(value any, namespace string) ([]any, error) {
 			continue
 		}
 		parameters, _ := entry["parameters"].(object)
-		b.tools[key] = tool{Name: name, Namespace: namespace, Kind: kind, Definition: definition, Parameters: parameters, ExecFunctions: declaredExecFunctions(entry), ExecStringFunctions: declaredExecStringFunctions(entry), ExecRuntimeCatalog: execRuntimeCatalog(entry)}
+		b.tools[key] = tool{Name: name, Namespace: namespace, Kind: kind, Definition: definition, Catalog: item, Parameters: parameters, ExecFunctions: declaredExecFunctions(entry), ExecStringFunctions: declaredExecStringFunctions(entry), ExecRuntimeCatalog: execRuntimeCatalog(entry)}
 		catalog = append(catalog, entry)
 	}
 	return catalog, nil
@@ -285,6 +286,15 @@ func (b *Bridge) rebuildNativeHistoryCall(item object) (object, error) {
 		args, _ := envelope["arguments"].(object)
 		if _, hasCode := args["code"].(string); hasCode {
 			outer, err = encodeFunctionCodeTransport(name, args)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	if info, ok := b.tools[name]; ok && text(item["type"]) == "function_call" && supportsFunctionCmdTransport(name, info.Kind, info.Parameters) {
+		args, _ := envelope["arguments"].(object)
+		if _, hasCmd := args["cmd"].(string); hasCmd {
+			outer, err = encodeFunctionCmdTransport(name, args)
 			if err != nil {
 				return nil, err
 			}
@@ -418,6 +428,9 @@ func (b *Bridge) translateCall(native object) (object, error) {
 	rawCustom := marked
 	if !marked && err == nil {
 		envelope, marked, err = b.functionCodeTransportEnvelope(arguments)
+	}
+	if !marked && err == nil {
+		envelope, marked, err = b.functionCmdTransportEnvelope(arguments)
 	}
 	if !marked && err == nil {
 		envelope, err = decodeTransportEnvelope(arguments["code"])

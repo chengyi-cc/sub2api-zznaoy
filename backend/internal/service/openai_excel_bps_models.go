@@ -105,3 +105,16 @@ func withExcelBPSModelGuard(account *Account, hooks *OpenAIWSIngressHooks) *Open
 	}
 	return guarded
 }
+
+// model is already mapped to the upstream name here; do not map it twice.
+func (a *Account) isExcelBPSUpstreamModelEnabled(model string) bool {
+	if !a.IsExcelBPSEnabled() {
+		return false
+	}
+	for _, enabled := range a.ExcelBPSModels() {
+		if strings.TrimSpace(model) == enabled {
+			return true
+		}
+	}
+	return false
+}

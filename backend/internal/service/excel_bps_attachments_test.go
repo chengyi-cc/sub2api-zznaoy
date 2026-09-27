@@ -184,7 +184,11 @@ func TestExcelBPSAttachmentsFailuresNeverSendModelOrCacheFailure(t *testing.T) {
 		c, rec := imageGatewayContext()
 		_, err := svc.Forward(context.Background(), c, excelAccount(), body)
 		require.Error(t, err)
-		require.Equal(t, 502, rec.Code)
+		wantStatus := http.StatusBadGateway
+		if tc.status == http.StatusUnauthorized {
+			wantStatus = http.StatusUnauthorized
+		}
+		require.Equal(t, wantStatus, rec.Code)
 		require.Zero(t, up.models)
 		require.NotContains(t, rec.Body.String(), "secret-token")
 		require.Empty(t, svc.excelBPSImages.ids)

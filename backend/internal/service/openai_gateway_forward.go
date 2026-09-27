@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 // shouldForceOpenAIPriority 判定当前请求所属 OpenAI 分组是否强制使用 service_tier=priority。
@@ -37,8 +38,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if c.GetBool(bpsAccountProbeRequiredContextKey) && (!account.IsExcelBPSEnabled() || basispoints.NativeFallbackReason(body) != "") {
 		return nil, errors.New("bps probe path is unavailable")
 	}
-	if account.IsExcelBPSEnabled() && basispoints.NativeFallbackReason(body) != "" {
-		account = account.withoutExcelBPS()
+	if account.IsExcelBPSEnabled() {
+		if reason := basispoints.NativeFallbackReason(body); reason != "" {
+			c.Header("X-Codex2API-Upstream", "codex")
+			c.Header("X-Codex2API-Basispoints-Bypass", reason)
+			logger.FromContext(ctx).Info("Excel BPS native fallback", zap.Int64("account_id", account.ID), zap.String("reason", reason))
+			account = account.withoutExcelBPS()
+		}
 	}
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)

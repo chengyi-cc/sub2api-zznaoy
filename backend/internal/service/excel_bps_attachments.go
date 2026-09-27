@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"net/textproto"
 	"net/url"
 	"strings"
@@ -21,6 +22,17 @@ import (
 
 const excelBPSAttachmentsURL = "https://bps.openai.com/basispoints/api/attachments"
 const excelBPSAttachmentCacheSize = 1024
+
+// Error() never exposes upstream bodies or authentication headers.
+type excelBPSAttachmentHTTPError struct {
+	status int
+	header http.Header
+	body   []byte
+}
+
+func (e *excelBPSAttachmentHTTPError) Error() string {
+	return fmt.Sprintf("Excel BPS attachment upload returned HTTP %d; image was not omitted", e.status)
+}
 
 type excelBPSAttachmentScope struct {
 	account, apiKey int64
@@ -150,7 +162,8 @@ func uploadExcelBPSAttachment(ctx context.Context, img excelBPSInlineImage, toke
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("Excel BPS attachment upload returned HTTP %d; image was not omitted", resp.StatusCode)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		return "", &excelBPSAttachmentHTTPError{status: resp.StatusCode, header: resp.Header.Clone(), body: raw}
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (64<<10)+1))
 	if err != nil || len(raw) > 64<<10 || !gjson.ValidBytes(raw) {

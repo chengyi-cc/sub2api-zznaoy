@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 )
 
 var excelBPSReplay basispoints.ReplayCache
+var excelBPSCatalog basispoints.CatalogCache
 
 func (s *OpenAIGatewayService) disableExcelBPSOn403(ctx context.Context, account *Account) bool {
 	if !account.IsExcelBPSAutoDisableOn403Enabled() {
@@ -112,7 +114,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if err != nil {
 		return fail(400, "basispoints_request_invalid", "Invalid model request")
 	}
-	identity, _ := resolveOpenAIWSExecutionScope(c, body, getAPIKeyIDFromContext(c))
+	identity, threadID := resolveOpenAIWSExecutionScope(c, body, getAPIKeyIDFromContext(c))
 	if identity != "" {
 		body, err = sjson.SetBytes(body, "prompt_cache_key", identity)
 		if err != nil {
@@ -153,7 +155,15 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if err != nil {
 		return fail(400, "basispoints_image_invalid", err.Error())
 	}
-	upstreamBody, bridge, err := basispoints.Prepare(imageBody, scope, replay)
+	// Thread IDs distinguish sibling agents which may share a session header.
+	// Without an explicit caller key, thread and upstream owner, do not inherit.
+	var catalog *basispoints.CatalogCache
+	catalogScope := scope
+	if owner := strings.TrimSpace(account.GetChatGPTAccountID()); owner != "" && threadID != "" && getAPIKeyIDFromContext(c) > 0 && account.ID > 0 {
+		catalog = &excelBPSCatalog
+		catalogScope += "/owner:" + openAIEncryptedContentDigest(owner)
+	}
+	upstreamBody, bridge, err := basispoints.PrepareWithCatalog(imageBody, scope, replay, catalog, catalogScope)
 	if err != nil {
 		return fail(400, "basispoints_request_invalid", err.Error())
 	}
@@ -176,6 +186,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	imageScope := excelBPSAttachmentScope{account.ID, getAPIKeyIDFromContext(c), accountID}
 	upstreamBody, err = s.excelBPSImages.upload(ctx, upstreamBody, imagePlan, imageScope, token, account, s.httpUpstream)
 	if err != nil {
+		var uploadErr *excelBPSAttachmentHTTPError
+		if errors.As(err, &uploadErr) && uploadErr.status == http.StatusUnauthorized {
+			s.handleExcelBPSUnauthorized(ctx, account, uploadErr.status, uploadErr.header, uploadErr.body)
+			return fail(http.StatusUnauthorized, "basispoints_image_upload_failed", "Excel BPS attachment authentication failed; request was not replayed")
+		}
 		return fail(502, "basispoints_image_upload_failed", err.Error())
 	}
 	requestCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileLongStream))
@@ -222,6 +237,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
 		archiveDiagnostic("upstream_http_error", raw)
+		s.handleExcelBPSUnauthorized(ctx, account, resp.StatusCode, resp.Header, raw)
 		s.excelBPSImages.invalidateRejected(imageScope, upstreamBody, raw)
 		if resp.StatusCode == http.StatusTooManyRequests && s.rateLimitService != nil {
 			stateCtx, cancel := openAIAccountStateContext(ctx)
@@ -269,6 +285,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 		if code == "basispoints_model_access_changed" {
 			return fail(resp.StatusCode, code, "This model is not available on the account's Excel BPS endpoint")
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fail(resp.StatusCode, "basispoints_upstream_error", "Excel BPS authentication failed; request was not replayed")
 		}
 		message := "Excel BPS rejected this request; account scheduling was not changed"
 		if resp.StatusCode == http.StatusTooManyRequests {
@@ -330,6 +349,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		if repairResp.StatusCode < 200 || repairResp.StatusCode >= 300 {
 			raw, _ := io.ReadAll(io.LimitReader(repairResp.Body, 512<<10))
 			archiveDiagnostic("tool_correction_http_error", raw)
+			s.handleExcelBPSUnauthorized(repairCtx, account, repairResp.StatusCode, repairResp.Header, raw)
 			if repairResp.StatusCode == http.StatusTooManyRequests && s.rateLimitService != nil {
 				stateCtx, stateCancel := openAIAccountStateContext(repairCtx)
 				s.rateLimitService.handle429Cooldown(stateCtx, account, repairResp.Header, raw)

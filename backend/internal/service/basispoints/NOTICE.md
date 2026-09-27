@@ -143,3 +143,26 @@ Bounded correction update, 2026-09-26 (supersedes the preceding deferral):
 - Short-lived encrypted diagnostic archives and administrator downloads are
   local gateway integrations. They never automatically execute or replay a
   captured customer request. Retention, capacity and capture size are bounded.
+
+
+Selective compatibility update, checked 2026-09-27 UTC (2026-09-26 Los Angeles):
+- Reference: ranxi2001/sub2api production bbe0a50a26c47ee89735b5c880235cc2e35c8b7a;
+  release v2.8.18 is c1008182bd1bb8f50ff95133fa486fb9d4676811.
+- Adapted command transport from b69230e6a, 231d46c4a and dd0af4e40, retaining
+  local unambiguous tool-name normalization and operation-preservation checks.
+- Adapted mixed-operation restoration from 4373ac322; validated original
+  operations are restored only for mixed batches, with whole-batch revalidation.
+- Adapted catalog caching from 10c0f90d8; local integration requires account,
+  caller key, explicit thread and upstream owner. Cache identity does not alter
+  the existing replay/prompt identity. Oversized valid catalogs bypass storage.
+- Adapted BPS authentication handling from ac02486a0 and quota recovery from
+  886f8db53 through the local account policy, scheduler and repository interfaces.
+- Adapted BPS model-manifest guards from 3bfce058b. Its broader encrypted
+  reasoning deletion/retry path was not imported; local narrow recovery remains.
+- Adapted disabled-tool routing and diagnostic tracing from c23e18642. Its
+  unsupported-tool omission option was not imported; real native media retains
+  native routing even when tools are disabled.
+- No image-count limit, image omission, extra unknown-tool regeneration loop,
+  compression threshold, proxy framework or unrelated admin/billing changes.
+- Kaixxrua/excel-codex-bridge remains at 8a277dfcdbb647d2ef4d714e31b6a98260a63a79
+  (v0.5.1); no new changes from that reference are included in this update.
