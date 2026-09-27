@@ -39,8 +39,10 @@ func TestExcelBPSToolImagesPreserveResultBatchesAndReplay(t *testing.T) {
 	require.Equal(t, "high", items[2].Get("content.1.detail").String())
 	require.Equal(t, "file-second", items[2].Get("content.2.file_id").String())
 	require.Equal(t, "low", items[2].Get("content.2.detail").String())
-	require.Equal(t, "file-third", items[3].Get("content.1.file_id").String())
-	require.Equal(t, "https://example.com/image.png?sig=unchanged%2F", items[1].Get("output.0.image_url").String())
+	require.Equal(t, "https://example.com/image.png?sig=unchanged%2F", items[3].Get("content.1.image_url").String())
+	require.Equal(t, "file-third", items[3].Get("content.2.file_id").String())
+	require.Equal(t, "input_text", items[1].Get("output.0.type").String())
+	require.Contains(t, items[1].Get("output.0.text").String(), "call_2")
 	require.Equal(t, "Continue.", items[4].Get("content.0.text").String())
 	require.Equal(t, "compaction_trigger", items[5].Get("type").String())
 }
@@ -48,7 +50,7 @@ func TestExcelBPSToolImagesPreserveResultBatchesAndReplay(t *testing.T) {
 func TestExcelBPSToolImagesLeaveOtherHistoryUnchanged(t *testing.T) {
 	for _, wire := range []string{
 		`{"input":[{"type":"function_call_output","call_id":"call_text","output":"input_image file_id quoted text"}]}`,
-		`{"input":[{"type":"function_call_output","call_id":"call_url","output":[{"type":"input_image","image_url":"https://example.com/image.png"}]}]}`,
+		`{"input":[{"type":"function_call_output","call_id":"call_inline","output":[{"type":"input_image","image_url":"data:image/png;base64,AAAA"}]}]}`,
 		`{"input":[{"type":"message","role":"user","content":[{"type":"input_image","file_id":"file-existing"}]}]}`,
 	} {
 		got, err := normalizeExcelBPSToolOutputImages([]byte(wire))

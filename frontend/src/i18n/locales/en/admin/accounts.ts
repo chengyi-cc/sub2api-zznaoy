@@ -318,7 +318,7 @@ export default {
         schedulerScore: 'Scheduler Score',
         status: 'Status',
         schedulable: 'Schedulable',
-        todayStats: 'Today Stats',
+        todayStats: 'Today / Lifetime Stats',
         groups: 'Groups',
         usageWindows: 'Usage Windows',
         proxy: 'Proxy',
@@ -1620,6 +1620,9 @@ export default {
       usageStatistics: 'Usage Statistics',
       last30DaysUsage: 'Last 30 days usage statistics (based on actual usage days)',
       stats: {
+        lifetimeTokens: 'Lifetime Tokens',
+        lifetimeCost: 'Lifetime Account Cost',
+        lifetimeHint: 'Based on retained local usage logs, independent of quota resets; unavailable totals show —.',
         totalCost: '30-Day Total Cost',
         accumulatedCost: 'Accumulated cost',
         standardCost: 'Standard',

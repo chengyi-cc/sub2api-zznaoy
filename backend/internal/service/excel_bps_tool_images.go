@@ -3,14 +3,15 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
-// Uploaded file_id images are accepted in BPS message content, but rejected in
-// function_call_output.output with HTTP 422. Lift only these uploaded images;
-// HTTPS tool images and all original text remain unchanged. Run after upload
+// File IDs and HTTPS tool image references belong in BPS message content, not
+// function_call_output.output. Preserve text and association with each call.
+// Run for both newly uploaded and already referenced images, after upload
 // so synthetic messages cannot affect task/turn/cache identities in Prepare.
 func normalizeExcelBPSToolOutputImages(wire []byte) ([]byte, error) {
 	var input, pending []json.RawMessage
@@ -26,11 +27,11 @@ func normalizeExcelBPSToolOutputImages(wire []byte) ([]byte, error) {
 		}
 		var images []json.RawMessage
 		for index, part := range item.Get("output").Array() {
-			if part.Get("type").String() != "input_image" || part.Get("file_id").String() == "" {
+			if part.Get("type").String() != "input_image" || (part.Get("file_id").String() == "" && !strings.HasPrefix(strings.ToLower(part.Get("image_url").String()), "https://")) {
 				continue
 			}
 			images = append(images, json.RawMessage(part.Raw))
-			marker := map[string]string{"type": "input_text", "text": fmt.Sprintf("[Tool output image %d is attached below.]", len(images))}
+			marker := map[string]string{"type": "input_text", "text": fmt.Sprintf("[Tool output image %d for call_id %q is attached below.]", len(images), item.Get("call_id").String())}
 			var err error
 			raw, err = sjson.SetBytes(raw, fmt.Sprintf("output.%d", index), marker)
 			if err != nil {

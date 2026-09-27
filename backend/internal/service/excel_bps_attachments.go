@@ -190,7 +190,7 @@ func validExcelBPSFileID(id string) bool {
 
 func (s *ExcelBPSImageService) upload(ctx context.Context, wire []byte, plan *excelBPSImagePlan, scope excelBPSAttachmentScope, token string, account *Account, upstream HTTPUpstream) ([]byte, error) {
 	if plan == nil || len(plan.images) == 0 {
-		return wire, nil
+		return normalizeExcelBPSToolOutputImages(wire)
 	}
 	if s == nil {
 		return nil, fmt.Errorf("Excel BPS attachment service is unavailable")

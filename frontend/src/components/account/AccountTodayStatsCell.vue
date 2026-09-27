@@ -46,6 +46,18 @@
           formatCurrency(props.stats.user_cost)
         }}</span>
       </div>
+      <div class="flex items-center gap-1" :title="t('admin.accounts.stats.lifetimeHint')">
+        <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.stats.lifetimeTokens') }}:</span>
+        <span data-test="lifetime-tokens" class="font-medium text-gray-700 dark:text-gray-300">{{
+          props.stats.lifetime_tokens == null ? '—' : formatTokens(props.stats.lifetime_tokens)
+        }}</span>
+      </div>
+      <div class="flex items-center gap-1" :title="t('admin.accounts.stats.lifetimeHint')">
+        <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.stats.lifetimeCost') }}:</span>
+        <span data-test="lifetime-cost" class="font-medium text-emerald-600 dark:text-emerald-400">{{
+          props.stats.lifetime_cost == null ? '—' : formatCurrency(props.stats.lifetime_cost)
+        }}</span>
+      </div>
     </div>
 
     <!-- No data -->

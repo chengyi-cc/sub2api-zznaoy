@@ -166,3 +166,21 @@ Selective compatibility update, checked 2026-09-27 UTC (2026-09-26 Los Angeles):
   compression threshold, proxy framework or unrelated admin/billing changes.
 - Kaixxrua/excel-codex-bridge remains at 8a277dfcdbb647d2ef4d714e31b6a98260a63a79
   (v0.5.1); no new changes from that reference are included in this update.
+
+Follow-up adaptation, checked 2026-09-27 UTC (2026-09-26 Los Angeles):
+- Reviewed ranxi2001/sub2api production dcf523bf1da062f25cde3a129e3e129398f1f4ec.
+- Adapted image-reference and compatible-catalog changes from
+  8c3776a45277c8bcc9711f57c9eb7d06f861d84a. Existing local post-upload image
+  normalization now also runs without new uploads and handles HTTPS references.
+  Preserve parallel result grouping, call association, detail and identity logic.
+- File references pass syntax validation; upstream still authorizes access.
+  Inline images retain the existing isolated upload/cache implementation.
+- Ignore ordinary descriptive differences and canonicalize parameter aliases,
+  retaining all executable constraints. Unlike the reference, exec descriptions
+  stay significant because local nested-tool resolution reads their declarations.
+  Fresh explicit declarations still replace inherited stale catalog entries.
+- Adapted account lifetime statistics from
+  3d92bcb0a2f06c4a2ac94dc1bc3f7853682f67e2, retaining existing daily requests and
+  user/account cost rows. Totals cover retained local logs, not an immutable
+  lifetime ledger. Unavailable totals remain absent, distinct from valid zero.
+- No release/version override, deployment, extra model retry or image omission.

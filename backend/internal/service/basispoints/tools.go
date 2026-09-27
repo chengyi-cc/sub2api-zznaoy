@@ -198,7 +198,7 @@ func (b *Bridge) collectTools(value any, namespace string) ([]any, error) {
 				entry["parameters"] = item["input_schema"]
 			}
 		}
-		definition := fingerprint(item)
+		definition := toolDefinitionFingerprint(item, entry)
 		if previous, exists := b.tools[key]; exists {
 			if previous.Definition != definition || previous.Namespace != namespace || previous.Name != name {
 				return nil, fmt.Errorf("conflicting duplicate Basispoints client tool %q", key)
@@ -210,6 +210,37 @@ func (b *Bridge) collectTools(value any, namespace string) ([]any, error) {
 		catalog = append(catalog, entry)
 	}
 	return catalog, nil
+}
+
+// Ordinary descriptions/discovery flags do not change the transport contract.
+// exec is different: its description declares nested callable tools and raw
+// string inputs. Keep that entire description authoritative rather than silently
+// treating changed execution instructions as harmless historical annotations.
+// The first current declaration remains authoritative; cache replacement is
+// handled separately by inheritedCatalogTools. Unknown constraints are retained.
+func toolDefinitionFingerprint(item, entry object) string {
+	definition := make(object, len(item))
+	function := text(item["type"]) == "function"
+	exec := text(item["type"]) == "custom" && (text(entry["name"]) == "exec" || text(entry["name"]) == "functions.exec")
+	for field, value := range item {
+		switch field {
+		case "description":
+			if !exec {
+				continue
+			}
+		case "defer_loading":
+			continue
+		case "parameters", "inputSchema", "input_schema":
+			if function {
+				continue
+			}
+		}
+		definition[field] = value
+	}
+	if function && entry["parameters"] != nil {
+		definition["parameters"] = entry["parameters"]
+	}
+	return fingerprint(definition)
 }
 
 // Hosted capabilities cannot be relayed as client function calls. Ignore known
