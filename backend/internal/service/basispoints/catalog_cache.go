@@ -12,7 +12,8 @@ import (
 // CatalogCache holds immutable, versioned client declarations, not responses.
 // Only callers with an account/key/trusted-session scope may opt into reuse.
 // Explicit tools replace the catalog (including []); omitted tools inherit it.
-// Additional tools merge through Prepare's duplicate/schema validation.
+// Current additional_tools declarations supersede inherited versions. Conflicts
+// inside the current request still go through Prepare's strict validation.
 const catalogCacheIdleTTL = 30 * time.Minute
 
 type CatalogCache struct {
@@ -126,6 +127,10 @@ func prepareWithCatalog(raw []byte, scope, catalogScope string, replay *ReplayCa
 			if err := decode(previous, &inherited); err != nil {
 				return nil, nil, err
 			}
+			inherited, err := inheritedCatalogTools(inherited, candidate["input"])
+			if err != nil {
+				return nil, nil, err
+			}
 			candidate["tools"] = inherited
 		}
 		encoded, err := json.Marshal(candidate)
@@ -136,21 +141,7 @@ func prepareWithCatalog(raw []byte, scope, catalogScope string, replay *ReplayCa
 		if err != nil {
 			return nil, nil, err
 		}
-		keys := make([]string, 0, len(b.tools))
-		for key := range b.tools {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		declarations := make([]any, 0, len(keys))
-		for _, key := range keys {
-			info := b.tools[key]
-			var declaration any = info.Catalog
-			if info.Namespace != "" {
-				declaration = object{"type": "namespace", "name": info.Namespace, "tools": []any{declaration}}
-			}
-			declarations = append(declarations, declaration)
-		}
-		saved, err := json.Marshal(declarations)
+		saved, err := json.Marshal(catalogDeclarations(b.tools))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -169,4 +160,50 @@ func prepareWithCatalog(raw []byte, scope, catalogScope string, replay *ReplayCa
 		// Concurrent incremental declarations merge against a fresh snapshot.
 	}
 	return nil, nil, fmt.Errorf("basispoints tool catalog changed concurrently; retry request")
+}
+
+// Cached descriptions can change when a client's runtime tools are refreshed.
+// Only missing declarations may be inherited; the current caller remains the
+// authority. Validate all current additions together before removing any cached
+// entry, so ambiguous declarations in one request are never silently accepted.
+func inheritedCatalogTools(inherited []any, input any) ([]any, error) {
+	current := &Bridge{tools: make(map[string]tool)}
+	items, _ := input.([]any)
+	for _, raw := range items {
+		item, _ := raw.(object)
+		if text(item["type"]) == "additional_tools" {
+			if _, err := current.collectTools(item["tools"], ""); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if len(current.tools) == 0 {
+		return inherited, nil
+	}
+	cached := &Bridge{tools: make(map[string]tool)}
+	if _, err := cached.collectTools(inherited, ""); err != nil {
+		return nil, err
+	}
+	for key := range current.tools {
+		delete(cached.tools, key)
+	}
+	return catalogDeclarations(cached.tools), nil
+}
+
+func catalogDeclarations(tools map[string]tool) []any {
+	keys := make([]string, 0, len(tools))
+	for key := range tools {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	declarations := make([]any, 0, len(keys))
+	for _, key := range keys {
+		info := tools[key]
+		var declaration any = info.Catalog
+		if info.Namespace != "" {
+			declaration = object{"type": "namespace", "name": info.Namespace, "tools": []any{declaration}}
+		}
+		declarations = append(declarations, declaration)
+	}
+	return declarations
 }

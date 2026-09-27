@@ -18,4 +18,7 @@ the final response locally. This does not provide upstream constrained decoding.
   without exposing partial structured message text.
 - Resolve schema references inside the submitted document only. Never fetch
   remote schemas or read local files. Limit schemas to 1 MiB and answer text to
-  16 MiB, subject to the existing SSE event limit.
+  16 MiB, subject to the SSE event limit. The gateway supplies its configured
+  `gateway.max_line_size` to both BPS stream readers; the standalone adapter
+  defaults to 16 MiB. This does not change the independent answer-text or
+  tool-repair budgets.

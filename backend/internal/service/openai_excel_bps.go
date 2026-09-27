@@ -324,6 +324,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			archiveDiagnostic(phase, raw)
 		})
 	}
+	maxLineSize := defaultMaxLineSize
+	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+		maxLineSize = s.cfg.Gateway.MaxLineSize
+	}
+	bridge.SetSSEMaxBytes(maxLineSize)
 	converted := bridge.StreamWithToolRepair(requestCtx, resp.Body, func(repairCtx context.Context, failed map[string]any, validation error) (map[string]any, error) {
 		correctedBody, buildErr := basispoints.BuildToolRepairRequest(repairBody, failed, validation)
 		if buildErr != nil {
@@ -375,7 +380,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		c.Header("Cache-Control", "no-cache")
 		c.Header("X-Accel-Buffering", "no")
 	}
-	scanner := newOpenAISSEReadPump(converted, 16<<20)
+	scanner := newOpenAISSEReadPump(converted, maxLineSize)
 	defer scanner.Close()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()

@@ -26,6 +26,7 @@ type Bridge struct {
 	replay             *ReplayCache
 	scope              string
 	parallelTools      bool
+	sseMaxBytes        int
 	observeToolFailure func(map[string]any, error)
 }
 

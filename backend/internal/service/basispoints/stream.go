@@ -15,6 +15,13 @@ type protocolError struct{ error }
 
 func (e protocolError) Unwrap() error { return e.error }
 
+const defaultSSEMaxBytes = 16 << 20
+
+// SetSSEMaxBytes aligns upstream line/event parsing with the gateway's configured
+// downstream limit. Call before starting the stream. Nonpositive values use the
+// standalone adapter default; memory is allocated as data arrives, not upfront.
+func (b *Bridge) SetSSEMaxBytes(maxBytes int) { b.sseMaxBytes = maxBytes }
+
 type streamBody struct {
 	*io.PipeReader
 	upstream io.ReadCloser
@@ -211,7 +218,7 @@ func (b *Bridge) transformWithRepair(ctx context.Context, reader io.Reader, writ
 		terminal = kind == "response.completed" || kind == "response.incomplete" || kind == "response.failed" || kind == "error"
 		return emit(kind, payload)
 	}
-	err := readEvents(reader, func(event string, data []byte) error {
+	err := readEventsWithLimit(reader, b.sseMaxBytes, func(event string, data []byte) error {
 		if terminal {
 			return io.EOF
 		}
@@ -246,8 +253,15 @@ func (b *Bridge) transformWithRepair(ctx context.Context, reader io.Reader, writ
 }
 
 func readEvents(reader io.Reader, consume func(string, []byte) error) error {
+	return readEventsWithLimit(reader, defaultSSEMaxBytes, consume)
+}
+
+func readEventsWithLimit(reader io.Reader, maxBytes int, consume func(string, []byte) error) error {
+	if maxBytes <= 0 {
+		maxBytes = defaultSSEMaxBytes
+	}
 	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64*1024), 16<<20)
+	scanner.Buffer(make([]byte, min(64*1024, maxBytes)), maxBytes)
 	var data strings.Builder
 	event := ""
 	flush := func() error {
@@ -269,16 +283,17 @@ func readEvents(reader io.Reader, consume func(string, []byte) error) error {
 		} else if strings.HasPrefix(line, "event:") {
 			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
 		} else if strings.HasPrefix(line, "data:") {
-			_, _ = data.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
-			_ = data.WriteByte('\n')
-			if data.Len() > 16<<20 {
-				return protocolError{fmt.Errorf("basispoints SSE event exceeds 16 MiB")}
+			value := strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " ")
+			if len(value) >= maxBytes-data.Len() {
+				return protocolError{fmt.Errorf("basispoints SSE event exceeds %d bytes", maxBytes)}
 			}
+			_, _ = data.WriteString(value)
+			_ = data.WriteByte('\n')
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		if errors.Is(err, bufio.ErrTooLong) {
-			return protocolError{fmt.Errorf("basispoints SSE line exceeds 16 MiB")}
+			return protocolError{fmt.Errorf("basispoints SSE line exceeds %d bytes", maxBytes)}
 		}
 		return err
 	}
