@@ -104,16 +104,24 @@ func PrepareWithCatalog(raw []byte, scope string, replay *ReplayCache, cache *Ca
 	return prepareWithCatalog(raw, scope, catalogScope, replay, cache)
 }
 
-func prepareWithCatalog(raw []byte, scope, catalogScope string, replay *ReplayCache, cache *CatalogCache) ([]byte, *Bridge, error) {
+func PrepareWithCatalogOptions(raw []byte, scope string, replay *ReplayCache, cache *CatalogCache, catalogScope string, options PrepareOptions) ([]byte, *Bridge, error) {
+	return prepareWithCatalog(raw, scope, catalogScope, replay, cache, options)
+}
+
+func prepareWithCatalog(raw []byte, scope, catalogScope string, replay *ReplayCache, cache *CatalogCache, overrides ...PrepareOptions) ([]byte, *Bridge, error) {
+	options := PrepareOptions{}
+	if len(overrides) > 0 {
+		options = overrides[0]
+	}
 	if cache == nil || scope == "" || catalogScope == "" {
-		return Prepare(raw, scope, replay)
+		return PrepareWithOptions(raw, scope, replay, options)
 	}
 	var source object
 	if decode(raw, &source) != nil || source == nil {
 		return nil, nil, fmt.Errorf("invalid Basispoints request JSON")
 	}
 	if text(source["tool_choice"]) == "none" {
-		return Prepare(raw, scope, replay)
+		return PrepareWithOptions(raw, scope, replay, options)
 	}
 	_, explicit := source["tools"]
 	for attempt := 0; attempt < 8; attempt++ {
@@ -137,7 +145,7 @@ func prepareWithCatalog(raw []byte, scope, catalogScope string, replay *ReplayCa
 		if err != nil {
 			return nil, nil, err
 		}
-		body, b, err := Prepare(encoded, scope, replay)
+		body, b, err := PrepareWithOptions(encoded, scope, replay, options)
 		if err != nil {
 			return nil, nil, err
 		}

@@ -137,7 +137,9 @@ func (b *Bridge) translateCompleted(ctx context.Context, response object, repair
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		b.observe(StreamRepairStarted)
 		corrected, err := repair(ctx, failed, validation)
+		b.observe(StreamRepairCompleted)
 		usage = addRepairUsage(usage, corrected["usage"])
 		if usage != nil {
 			response["usage"] = usage

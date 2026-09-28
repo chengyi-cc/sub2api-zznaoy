@@ -14,6 +14,15 @@ import (
 
 const ResponsesURL = "https://bps.openai.com/basispoints/api/responses"
 
+const DefaultCompactionThresholdTokens = 920000
+
+// PrepareOptions controls gateway defaults without overriding explicit client policy.
+type PrepareOptions struct {
+	// Nil preserves the existing default. Zero requests no automatic inline
+	// compaction; explicit client context_management and compaction_trigger remain.
+	CompactionThresholdTokens *int
+}
+
 type object = map[string]any
 
 type Bridge struct {
@@ -28,6 +37,7 @@ type Bridge struct {
 	parallelTools      bool
 	sseMaxBytes        int
 	observeToolFailure func(map[string]any, error)
+	observeLifecycle   func(StreamStage)
 }
 
 // ObserveToolFailure supplies diagnostic evidence before any invalid tool batch
@@ -80,6 +90,17 @@ func message(role, content string) object {
 
 // Prepare preserves the requested model and uses a whitelist for the Excel wire body.
 func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, error) {
+	return PrepareWithOptions(raw, scope, replay, PrepareOptions{})
+}
+
+func PrepareWithOptions(raw []byte, scope string, replay *ReplayCache, options PrepareOptions) ([]byte, *Bridge, error) {
+	threshold := DefaultCompactionThresholdTokens
+	if options.CompactionThresholdTokens != nil {
+		threshold = *options.CompactionThresholdTokens
+	}
+	if threshold < 0 {
+		return nil, nil, fmt.Errorf("basispoints compaction threshold must be non-negative")
+	}
 	var source object
 	if err := decode(raw, &source); err != nil || source == nil {
 		return nil, nil, fmt.Errorf("invalid Basispoints request JSON")
@@ -216,7 +237,7 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 	output := object{
 		"model": model, "model_selection": "explicit", "stream": true, "store": false,
 		"input": append(prologue, translated...), "reasoning_effort": effort,
-		"context_management": []any{object{"type": "compaction", "compact_threshold": 200000}},
+		"context_management": []any{},
 		"metadata": object{
 			"task_id": fingerprint([]any{scope, conversation}),
 			"turn_id": fingerprint([]any{scope, input[:turnEnd]}), "agent_iteration": fmt.Sprint(iteration),
@@ -224,6 +245,9 @@ func Prepare(raw []byte, scope string, replay *ReplayCache) ([]byte, *Bridge, er
 	}
 	if cacheKey != "" {
 		output["prompt_cache_key"] = "bps-" + fingerprint([]any{scope, cacheKey})
+	}
+	if threshold > 0 {
+		output["context_management"] = []any{object{"type": "compaction", "compact_threshold": threshold}}
 	}
 	if management, ok := source["context_management"].([]any); ok {
 		output["context_management"] = management

@@ -1042,6 +1042,7 @@ type GatewayConfig struct {
 	OpenAIScheduler GatewayOpenAISchedulerConfig `mapstructure:"openai_scheduler"`
 	// OpenAIHTTP2: OpenAI HTTP 上游协议策略（默认启用 HTTP/2，可按代理能力回退 HTTP/1.1）
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
+	ExcelBPS    GatewayExcelBPSConfig    `mapstructure:"excel_bps"`
 	// OpenAIProxyStreamCircuit: Responses SSE 代理断流熔断策略。
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
@@ -1178,6 +1179,15 @@ type GatewayCNProvidersConfig struct {
 type GatewayLiveConfig struct {
 	// MaxSessionDurationSeconds 是 Live 会话的硬上限。
 	MaxSessionDurationSeconds int `mapstructure:"max_session_duration_seconds"`
+}
+
+// GatewayExcelBPSConfig controls opt-in diagnostics and compaction policy.
+type GatewayExcelBPSConfig struct {
+	// Nil retains the 920000-token default. Zero requests no
+	// automatic inline compaction, allowing a verified client's own policy.
+	CompactionThresholdTokens *int `mapstructure:"compaction_threshold_tokens"`
+	// Emits one content-free, request-correlated timing event per BPS request.
+	LogRequestTiming bool `mapstructure:"log_request_timing"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -2489,6 +2499,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.session_sticky", 3.0)
 	// OpenAI HTTP upstream protocol strategy
 	viper.SetDefault("gateway.openai_http2.enabled", true)
+	viper.SetDefault("gateway.excel_bps.compaction_threshold_tokens", 920000)
+	viper.SetDefault("gateway.excel_bps.log_request_timing", false)
 	viper.SetDefault("gateway.openai_http2.allow_proxy_fallback_to_http1", true)
 	viper.SetDefault("gateway.openai_http2.fallback_error_threshold", 2)
 	viper.SetDefault("gateway.openai_http2.fallback_window_seconds", 60)
@@ -3582,6 +3594,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIHTTP2.FallbackErrorThreshold < 0 {
 		return fmt.Errorf("gateway.openai_http2.fallback_error_threshold must be non-negative")
+	}
+	if threshold := c.Gateway.ExcelBPS.CompactionThresholdTokens; threshold != nil && *threshold < 0 {
+		return fmt.Errorf("gateway.excel_bps.compaction_threshold_tokens must be non-negative")
 	}
 	if c.Gateway.OpenAIHTTP2.FallbackWindowSeconds < 0 {
 		return fmt.Errorf("gateway.openai_http2.fallback_window_seconds must be non-negative")

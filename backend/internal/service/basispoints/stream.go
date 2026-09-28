@@ -83,6 +83,7 @@ func (b *Bridge) transformWithRepair(ctx context.Context, reader io.Reader, writ
 	var terminalResponse object
 	emitted := make(map[string]bool)
 	pendingTools := make(map[string]bool)
+	firstEvent, firstOutput := true, true
 	emit := func(kind string, payload object) error {
 		payload["type"] = kind
 		payload["sequence_number"] = sequence
@@ -118,7 +119,11 @@ func (b *Bridge) transformWithRepair(ctx context.Context, reader io.Reader, writ
 		if err := emit(prefix+".done", object{"output_index": index, "item_id": id, field: item[field]}); err != nil {
 			return err
 		}
-		return emit("response.output_item.done", object{"output_index": index, "item": item})
+		if err := emit("response.output_item.done", object{"output_index": index, "item": item}); err != nil {
+			return err
+		}
+		b.observe(StreamToolEmitted)
+		return nil
 	}
 	process := func(event string, data []byte) error {
 		if string(data) == "[DONE]" {
@@ -131,6 +136,29 @@ func (b *Bridge) transformWithRepair(ctx context.Context, reader io.Reader, writ
 		kind := text(payload["type"])
 		if kind == "" {
 			kind = event
+		}
+		if firstEvent {
+			b.observe(StreamFirstEvent)
+			firstEvent = false
+		}
+		if firstOutput && (kind == "response.output_item.added" || kind == "response.output_text.delta") {
+			b.observe(StreamFirstOutput)
+			firstOutput = false
+		}
+		observedItem, _ := payload["item"].(object)
+		if kind == "response.output_item.done" && text(observedItem["type"]) == "message" {
+			b.observe(StreamMessageCompleted)
+		}
+		if text(observedItem["type"]) == "compaction" {
+			if kind == "response.output_item.added" {
+				b.observe(StreamCompactionStarted)
+			}
+			if kind == "response.output_item.done" {
+				b.observe(StreamCompactionCompleted)
+			}
+		}
+		if kind == "response.completed" {
+			b.observe(StreamUpstreamCompleted)
 		}
 		if b.structured != nil && kind == "response.completed" {
 			if response, ok := payload["response"].(object); !ok || response == nil {
@@ -148,6 +176,7 @@ func (b *Bridge) transformWithRepair(ctx context.Context, reader io.Reader, writ
 			return nil
 		}
 		if kind == "response.output_item.done" && isTool(item) {
+			b.observe(StreamToolReady)
 			// Only the terminal response contains the authoritative native item.
 			// Text keeps streaming; tool calls wait until the whole response validates.
 			if len(pendingTools) >= 1024 {
@@ -185,8 +214,11 @@ func (b *Bridge) transformWithRepair(ctx context.Context, reader io.Reader, writ
 				if len(pendingTools) != 0 {
 					return fmt.Errorf("basispoints completed response omitted an original tool item")
 				}
-				if err := b.translateCompleted(ctx, response, repair); err != nil {
-					return err
+				b.observe(StreamValidationStarted)
+				validationErr := b.translateCompleted(ctx, response, repair)
+				b.observe(StreamValidationCompleted)
+				if validationErr != nil {
+					return validationErr
 				}
 				output, _ = response["output"].([]any)
 				for i, raw := range output {

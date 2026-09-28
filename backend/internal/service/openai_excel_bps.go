@@ -80,7 +80,9 @@ func newExcelBPSRequest(ctx context.Context, body []byte, token, accountID strin
 
 // BPS deliberately bypasses Codex ticket/cookie injection and OAuth plugins:
 // only the selected account's bearer and ChatGPT account ID belong on this host.
-func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Context, account *Account, body []byte, start time.Time) (*OpenAIForwardResult, error) {
+func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Context, account *Account, body []byte, start time.Time) (out *OpenAIForwardResult, outErr error) {
+	timing := newExcelBPSRequestTiming(ctx, start, s.cfg != nil && s.cfg.Gateway.ExcelBPS.LogRequestTiming)
+	defer func() { timing.finish(ctx, account.ID, out, outErr) }()
 	// Generated only on failure. Healthy requests do not pay for a second JSON
 	// traversal, and long image histories do not crowd out correction evidence.
 	var diagnosticSummary json.RawMessage
@@ -186,7 +188,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		catalog = &excelBPSCatalog
 		catalogScope += "/owner:" + openAIEncryptedContentDigest(owner)
 	}
-	upstreamBody, bridge, err := basispoints.PrepareWithCatalog(imageBody, scope, replay, catalog, catalogScope)
+	options := basispoints.PrepareOptions{}
+	if s.cfg != nil {
+		options.CompactionThresholdTokens = s.cfg.Gateway.ExcelBPS.CompactionThresholdTokens
+	}
+	upstreamBody, bridge, err := basispoints.PrepareWithCatalogOptions(imageBody, scope, replay, catalog, catalogScope, options)
 	if err != nil {
 		var contentErr *basispoints.ContentValidationError
 		if errors.As(err, &contentErr) {
@@ -194,7 +200,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 		return fail(400, "basispoints_request_invalid", err.Error())
 	}
+	timing.mark("prepared")
+	if timing != nil {
+		timing.compactionPolicy(upstreamBody, gjson.GetBytes(imageBody, "context_management").IsArray())
+		bridge.ObserveLifecycle(timing.observe)
+	}
+	timing.mark("auth_started")
 	token, _, err := s.GetAccessToken(ctx, account)
+	timing.mark("auth_completed")
 	if err != nil {
 		if isExcelBPSClientCancellation(c, err) {
 			return clientCanceled()
@@ -214,7 +227,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		upstreamBody, _ = excelBPSDropRejectedReasoning(upstreamBody, invalid)
 	}
 	imageScope := excelBPSAttachmentScope{account.ID, getAPIKeyIDFromContext(c), accountID}
+	timing.mark("attachments_started")
 	upstreamBody, err = s.excelBPSImages.upload(ctx, upstreamBody, imagePlan, imageScope, token, account, s.httpUpstream)
+	timing.mark("attachments_completed")
 	if err != nil {
 		if isExcelBPSClientCancellation(c, err) {
 			return clientCanceled()
@@ -239,8 +254,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	SetOpsUpstreamModel(c, model)
 	sent := time.Now()
 	var activeTransportRequest atomic.Pointer[http.Request]
+	req, finishHTTP := timing.beginHTTP(req)
 	activeTransportRequest.Store(req)
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	finishHTTP(resp, err)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
 	if err != nil {
 		if isExcelBPSClientCancellation(c, err) {
@@ -267,8 +284,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 					_ = resp.Body.Close()
 					logger.LegacyPrintf("service.openai_excel_bps", "retrying once after rejected optional reasoning: account_id=%d digests=%d", account.ID, len(digests))
 					upstreamBody, recoveredDigests = retryBody, digests
+					retryReq, finishHTTP = timing.beginHTTP(retryReq)
 					activeTransportRequest.Store(retryReq)
 					resp, err = s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
+					finishHTTP(resp, err)
 					SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
 					if err != nil {
 						if isExcelBPSClientCancellation(c, err) {
@@ -392,8 +411,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		if buildErr != nil {
 			return nil, buildErr
 		}
+		repairReq, finishRepairHTTP := timing.beginHTTP(repairReq)
 		activeTransportRequest.Store(repairReq)
 		repairResp, callErr := s.httpUpstream.Do(repairReq, proxyURL, account.ID, account.Concurrency)
+		finishRepairHTTP(repairResp, callErr)
 		if callErr != nil {
 			if repairCtx.Err() != nil {
 				return nil, repairCtx.Err()
