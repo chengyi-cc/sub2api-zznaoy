@@ -112,8 +112,17 @@ func TestCollaborationPlaintextStreamsAndReplays(t *testing.T) {
 				child["input"] = []any{childMessage}
 				prepared, _ := mustPrepare(t, child, "account/key/child", new(ReplayCache))
 				childItems := mustTestValue[[]any](t, prepared["input"])
-				if !reflect.DeepEqual(childItems[len(childItems)-1], childMessage) {
-					t.Fatal("child task changed")
+				lowered := mustTestValue[object](t, childItems[len(childItems)-1])
+				parts := mustTestValue[[]any](t, lowered["content"])
+				if lowered["type"] != "message" || lowered["role"] != "user" || len(parts) != 2 ||
+					!reflect.DeepEqual(parts[1:], childMessage["content"]) {
+					t.Fatal("child task text changed during history normalization")
+				}
+				if _, exists := lowered["author"]; exists {
+					t.Fatal("unsupported author field forwarded")
+				}
+				if _, exists := lowered["recipient"]; exists {
+					t.Fatal("unsupported recipient field forwarded")
 				}
 
 				// Both native replay and cache-miss recovery retain the plaintext.

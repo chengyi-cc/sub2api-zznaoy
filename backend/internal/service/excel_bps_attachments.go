@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/errorarchive"
+	"github.com/Wei-Shaw/sub2api/internal/util/transportdiag"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -126,7 +128,7 @@ func uploadExcelBPSAttachment(ctx context.Context, img excelBPSInlineImage, toke
 	}
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	ctx = WithHTTPUpstreamRedirectsDisabled(ctx)
+	ctx = WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileExcelBPS))
 	var framing bytes.Buffer
 	form := multipart.NewWriter(&framing)
 	ext := map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}[img.mime]
@@ -148,6 +150,9 @@ func uploadExcelBPSAttachment(ctx context.Context, img excelBPSInlineImage, toke
 	}
 	req.URL, _ = url.Parse(excelBPSAttachmentsURL)
 	req.Body = io.NopCloser(io.MultiReader(bytes.NewReader(prefix), bytes.NewReader(img.data), bytes.NewReader(suffix)))
+	if trace := transportdiag.FromContext(req.Context()); trace != nil {
+		req.Body = trace.RequestBody(req.Body)
+	}
 	req.ContentLength = int64(len(prefix) + len(img.data) + len(suffix))
 	req.GetBody = nil // No implicit transport replay of uploads.
 	req.Header.Set("Content-Type", form.FormDataContentType())
@@ -158,14 +163,27 @@ func uploadExcelBPSAttachment(ctx context.Context, img excelBPSInlineImage, toke
 	}
 	resp, err := upstream.Do(req, proxy, account.ID, account.Concurrency)
 	if err != nil {
-		return "", fmt.Errorf("Excel BPS attachment upload connection failed; image was not omitted")
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		errorarchive.AddDiagnosticSummary(ctx, "attachment_transport", nil, excelBPSTransportDiagnostic(req, err))
+		return "", fmt.Errorf("Excel BPS attachment upload connection failed (%s); image was not omitted", transportdiag.Classify(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		return "", &excelBPSAttachmentHTTPError{status: resp.StatusCode, header: resp.Header.Clone(), body: raw}
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (64<<10)+1))
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	if err != nil {
+		errorarchive.AddDiagnosticSummary(ctx, "attachment_transport", nil, excelBPSTransportDiagnostic(req, err))
+	}
 	if err != nil || len(raw) > 64<<10 || !gjson.ValidBytes(raw) {
 		return "", fmt.Errorf("invalid Excel BPS attachment response")
 	}

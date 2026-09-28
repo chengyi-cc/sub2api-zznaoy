@@ -419,7 +419,11 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 		if err := validateHistoryContent(item["content"], index, "content"); err != nil {
 			return nil, err
 		}
-		result = append(result, item)
+		normalized, err := normalizeHistoryMessage(item, index)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, normalized)
 	}
 	if trigger != nil {
 		result = append(result, trigger)

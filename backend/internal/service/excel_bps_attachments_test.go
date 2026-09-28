@@ -47,6 +47,7 @@ func (u *attachmentUpstream) Do(req *http.Request, proxy string, accountID int64
 	u.urls = append(u.urls, req.URL.String())
 	u.proxies = append(u.proxies, proxy)
 	require.True(u.t, HTTPUpstreamRedirectsDisabled(req.Context()))
+	require.Equal(u.t, HTTPUpstreamProfileExcelBPS, HTTPUpstreamProfileFromContext(req.Context()))
 	if req.URL.String() == excelBPSAttachmentsURL {
 		u.uploads++
 		require.Equal(u.t, "Bearer test-token", req.Header.Get("Authorization"))

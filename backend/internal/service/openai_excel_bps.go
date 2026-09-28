@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/errorarchive"
@@ -17,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
+	"github.com/Wei-Shaw/sub2api/internal/util/transportdiag"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -70,7 +72,10 @@ func newExcelBPSRequest(ctx context.Context, body []byte, token, accountID strin
 		"X-Openai-Internal-Basispoints-Client-Product":       {"basispoints-excel-plugin"},
 		"X-Openai-Internal-Basispoints-Client-Agent-Profile": {"excel"},
 	}
-	return req, nil
+	// The bridge owns explicit corrective continuations; transport must not
+	// rewind a possibly delivered model request after a connection failure.
+	req.GetBody = nil
+	return (&transportdiag.Trace{}).Request(req), nil
 }
 
 // BPS deliberately bypasses Codex ticket/cookie injection and OAuth plugins:
@@ -88,7 +93,11 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 		errorarchive.AddDiagnosticSummary(ctx, phase, diagnosticSummary, response)
 	}
-	fail := func(status int, code, message string) (*OpenAIForwardResult, error) {
+	fail := func(status int, code, message string, param ...string) (*OpenAIForwardResult, error) {
+		failureParam := ""
+		if len(param) > 0 {
+			failureParam = param[0]
+		}
 		if diagnosticSummary == nil {
 			raw, _ := json.Marshal(map[string]any{"code": code, "message": message})
 			archiveDiagnostic("request_failure", raw)
@@ -98,9 +107,17 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		committed := StopOpenAICompactSSEKeepaliveCommitted(c)
 		MarkResponseCommitted(c)
 		if committed {
-			writeOpenAICompactSSEFailureMessage(c, status, code, message)
+			writeOpenAICompactSSEFailureMessageParam(c, status, code, message, failureParam)
 		} else {
-			c.JSON(status, gin.H{"error": gin.H{"type": "invalid_request_error", "code": code, "message": message}})
+			errorType := "invalid_request_error"
+			if status >= 500 {
+				errorType = "server_error"
+			}
+			errorBody := gin.H{"type": errorType, "code": code, "message": message}
+			if failureParam != "" {
+				errorBody["param"] = failureParam
+			}
+			c.JSON(status, gin.H{"error": errorBody})
 		}
 		return nil, fmt.Errorf("excel BPS: %s", code)
 	}
@@ -109,6 +126,12 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	// The handler strips stream from normalized compact bodies but retains the
 	// client's original intent in context. Honor it when returning BPS events.
 	stream := gjson.GetBytes(body, "stream").Bool() || openAICompactClientWantsStream(c)
+	clientCanceled := func() (*OpenAIForwardResult, error) {
+		StopOpenAICompactSSEKeepaliveCommitted(c)
+		MarkResponseCommitted(c)
+		MarkOpsClientCancellation(c, stream)
+		return nil, context.Canceled
+	}
 	var err error
 	body, err = sjson.SetBytes(body, "model", model)
 	if err != nil {
@@ -165,10 +188,17 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	}
 	upstreamBody, bridge, err := basispoints.PrepareWithCatalog(imageBody, scope, replay, catalog, catalogScope)
 	if err != nil {
+		var contentErr *basispoints.ContentValidationError
+		if errors.As(err, &contentErr) {
+			return fail(400, "basispoints_request_invalid", err.Error(), contentErr.Path)
+		}
 		return fail(400, "basispoints_request_invalid", err.Error())
 	}
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
+		if isExcelBPSClientCancellation(c, err) {
+			return clientCanceled()
+		}
 		return fail(502, "basispoints_auth_unavailable", "Account OAuth credential is unavailable")
 	}
 	accountID := excelBPSAccountID(account, token)
@@ -186,6 +216,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	imageScope := excelBPSAttachmentScope{account.ID, getAPIKeyIDFromContext(c), accountID}
 	upstreamBody, err = s.excelBPSImages.upload(ctx, upstreamBody, imagePlan, imageScope, token, account, s.httpUpstream)
 	if err != nil {
+		if isExcelBPSClientCancellation(c, err) {
+			return clientCanceled()
+		}
 		var uploadErr *excelBPSAttachmentHTTPError
 		if errors.As(err, &uploadErr) && uploadErr.status == http.StatusUnauthorized {
 			s.handleExcelBPSUnauthorized(ctx, account, uploadErr.status, uploadErr.header, uploadErr.body)
@@ -193,7 +226,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 		return fail(502, "basispoints_image_upload_failed", err.Error())
 	}
-	requestCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileLongStream))
+	requestCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileExcelBPS))
 	req, err := newExcelBPSRequest(requestCtx, upstreamBody, token, accountID)
 	if err != nil {
 		return nil, err
@@ -205,14 +238,24 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	SetActualOpenAIUpstreamEndpoint(c, "/basispoints/api/responses")
 	SetOpsUpstreamModel(c, model)
 	sent := time.Now()
+	var activeTransportRequest atomic.Pointer[http.Request]
+	activeTransportRequest.Store(req)
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
 	if err != nil {
+		if isExcelBPSClientCancellation(c, err) {
+			return clientCanceled()
+		}
+		archiveDiagnostic("upstream_transport", recordExcelBPSTransportFailure(c, account, req, err))
 		return fail(502, "basispoints_transport_error", "Excel BPS connection failed; request was not replayed")
 	}
 	var recoveredDigests []string
 	if resp.StatusCode == http.StatusBadRequest {
 		rejection, readErr := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+		if isExcelBPSClientCancellation(c, readErr) {
+			_ = resp.Body.Close()
+			return clientCanceled()
+		}
 		archiveDiagnostic("upstream_rejection", rejection)
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(rejection))
@@ -224,9 +267,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 					_ = resp.Body.Close()
 					logger.LegacyPrintf("service.openai_excel_bps", "retrying once after rejected optional reasoning: account_id=%d digests=%d", account.ID, len(digests))
 					upstreamBody, recoveredDigests = retryBody, digests
+					activeTransportRequest.Store(retryReq)
 					resp, err = s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
 					SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
 					if err != nil {
+						if isExcelBPSClientCancellation(c, err) {
+							return clientCanceled()
+						}
+						archiveDiagnostic("recovery_transport", recordExcelBPSTransportFailure(c, account, retryReq, err))
 						return fail(502, "basispoints_transport_error", "Excel BPS recovery connection failed; no further retry was attempted")
 					}
 				}
@@ -235,7 +283,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+		if isExcelBPSClientCancellation(c, readErr) {
+			return clientCanceled()
+		}
 		archiveDiagnostic("upstream_http_error", raw)
 		s.handleExcelBPSUnauthorized(ctx, account, resp.StatusCode, resp.Header, raw)
 		s.excelBPSImages.invalidateRejected(imageScope, upstreamBody, raw)
@@ -341,12 +392,14 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		if buildErr != nil {
 			return nil, buildErr
 		}
+		activeTransportRequest.Store(repairReq)
 		repairResp, callErr := s.httpUpstream.Do(repairReq, proxyURL, account.ID, account.Concurrency)
 		if callErr != nil {
 			if repairCtx.Err() != nil {
 				return nil, repairCtx.Err()
 			}
-			return nil, fmt.Errorf("excel BPS correction connection failed")
+			archiveDiagnostic("correction_transport", excelBPSTransportDiagnostic(repairReq, callErr))
+			return nil, fmt.Errorf("excel BPS correction connection failed (%s)", transportdiag.Classify(callErr))
 		}
 		defer func() { _ = repairResp.Body.Close() }()
 		stop := context.AfterFunc(repairCtx, func() { _ = repairResp.Body.Close() })
@@ -421,6 +474,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			if _, err = c.Writer.WriteString(line + "\n"); err != nil {
 				result.streamReadIncomplete = true
 				result.ClientDisconnect = true
+				if isExcelBPSClientCancellation(c, c.Request.Context().Err()) {
+					MarkOpsClientCancellation(c, stream)
+				}
 				result.Duration = time.Since(start)
 				return result, err
 			}
@@ -433,14 +489,20 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	result.UpstreamTerminalEvent = terminal
 	if err = scanner.Err(); err != nil || terminal == "" {
 		result.streamReadIncomplete = true
-		if ctx.Err() != nil {
+		if isExcelBPSClientCancellation(c, ctx.Err()) {
+			StopOpenAICompactSSEKeepaliveCommitted(c)
+			MarkResponseCommitted(c)
+			MarkOpsClientCancellation(c, stream)
 			result.ClientDisconnect = true
 			return result, ctx.Err()
 		}
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		archiveDiagnostic("stream_transport", recordExcelBPSTransportFailure(c, account, activeTransportRequest.Load(), err))
 		MarkResponseCommitted(c)
 		if stream {
-			_, _ = c.Writer.WriteString("event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"basispoints_stream_incomplete\",\"message\":\"Upstream stream ended before completion\"}}}\n\n")
-			c.Writer.Flush()
+			writeOpenAICompactSSEFailureMessage(c, 502, "basispoints_stream_incomplete", "Upstream stream ended before completion")
 		} else {
 			c.JSON(502, gin.H{"error": gin.H{"code": "basispoints_stream_incomplete", "message": "Excel BPS stream ended before completion"}})
 		}

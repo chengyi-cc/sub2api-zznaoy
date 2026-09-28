@@ -52,7 +52,7 @@ func (s *AccountTestService) testExcelBPSConnection(c *gin.Context, account *Acc
 	if accountID == "" {
 		return s.sendErrorAndEnd(c, "Excel BPS requires chatgpt_account_id")
 	}
-	req, err := newExcelBPSRequest(WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileLongStream)), body, token, accountID)
+	req, err := newExcelBPSRequest(WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileExcelBPS)), body, token, accountID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Cannot create Excel BPS probe")
 	}

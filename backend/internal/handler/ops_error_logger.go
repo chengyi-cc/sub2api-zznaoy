@@ -1077,6 +1077,11 @@ func (state *opsCaptureWriterState) shouldCapture() bool {
 // - Streaming errors after the response has started (SSE) may still need explicit logging.
 func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		requestStart, ok := c.Request.Context().Value(ctxkey.RequestStartTime).(time.Time)
+		if !ok || requestStart.IsZero() {
+			requestStart = time.Now()
+			c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.RequestStartTime, requestStart))
+		}
 		archive := beginOpsErrorArchive(c, ops)
 		if c.Request != nil {
 			if capture, ok := c.Request.Body.(*errorarchive.Capture); ok {
@@ -1097,6 +1102,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		}()
 		c.Writer = w
 		c.Next()
+		service.SetOpsLatencyMs(c, service.OpsRequestDurationMsKey, time.Since(requestStart).Milliseconds())
 		w.finalizeCapture()
 		var archiveRef errorarchive.Ref
 		if archive != nil {
@@ -1468,12 +1474,16 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 		classifyStatus = wireStatus
 	}
 	normalizedType := normalizeOpsErrorType(streamErr.ErrType, streamErr.Code)
+	// Only an internal marker can exclude a cancellation from SLA metrics.
+	if streamErr.RequestScoped && streamErr.Code == service.OpsClientCanceledCode {
+		normalizedType = service.OpsClientCanceledCode
+	}
 	var phase, errorOwner, errorSource string
 	var isBusinessLimited bool
 	if streamErr.RequestScoped {
 		// 请求级带内结果只按错误类型分类，此前尝试残留的上游错误上下文不参与判定。
 		phase = classifyOpsPhase(normalizedType, streamErr.Message, streamErr.Code)
-		isBusinessLimited = true
+		isBusinessLimited = streamErr.Code != service.OpsClientCanceledCode
 		errorOwner = classifyOpsErrorOwner(phase, streamErr.Message)
 		errorSource = classifyOpsErrorSource(phase, streamErr.Message)
 	} else {
@@ -1680,6 +1690,14 @@ func isTokenCountRequestPath(path string) bool {
 func applyOpsLatencyFieldsFromContext(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
 	if c == nil || entry == nil {
 		return
+	}
+	entry.DurationMs = getContextLatencyMs(c, service.OpsRequestDurationMsKey)
+	if entry.DurationMs == nil && c.Request != nil {
+		if start, ok := c.Request.Context().Value(ctxkey.RequestStartTime).(time.Time); ok && !start.IsZero() {
+			if elapsed := time.Since(start).Milliseconds(); elapsed >= 0 {
+				entry.DurationMs = &elapsed
+			}
+		}
 	}
 	entry.AuthLatencyMs = getContextLatencyMs(c, service.OpsAuthLatencyMsKey)
 	entry.RoutingLatencyMs = getContextLatencyMs(c, service.OpsRoutingLatencyMsKey)
@@ -2198,7 +2216,7 @@ func classifyOpsPhase(errType, message, code string) string {
 			return "request"
 		}
 		return "upstream"
-	case "invalid_request_error", "permission_error", "forbidden_error", "not_found_error", "model_not_found":
+	case service.OpsClientCanceledCode, "invalid_request_error", "permission_error", "forbidden_error", "not_found_error", "model_not_found":
 		return "request"
 	case "upstream_error", "overloaded_error":
 		return "upstream"
@@ -2214,7 +2232,7 @@ func classifyOpsPhase(errType, message, code string) string {
 
 func classifyOpsSeverity(errType string, status int) string {
 	switch errType {
-	case "invalid_request_error", "authentication_error", "permission_error", "forbidden_error", "not_found_error", "model_not_found", "billing_error", "subscription_error":
+	case service.OpsClientCanceledCode, "invalid_request_error", "authentication_error", "permission_error", "forbidden_error", "not_found_error", "model_not_found", "billing_error", "subscription_error":
 		return "P3"
 	}
 	if status >= 500 {
