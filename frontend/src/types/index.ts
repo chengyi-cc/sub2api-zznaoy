@@ -1335,6 +1335,8 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+  rpm_paused?: boolean
+  rpm_reset_at?: number | null
 
   // 影子账号关系（spark 维度影子）
   parent_account_id?: number | null

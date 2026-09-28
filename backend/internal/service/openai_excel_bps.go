@@ -256,6 +256,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	var activeTransportRequest atomic.Pointer[http.Request]
 	req, finishHTTP := timing.beginHTTP(req)
 	activeTransportRequest.Store(req)
+	if err := s.acquireOpenAIRPMForSend(req.Context(), account); err != nil {
+		return nil, err
+	}
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	finishHTTP(resp, err)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
@@ -286,6 +289,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 					upstreamBody, recoveredDigests = retryBody, digests
 					retryReq, finishHTTP = timing.beginHTTP(retryReq)
 					activeTransportRequest.Store(retryReq)
+					if err := s.acquireOpenAIRPMForSend(retryReq.Context(), account); err != nil {
+						return nil, err
+					}
 					resp, err = s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
 					finishHTTP(resp, err)
 					SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(sent).Milliseconds())
@@ -413,6 +419,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 		repairReq, finishRepairHTTP := timing.beginHTTP(repairReq)
 		activeTransportRequest.Store(repairReq)
+		if err := s.acquireOpenAIRPMForSend(repairReq.Context(), account); err != nil {
+			return nil, err
+		}
 		repairResp, callErr := s.httpUpstream.Do(repairReq, proxyURL, account.ID, account.Concurrency)
 		finishRepairHTTP(repairResp, callErr)
 		if callErr != nil {

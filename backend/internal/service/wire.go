@@ -200,10 +200,12 @@ func ProvideOpenAIGatewayService(
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	tlsFPProfileService *TLSFingerprintProfileService,
 	excelBPSImages *ExcelBPSImageService,
+	rpmCache RPMCache,
 ) *OpenAIGatewayService {
 	gateway := NewOpenAIGatewayService(accountRepo, usageLogRepo, usageBillingRepo, userRepo, userSubRepo, userGroupRateRepo, cache, cfg, schedulerSnapshot, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, grokTokenProvider, resolver, channelService, balanceNotifyService, settingService, userPlatformQuotaRepo)
 	gateway.tlsFPProfileService = tlsFPProfileService
 	gateway.excelBPSImages = excelBPSImages
+	gateway.rpmCache = rpmCache
 	return gateway
 }
 
