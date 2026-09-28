@@ -40,7 +40,9 @@ func TestExcelBPSValidationParamAcrossResponseModes(t *testing.T) {
 				}
 				up := &httpUpstreamRecorder{}
 				svc := openAIClientToolsTestService(up)
-				_, err = svc.Forward(context.Background(), c, excelAccount(), body)
+				// Direct BPS validation remains fail-closed even though the public
+				// dispatcher now routes encrypted message history to native first.
+				_, err = svc.forwardExcelBPS(context.Background(), c, excelAccount(), body, time.Now())
 				require.Error(t, err)
 				require.Nil(t, up.lastReq, "invalid history must be rejected before sending")
 				wire := rec.Body.String()

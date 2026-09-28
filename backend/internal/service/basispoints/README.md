@@ -93,3 +93,25 @@ Client time-to-headers overlaps server request duration; do not add it to the
 server duration or label their difference as purely network overhead. Usage
 records may store `client:<x-client-request-id>` rather than the response's
 `x-request-id`; verify the correlation key before interpreting missing logs.
+
+# Encrypted collaboration history
+
+Message content parts of type `encrypted_content`, including `agent_message`
+collaboration results, are routed to the native Responses endpoint before BPS
+translation. They can contain the only copy of the actual task result; the text
+next to them may be only a sender label and an empty `Payload:` heading.
+Do not strip, decode as plaintext, or summarize opaque ciphertext.
+
+This is a per-request fallback (`X-Codex2API-Basispoints-Bypass:
+encrypted_message_history`), not a persistent account protocol change. The
+original message, ciphertext and agent attribution survive native forwarding.
+Plaintext agent messages continue through BPS; top-level encrypted reasoning
+and compaction retain their existing behavior. Direct BPS calls still reject
+unsupported message content. Native acceptance/decryption remains subject to
+the upstream account and history validity.
+
+Optional offline regression: set `SUB2API_ENCRYPTED_HISTORY_CAPTURE_DIR` to a
+private directory containing `error-capture-*.json`, then run
+`TestExcelBPSCapturedEncryptedHistoryOffline`. It uses a mock upstream, never
+replays captured prompts over the network, and checks ciphertext preservation
+without including private fixtures in the repository.

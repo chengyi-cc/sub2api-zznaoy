@@ -33,6 +33,17 @@ func NativeFallbackReason(body []byte) string {
 		return "hosted_tools"
 	}
 	for _, item := range gjson.GetBytes(body, "input").Array() {
+		// Collaboration payloads may contain the only copy of another agent's
+		// result. BPS cannot lower these encrypted message parts to text. Select
+		// the native route before translating, without dropping or guessing them.
+		kind := item.Get("type").String()
+		if kind == "agent_message" || kind == "message" || (kind == "" && item.Get("role").Exists()) {
+			for _, part := range item.Get("content").Array() {
+				if part.Get("type").String() == "encrypted_content" {
+					return "encrypted_message_history"
+				}
+			}
+		}
 		if choice.String() != "none" && item.Get("type").String() == "additional_tools" && inspectTools(item.Get("tools")) {
 			return "hosted_tools"
 		}
