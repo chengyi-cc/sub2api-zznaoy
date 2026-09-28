@@ -29,6 +29,8 @@ type openAIResponseFlushRecorder struct {
 	blockFlush      int
 	flushBlocked    chan struct{}
 	releaseFlush    <-chan struct{}
+	flushError      error
+	flushErrorCalls int
 }
 
 func newOpenAIResponseFlushRecorder() *openAIResponseFlushRecorder {
@@ -74,6 +76,31 @@ func (w *openAIResponseFlushRecorder) Flush() {
 		close(w.flushBlocked)
 		<-w.releaseFlush
 	}
+}
+
+func (w *openAIResponseFlushRecorder) FlushError() error {
+	w.flushErrorCalls++
+	if w.flushError != nil {
+		return w.flushError
+	}
+	w.Flush()
+	return nil
+}
+
+func TestOpenAIResponseFlushErrorStopsDeliveryButPreservesUsage(t *testing.T) {
+	recorder := newOpenAIResponseFlushRecorder()
+	recorder.flushError = io.ErrClosedPipe
+	first := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n"
+	terminal := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_flush_failure\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":7,\"output_tokens\":5}}}\n\n"
+	result, err := runOpenAIResponseFlushTest(recorder, io.NopCloser(strings.NewReader(first+terminal)), config.GatewayConfig{})
+	require.NoError(t, err, "downstream delivery errors must not trigger upstream account failover")
+	require.NotNil(t, result)
+	require.Equal(t, 7, result.usage.InputTokens)
+	require.Equal(t, 5, result.usage.OutputTokens)
+	require.Equal(t, 1, recorder.flushErrorCalls, "detect the underlying flush failure through Gin and stop further delivery")
+	require.True(t, result.clientDisconnected)
+	gotBody, _ := recorder.snapshot()
+	require.NotContains(t, gotBody, "response.completed")
 }
 
 func (w *openAIResponseFlushRecorder) snapshot() (string, []string) {

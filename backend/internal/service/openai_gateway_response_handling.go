@@ -27,12 +27,13 @@ import (
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
-	searchCount      int
+	usage              *OpenAIUsage
+	clientDisconnected bool
+	firstTokenMs       *int
+	responseID         string
+	imageCount         int
+	imageOutputSizes   []string
+	searchCount        int
 }
 
 type openaiNonStreamingResult struct {
@@ -110,9 +111,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	}
 
 	w := c.Writer
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		return nil, errors.New("streaming not supported")
+	var downstreamFlushErr error
+	flushDownstream := func() error {
+		err := flushOpenAIStream(w)
+		if err != nil && downstreamFlushErr == nil {
+			downstreamFlushErr = err
+		}
+		return err
 	}
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
@@ -153,8 +158,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				return err
 			}
 		}
-		flusher.Flush()
-		return nil
+		return flushDownstream()
 	}
 
 	usage := &OpenAIUsage{}
@@ -249,6 +253,28 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	sawBareError := false
 	sawResponseFailed := false
 	terminalEventType := ""
+	defer func() {
+		if !clientDisconnected {
+			return
+		}
+		logCtx := ctx
+		if c.Request != nil {
+			logCtx = c.Request.Context()
+		}
+		fields := []zap.Field{
+			zap.String("model", originalModel),
+			zap.Bool("upstream_terminal_seen", sawTerminalEvent),
+			zap.String("terminal_event_type", terminalEventType),
+			zap.Bool("flush_failed", downstreamFlushErr != nil),
+		}
+		if account != nil {
+			fields = append(fields, zap.Int64("account_id", account.ID))
+		}
+		if downstreamFlushErr != nil {
+			fields = append(fields, zap.String("flush_error_type", fmt.Sprintf("%T", downstreamFlushErr)))
+		}
+		logger.FromContext(logCtx).Warn("openai.stream_downstream_disconnected", fields...)
+	}()
 	responsesSemanticOutputSeen := false
 	capacityFailoverSuppressedLogged := false
 	failedMessage := ""
@@ -351,12 +377,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	streamSearchSeen := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
-			searchCount:      searchCounter,
+			usage:              usage,
+			clientDisconnected: clientDisconnected,
+			firstTokenMs:       firstTokenMs,
+			responseID:         responseID,
+			imageCount:         imageCounter.Count(),
+			imageOutputSizes:   imageCounter.Sizes(),
+			searchCount:        searchCounter,
 		}
 	}
 	flushPending := func(disconnectMessage string) {
@@ -975,7 +1002,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 					continue
 				}
-				flusher.Flush()
+				if err := flushDownstream(); err != nil {
+					clientDisconnected = true
+					continue
+				}
 				lastDownstreamWriteAt = time.Now()
 				continue
 			}
