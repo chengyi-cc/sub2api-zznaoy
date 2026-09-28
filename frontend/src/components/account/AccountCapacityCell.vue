@@ -22,7 +22,7 @@
     </CapacityBadge>
 
     <!-- RPM 限制 -->
-    <CapacityBadge v-if="showRpmLimit" :color-class="rpmClass" :tooltip="rpmTooltip" :current="currentRPM" :max="account.base_rpm!" :suffix="isOpenAIOAuth ? '' : rpmStrategyTag">
+    <CapacityBadge v-if="showRpmLimit" :color-class="rpmClass" :tooltip="rpmTooltip" :current="account.current_rpm == null ? '—' : currentRPM" :max="account.base_rpm!" :suffix="' RPM'">
       <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
       </svg>
@@ -134,7 +134,6 @@ const showRpmLimit = computed(() =>
 
 const currentRPM = computed(() => props.account.current_rpm ?? 0)
 const rpmStrategy = computed(() => props.account.rpm_strategy || 'tiered')
-const rpmStrategyTag = computed(() => rpmStrategy.value === 'sticky_exempt' ? '[S]' : '[T]')
 
 const rpmBuffer = computed(() => {
   const base = props.account.base_rpm || 0
@@ -167,6 +166,7 @@ const rpmTooltip = computed(() => {
   const base = props.account.base_rpm ?? 0
   const buffer = rpmBuffer.value
   if (isOpenAIOAuth.value) {
+    if (current >= base && props.account.extra?.openai_rpm_overflow === true) return t('admin.accounts.quotaControl.rpmLimit.overflow')
     if (current >= base) return t('admin.accounts.capacity.rpm.openaiPaused')
     if (current >= base * 0.8) return t('admin.accounts.capacity.rpm.openaiWarning')
     return t('admin.accounts.capacity.rpm.openaiNormal')

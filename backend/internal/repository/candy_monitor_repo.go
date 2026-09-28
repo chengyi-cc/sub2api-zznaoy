@@ -17,7 +17,7 @@ func NewCandyMonitorRepository(db *sql.DB) service.CandyMonitorRepository {
 }
 func (r *candyMonitorRepository) Settings(ctx context.Context) (*service.CandyMonitorSettings, error) {
 	s := &service.CandyMonitorSettings{}
-	err := r.db.QueryRowContext(ctx, `SELECT enabled,model_id,interval_minutes,max_results FROM candy_monitor_settings WHERE singleton`).Scan(&s.Enabled, &s.ModelID, &s.IntervalMinutes, &s.MaxResults)
+	err := r.db.QueryRowContext(ctx, `SELECT enabled,model_id,interval_minutes,max_results,auto_excel_on_incorrect FROM candy_monitor_settings WHERE singleton`).Scan(&s.Enabled, &s.ModelID, &s.IntervalMinutes, &s.MaxResults, &s.AutoExcelOnIncorrect)
 	return s, err
 }
 func (r *candyMonitorRepository) SaveSettings(ctx context.Context, s *service.CandyMonitorSettings) error {
@@ -30,7 +30,7 @@ func (r *candyMonitorRepository) SaveSettings(ctx context.Context, s *service.Ca
 	if err = tx.QueryRowContext(ctx, `SELECT interval_minutes FROM candy_monitor_settings WHERE singleton FOR UPDATE`).Scan(&previousInterval); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE candy_monitor_settings SET enabled=$1,model_id=$2,interval_minutes=$3,max_results=$4 WHERE singleton`, s.Enabled, s.ModelID, s.IntervalMinutes, s.MaxResults); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE candy_monitor_settings SET enabled=$1,model_id=$2,interval_minutes=$3,max_results=$4,auto_excel_on_incorrect=$5 WHERE singleton`, s.Enabled, s.ModelID, s.IntervalMinutes, s.MaxResults, s.AutoExcelOnIncorrect); err != nil {
 		return err
 	}
 	if previousInterval != s.IntervalMinutes {
@@ -48,6 +48,8 @@ const candyAccountHistory = ` LEFT JOIN LATERAL (SELECT COALESCE(jsonb_agg(to_js
 const candyAccountColumns = `a.id AS account_id,a.name,a.platform,a.status,a.type,COALESCE(m.enabled,FALSE),COALESCE(m.use_defaults,TRUE),
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.model_id ELSE m.model_id END,
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.interval_minutes ELSE m.interval_minutes END,
+ m.auto_excel_on_incorrect,
+ jsonb_build_object('openai_excel_bps',COALESCE(a.extra->'openai_excel_bps','false'::jsonb),'openai_excel_bps_last_transition',a.extra->'openai_excel_bps_last_transition'),
  m.last_run_at,m.next_run_at,m.lease_until,COALESCE(to_jsonb(latest),'null'::jsonb),
  COALESCE(m.total_tests,0),COALESCE(m.answer_21_count,0),COALESCE(m.answer_29_count,0),COALESCE(m.other_answer_count,0),COALESCE(m.inconclusive_count,0),` + candyBlockedReason
 const candyEligible = `a.deleted_at IS NULL AND a.platform IN ('openai','anthropic','gemini') AND COALESCE(a.extra->>'synthetic_ui_test','false')<>'true' AND a.parent_account_id IS NULL`
@@ -71,7 +73,11 @@ func scanCandyAccounts(rows *sql.Rows) ([]service.CandyMonitorAccount, error) {
 		var a service.CandyMonitorAccount
 		var raw []byte
 		var historyRaw []byte
-		if err := rows.Scan(&a.AccountID, &a.Name, &a.Platform, &a.Status, &a.Type, &a.Enabled, &a.UseDefaults, &a.ModelID, &a.IntervalMinutes, &a.LastRunAt, &a.NextRunAt, &a.RunningUntil, &raw, &a.TotalTests, &a.Answer21Count, &a.Answer29Count, &a.OtherAnswerCount, &a.InconclusiveCount, &a.BlockedReason, &historyRaw); err != nil {
+		var excelRaw []byte
+		if err := rows.Scan(&a.AccountID, &a.Name, &a.Platform, &a.Status, &a.Type, &a.Enabled, &a.UseDefaults, &a.ModelID, &a.IntervalMinutes, &a.AutoExcelOnIncorrect, &excelRaw, &a.LastRunAt, &a.NextRunAt, &a.RunningUntil, &raw, &a.TotalTests, &a.Answer21Count, &a.Answer29Count, &a.OtherAnswerCount, &a.InconclusiveCount, &a.BlockedReason, &historyRaw); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(excelRaw, &a.ExcelExtra); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(raw, &a.Latest); err != nil {
@@ -155,10 +161,10 @@ func (r *candyMonitorRepository) List(ctx context.Context, f service.CandyMonito
 	return out, total, err
 }
 func (r *candyMonitorRepository) Configure(ctx context.Context, ids []int64, c service.CandyMonitorConfig) error {
-	_, err := r.db.ExecContext(ctx, `INSERT INTO candy_monitor_accounts(account_id,enabled,use_defaults,model_id,interval_minutes,next_run_at)
- SELECT id,$2,$3,$4,$5,NOW()+make_interval(mins=>$5) FROM accounts WHERE id=ANY($1) AND deleted_at IS NULL
+	_, err := r.db.ExecContext(ctx, `INSERT INTO candy_monitor_accounts(account_id,enabled,use_defaults,model_id,interval_minutes,next_run_at,auto_excel_on_incorrect)
+ SELECT id,$2,$3,$4,$5,NOW()+make_interval(mins=>$5),$6 FROM accounts WHERE id=ANY($1) AND deleted_at IS NULL
  ON CONFLICT(account_id) DO UPDATE SET enabled=EXCLUDED.enabled,use_defaults=EXCLUDED.use_defaults,model_id=EXCLUDED.model_id,
- interval_minutes=EXCLUDED.interval_minutes,next_run_at=EXCLUDED.next_run_at,updated_at=NOW()`, pq.Array(ids), c.Enabled, c.UseDefaults, c.ModelID, c.IntervalMinutes)
+ interval_minutes=EXCLUDED.interval_minutes,next_run_at=EXCLUDED.next_run_at,auto_excel_on_incorrect=EXCLUDED.auto_excel_on_incorrect,updated_at=NOW()`, pq.Array(ids), c.Enabled, c.UseDefaults, c.ModelID, c.IntervalMinutes, c.AutoExcelOnIncorrect)
 	return err
 }
 func (r *candyMonitorRepository) Due(ctx context.Context, limit int) ([]service.CandyMonitorAccount, error) {
@@ -190,7 +196,7 @@ func (r *candyMonitorRepository) AccountStates(ctx context.Context, ids []int64)
 	rows, err := r.db.QueryContext(ctx, `SELECT page.*,recent.history FROM (SELECT a.id AS account_id,COALESCE(m.enabled,FALSE),COALESCE(m.use_defaults,TRUE),
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.model_id ELSE m.model_id END,
  CASE WHEN COALESCE(m.use_defaults,TRUE) THEN s.interval_minutes ELSE m.interval_minutes END,
- m.last_valid_answer,m.last_valid_at,`+candyBlockedReason+`
+ m.auto_excel_on_incorrect,m.last_valid_answer,m.last_valid_at,`+candyBlockedReason+`
  FROM accounts a CROSS JOIN candy_monitor_settings s LEFT JOIN candy_monitor_accounts m ON m.account_id=a.id
  WHERE `+candyEligible+` AND a.id=ANY($1)) page`+candyAccountHistory+` ORDER BY page.account_id`, pq.Array(ids))
 	if err != nil {
@@ -201,7 +207,7 @@ func (r *candyMonitorRepository) AccountStates(ctx context.Context, ids []int64)
 	for rows.Next() {
 		var item service.CandyMonitorAccountState
 		var historyRaw []byte
-		if err := rows.Scan(&item.AccountID, &item.Enabled, &item.UseDefaults, &item.ModelID, &item.IntervalMinutes, &item.LastValidAnswer, &item.LastValidAt, &item.BlockedReason, &historyRaw); err != nil {
+		if err := rows.Scan(&item.AccountID, &item.Enabled, &item.UseDefaults, &item.ModelID, &item.IntervalMinutes, &item.AutoExcelOnIncorrect, &item.LastValidAnswer, &item.LastValidAt, &item.BlockedReason, &historyRaw); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(historyRaw, &item.History); err != nil {
@@ -312,6 +318,9 @@ func (r *candyMonitorRepository) Finish(ctx context.Context, v *service.CandyMon
 		return err
 	}
 	if n > 0 {
+		if err := enableExcelAfterCandyFailure(ctx, tx, v); err != nil {
+			return err
+		}
 		if _, err = tx.ExecContext(ctx, `UPDATE candy_monitor_accounts SET total_tests=total_tests+1,
  answer_21_count=answer_21_count+CASE WHEN $2='pass' AND $3::bigint=21 THEN 1 ELSE 0 END,
  answer_29_count=answer_29_count+CASE WHEN $2='incorrect' AND $3::bigint=29 THEN 1 ELSE 0 END,

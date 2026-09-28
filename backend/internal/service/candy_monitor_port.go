@@ -12,16 +12,18 @@ var ErrCandyMonitorBusy = errors.New("candy test already running or worker capac
 var ErrCandyMonitorInvalid = errors.New("invalid candy monitor configuration")
 
 type CandyMonitorSettings struct {
-	Enabled         bool   `json:"enabled"`
-	ModelID         string `json:"model_id"`
-	IntervalMinutes int    `json:"interval_minutes"`
-	MaxResults      int    `json:"max_results"`
+	AutoExcelOnIncorrect bool   `json:"auto_excel_on_incorrect"`
+	Enabled              bool   `json:"enabled"`
+	ModelID              string `json:"model_id"`
+	IntervalMinutes      int    `json:"interval_minutes"`
+	MaxResults           int    `json:"max_results"`
 }
 type CandyMonitorConfig struct {
-	Enabled         bool   `json:"enabled"`
-	UseDefaults     bool   `json:"use_defaults"`
-	ModelID         string `json:"model_id"`
-	IntervalMinutes int    `json:"interval_minutes"`
+	AutoExcelOnIncorrect *bool  `json:"auto_excel_on_incorrect"`
+	Enabled              bool   `json:"enabled"`
+	UseDefaults          bool   `json:"use_defaults"`
+	ModelID              string `json:"model_id"`
+	IntervalMinutes      int    `json:"interval_minutes"`
 }
 type CandyMonitorResult struct {
 	ID           int64      `json:"id"`
@@ -39,12 +41,13 @@ type CandyMonitorResult struct {
 	FinishedAt   *time.Time `json:"finished_at,omitempty"`
 }
 type CandyMonitorAccount struct {
-	BlockedReason string `json:"blocked_reason"`
-	AccountID     int64  `json:"account_id"`
-	Name          string `json:"name"`
-	Platform      string `json:"platform"`
-	Status        string `json:"status"`
-	Type          string `json:"type"`
+	ExcelExtra    map[string]any `json:"excel_extra"`
+	BlockedReason string         `json:"blocked_reason"`
+	AccountID     int64          `json:"account_id"`
+	Name          string         `json:"name"`
+	Platform      string         `json:"platform"`
+	Status        string         `json:"status"`
+	Type          string         `json:"type"`
 	CandyMonitorConfig
 	LastRunAt         *time.Time           `json:"last_run_at"`
 	NextRunAt         *time.Time           `json:"next_run_at"`

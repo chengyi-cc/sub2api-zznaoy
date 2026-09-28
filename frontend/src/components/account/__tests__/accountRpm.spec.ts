@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { applyAccountRPMSettings } from '../accountRpm'
 
 describe('shared account RPM settings', () => {
+  it('persists overflow preference and explicitly disables the RPM default', () => {
+    const extra: Record<string, unknown> = {}
+    applyAccountRPMSettings(extra, { enabled: true, baseRpm: 15, strict: true, overflow: true })
+    expect(extra).toEqual({ base_rpm: 15, openai_rpm_overflow: true })
+    applyAccountRPMSettings(extra, { enabled: false, baseRpm: 15, strict: true })
+    expect(extra).toEqual({ base_rpm: 0, openai_rpm_overflow: false })
+  })
+
   it('defaults enabled OpenAI strict accounts to 15 RPM', () => {
     const extra: Record<string, unknown> = {}
     applyAccountRPMSettings(extra, { enabled: true, baseRpm: null, strict: true })

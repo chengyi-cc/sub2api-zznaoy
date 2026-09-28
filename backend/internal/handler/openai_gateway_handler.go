@@ -676,6 +676,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				reqLog.Info("openai.account_select_aborted_client_disconnected", zap.Error(err))
 				return
 			}
+			if rpmAdmission.retryOverflowSelection(err) {
+				continue
+			}
 			err = rpmAdmission.selectionError(err)
 			if isOpenAIRPMError(err) {
 				rpmAdmission.retryAfter(c, err)
@@ -1316,6 +1319,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			if failoverClientGone(c) {
 				reqLog.Info("openai_messages.account_select_aborted_client_disconnected", zap.Error(err))
 				return
+			}
+			if rpmAdmission.retryOverflowSelection(err) {
+				continue
 			}
 			err = rpmAdmission.selectionError(err)
 			if isOpenAIRPMError(err) {
@@ -2699,6 +2705,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			requestPlatform,
 		)
 		if err != nil {
+			if rpmAdmission.retryOverflowSelection(err) {
+				continue
+			}
 			err = rpmAdmission.selectionError(err)
 			if errors.Is(err, service.ErrOpenAIRPMExhausted) {
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "All eligible OpenAI OAuth accounts are at their per-minute request limit; retry after the current minute resets")

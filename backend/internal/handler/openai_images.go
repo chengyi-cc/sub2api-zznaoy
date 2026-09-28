@@ -169,6 +169,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			parsed.RequiredCapabilityForModel(channelMapping.MappedModel),
 		)
 		if err != nil {
+			if rpmAdmission.retryOverflowSelection(err) {
+				continue
+			}
 			err = rpmAdmission.selectionError(err)
 			if isOpenAIRPMError(err) {
 				rpmAdmission.retryAfter(c, err)

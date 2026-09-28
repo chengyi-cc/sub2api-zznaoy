@@ -52,6 +52,9 @@ func TestBulkUpdateExcelBPSExtra(t *testing.T) {
 			require.Len(t, exec.execQueries, 1)
 			query := normalizeSQLWhitespace(exec.execQueries[0])
 			expression := "COALESCE(extra, '{}'::jsonb) || $1::jsonb"
+			if _, changesExcel := tt.extra["openai_excel_bps"]; changesExcel {
+				expression = excelBPSActivationSQL(expression, "$1::jsonb")
+			}
 			if tt.name == "disabled removes all BPS settings" {
 				expression = "(" + expression + ") - 'openai_excel_bps' - 'openai_excel_bps_models' - 'openai_excel_bps_cache_creation_as_input' - 'openai_excel_bps_auto_disable_on_403'"
 			} else {

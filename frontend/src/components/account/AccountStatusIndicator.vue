@@ -1,5 +1,6 @@
 <template>
   <div class="flex items-center gap-2">
+    <ExcelProtocolBadge :extra="account.extra" />
     <!-- OpenAI OAuth RPM Display - keep the pause reason explicit -->
     <div v-if="isRPMPaused" class="flex flex-col items-center gap-1">
       <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rpmPaused') }}</span>
@@ -165,6 +166,7 @@
 </template>
 
 <script setup lang="ts">
+import ExcelProtocolBadge from './ExcelProtocolBadge.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
@@ -281,7 +283,7 @@ const isOverloaded = computed(() => {
 const isRPMPaused = computed(() =>
   props.account.platform === 'openai' && props.account.type === 'oauth' &&
   props.account.status === 'active' && props.account.schedulable &&
-  (props.account.base_rpm ?? 0) > 0 &&
+  (props.account.base_rpm ?? 0) > 0 && props.account.extra?.openai_rpm_overflow !== true &&
   (props.account.rpm_paused === true ||
     (props.account.current_rpm ?? 0) >= (props.account.base_rpm ?? 0))
 )

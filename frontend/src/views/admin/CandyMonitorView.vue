@@ -26,6 +26,8 @@
           <label class="text-xs text-gray-500 dark:text-gray-400">{{ tr('retention') }}<input v-model.number="settings.max_results" class="input mt-1.5 w-full" type="number" min="10" max="500" required /></label>
           <button class="btn btn-primary" type="submit">{{ tr('saveTemplate') }}</button>
         </fieldset>
+        <label class="mt-3 flex gap-2 text-sm"><input v-model="settings.auto_excel_on_incorrect" type="checkbox" data-testid="default-auto-excel" :disabled="!ready || saving" />{{ tr('autoExcel') }}</label>
+        <p class="mt-1 text-xs text-gray-500">{{ tr('autoExcelHint') }}</p>
         <p class="mt-3 text-xs leading-5 text-gray-500">{{ tr('templateHint') }}</p>
       </form>
       <div v-if="ready && !schedulerEnabled" class="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400"><span class="h-3 w-1 rounded-[1px] bg-amber-500" />{{ tr('schedulerPausedHint') }}</div>
@@ -71,7 +73,7 @@
             <tbody class="divide-y divide-gray-100 dark:divide-dark-700/70">
               <tr v-for="account in accounts" :key="account.account_id" :data-account-id="account.account_id" class="transition-colors hover:bg-gray-50 dark:hover:bg-dark-700/30" :class="{ 'bg-primary-50/60 dark:bg-primary-950/20': selected.includes(account.account_id) }">
                 <td><input v-model="selected" type="checkbox" :value="account.account_id" :aria-label="account.name" /></td>
-                <td class="min-w-52"><div class="max-w-72 truncate font-medium text-gray-900 dark:text-gray-100" :title="account.name">{{ account.name }}</div><div class="mt-1 flex items-center gap-1.5 text-xs text-gray-400"><span class="tabular-nums">#{{ account.account_id }}</span><span>&middot;</span><span>{{ platformLabel(account.platform) }}</span><span v-if="account.type" class="rounded bg-gray-100 px-1 text-[10px] dark:bg-dark-700">{{ typeLabel(account.type) }}</span></div></td>
+                <td class="min-w-52"><div class="max-w-72 truncate font-medium text-gray-900 dark:text-gray-100" :title="account.name">{{ account.name }}</div><ExcelProtocolBadge :extra="account.excel_extra" /><div class="mt-1 flex items-center gap-1.5 text-xs text-gray-400"><span class="tabular-nums">#{{ account.account_id }}</span><span>&middot;</span><span>{{ platformLabel(account.platform) }}</span><span v-if="account.type" class="rounded bg-gray-100 px-1 text-[10px] dark:bg-dark-700">{{ typeLabel(account.type) }}</span></div></td>
                 <td class="min-w-32"><div class="inline-flex items-center gap-2 whitespace-nowrap text-xs font-medium" data-testid="latest-status"><span class="h-3 w-1 shrink-0 rounded-[1px]" :class="statusBarClass(account.latest)" :data-verdict="account.latest?.verdict || 'untested'" />{{ resultLabel(account.latest) }}</div><div v-if="account.latest" class="mt-1 text-[11px] tabular-nums text-gray-400" :title="date(account.latest.started_at)">{{ shortDate(account.latest.started_at) }}</div></td>
                 <td class="text-right text-base font-semibold tabular-nums text-emerald-600 dark:text-emerald-400" data-testid="count-21">{{ account.answer_21_count || 0 }}</td>
                 <td class="text-right text-base font-semibold tabular-nums" :class="account.answer_29_count ? 'text-red-600 dark:text-red-400' : 'text-gray-400'" data-testid="count-29">{{ account.answer_29_count || 0 }}</td>
@@ -100,6 +102,11 @@
           <label class="block text-sm">{{ tr('model') }}<input v-model="config.model_id" class="input mt-1 w-full" required maxlength="200" /></label>
           <label class="block text-sm">{{ tr('interval') }}<input v-model.number="config.interval_minutes" class="input mt-1 w-full" type="number" min="5" max="10080" required /></label>
         </fieldset>
+        <label class="block text-sm">{{ tr('autoExcel') }}
+          <select v-model="config.auto_excel_on_incorrect" class="input mt-1 w-full" data-testid="account-auto-excel">
+            <option :value="null">{{ tr('inheritAutoExcel') }}</option><option :value="true">{{ tr('autoExcelOn') }}</option><option :value="false">{{ tr('autoExcelOff') }}</option>
+          </select>
+        </label>
         <p v-if="config.use_defaults" class="text-xs text-gray-500">{{ tr('inheritHint') }}</p>
         <p v-if="editError" role="alert" class="text-sm text-red-600">{{ editError }}</p>
       </form>
@@ -137,11 +144,12 @@ import CandyVerdictBadge from '@/components/account/CandyVerdictBadge.vue'
 import CandyMonitorRunDialog from '@/components/account/CandyMonitorRunDialog.vue'
 import { candyMonitorAPI, CANDY_DEFAULT_MODEL, type CandyAccount, type CandyConfig, type CandyResult, type CandySettings } from '@/api/admin/candyMonitor'
 import { getAllIncludingInactive } from '@/api/admin/groups'
+import ExcelProtocolBadge from '@/components/account/ExcelProtocolBadge.vue'
 import type { AdminGroup } from '@/types'
 
 const { t } = useI18n()
 const tr = (key: string, params: Record<string, string | number> = {}) => t(`admin.accounts.candyMonitor.${key}`, params)
-const settings = reactive<CandySettings>({ enabled: true, model_id: CANDY_DEFAULT_MODEL, interval_minutes: 60, max_results: 50 })
+const settings = reactive<CandySettings>({ enabled: true, model_id: CANDY_DEFAULT_MODEL, interval_minutes: 60, max_results: 50, auto_excel_on_incorrect: false })
 const templateOpen = ref(false)
 const ready = ref(false)
 const schedulerEnabled = ref(true)
@@ -165,7 +173,7 @@ const pageSize = ref(50)
 const total = ref(0)
 const selected = ref<number[]>([])
 const editing = ref<CandyAccount | null>(null)
-const config = reactive<CandyConfig>({ enabled: true, use_defaults: true, model_id: CANDY_DEFAULT_MODEL, interval_minutes: 60 })
+const config = reactive<CandyConfig>({ enabled: true, use_defaults: true, model_id: CANDY_DEFAULT_MODEL, interval_minutes: 60, auto_excel_on_incorrect: null })
 const editError = ref('')
 const runAccount = ref<CandyAccount | null>(null)
 const historyAccount = ref<CandyAccount | null>(null)
@@ -249,10 +257,10 @@ async function saveTemplate() {
   await mutate(async () => { const saved = await candyMonitorAPI.saveSettings({ ...settings }); Object.assign(settings, saved); schedulerEnabled.value = saved.enabled })
 }
 async function applyDefaults() {
-  await mutate(() => candyMonitorAPI.configure([...selected.value], { enabled: true, use_defaults: true, model_id: settings.model_id, interval_minutes: settings.interval_minutes }))
+  await mutate(() => candyMonitorAPI.configure([...selected.value], { enabled: true, use_defaults: true, model_id: settings.model_id, interval_minutes: settings.interval_minutes, auto_excel_on_incorrect: null }))
 }
 async function pauseSelected() { await mutate(() => candyMonitorAPI.setEnabled([...selected.value], false)) }
-function edit(account: CandyAccount) { editing.value = account; editError.value = ''; Object.assign(config, { enabled: account.enabled, use_defaults: account.use_defaults, model_id: account.model_id, interval_minutes: account.interval_minutes }) }
+function edit(account: CandyAccount) { editing.value = account; editError.value = ''; Object.assign(config, { enabled: account.enabled, use_defaults: account.use_defaults, model_id: account.model_id, interval_minutes: account.interval_minutes, auto_excel_on_incorrect: account.auto_excel_on_incorrect ?? null }) }
 async function saveAccount() {
   if (!editing.value) return
   const id = editing.value.account_id

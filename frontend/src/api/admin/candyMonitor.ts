@@ -3,12 +3,14 @@ import type { PaginatedResponse } from '@/types'
 
 export const CANDY_DEFAULT_MODEL = 'gpt-6-astra'
 export interface CandySettings {
+  auto_excel_on_incorrect?: boolean
   enabled: boolean
   model_id: string
   interval_minutes: number
   max_results: number
 }
 export interface CandyConfig {
+  auto_excel_on_incorrect?: boolean | null
   enabled: boolean
   use_defaults: boolean
   model_id: string
@@ -30,6 +32,7 @@ export interface CandyResult {
   finished_at?: string
 }
 export interface CandyAccount extends CandyConfig {
+  excel_extra?: Record<string, unknown>
   blocked_reason?: string
   total_tests: number
   answer_21_count: number

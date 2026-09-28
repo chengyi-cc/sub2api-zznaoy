@@ -20,6 +20,11 @@ export default {
         options: { off: '关闭（不收敛 / 不启用）', device: '仅统一设备标识', machine: '单机多窗口', session: '统一设备与会话标识', full: '完全收敛', auto: '自动判断', force_on: '强制支持', force_off: '强制不支持', ctx_pool: '上下文连接池', passthrough: '直通上游连接', http_bridge: 'HTTP 桥接（转换为普通请求）', force_responses: 'Responses 接口（统一响应接口）', force_chat_completions: 'Chat Completions 接口（聊天补全接口）', whitelist: '模型白名单', mapping: '模型映射', chat_completions: '文字生成', embeddings: '文本向量', seedance: 'Seedance 视频生成' }
       },
       candyMonitor: {
+      autoExcel: "检测到降智时自动切换 Excel",
+      autoExcelHint: "仅明确答错时切换可用的 OpenAI OAuth 账号；超时和格式错误不触发。403 退回后须手动重新开启，避免反复切换。",
+      inheritAutoExcel: "跟随模板",
+      autoExcelOn: "自动切换",
+      autoExcelOff: "不自动切换",
         intelligenceStatus: '智力状态', normalRate: '正常率', normalRateHint: '最近 10 次已完成检测中，有效数值答案为 21 的比例；请求失败、格式错误不计入，无有效答案显示 —。',
         pause: '暂停', pauseHint: '暂停此账号的自动检测，保留配置和历史', blockedHint: '账号当前不可调度，自动检测已跳过；恢复可用后自动继续，不新增检测记录。',
         blocked: { expired: '已跳过 · 账号过期', account_error: '已跳过 · 账号异常', inactive: '已跳过 · 账号停用', unschedulable: '已跳过 · 停止调度', cooldown: '已跳过 · 冷却中', rate_limited: '已跳过 · 限流中', overloaded: '已跳过 · 过载中' },
@@ -797,6 +802,9 @@ export default {
       },
       // OpenAI specific hints
       openai: {
+      excelReturnedNative: "普通 · 403",
+      excel403History: "Excel 曾因上游 403 自动关闭，现使用普通协议",
+      excelEnabledByMonitor: "检测到回答错误后自动启用 Excel",
         baseUrlHint: '留空使用官方 OpenAI API',
         apiKeyHint: '您的 OpenAI API Key',
         oauthPassthrough: '自动透传（仅替换认证）',
@@ -1138,6 +1146,8 @@ export default {
           idleTimeoutHint: '会话空闲超时后自动释放'
         },
         rpmLimit: {
+        overflow: "满额时继续转发到请求最少的账号",
+        overflowHint: "仅在其他合格账号也无剩余额度时放行；上游仍可能限流。",
           label: 'RPM 限制',
           hint: '限制每分钟请求数量，保护上游账号',
           openaiHint: '仅限制 OpenAI OAuth：按自然分钟计数，达到上限后暂停调度，下一分钟自动恢复；粘性请求也受限，已准入的失败请求不退还次数。',

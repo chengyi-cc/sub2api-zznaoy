@@ -20,6 +20,11 @@ export default {
         options: { off: 'Off', device: 'Device only', machine: 'Single machine, multi-window', session: 'Device and session', full: 'Full convergence', auto: 'Automatic', force_on: 'Force supported', force_off: 'Force unsupported', ctx_pool: 'Context connection pool', passthrough: 'Upstream passthrough', http_bridge: 'HTTP bridge', force_responses: 'Responses endpoint', force_chat_completions: 'Chat Completions endpoint', whitelist: 'Model allowlist', mapping: 'Model mapping', chat_completions: 'Text generation', embeddings: 'Embeddings', seedance: 'Seedance video' }
       },
       candyMonitor: {
+      autoExcel: "Enable Excel automatically after an incorrect answer",
+      autoExcelHint: "Only explicit incorrect answers switch eligible OpenAI OAuth accounts. Timeouts and format errors do not. After a 403 fallback, manually enable Excel to avoid repeated switching.",
+      inheritAutoExcel: "Inherit template",
+      autoExcelOn: "Switch automatically",
+      autoExcelOff: "Do not switch",
         intelligenceStatus: 'Intelligence', normalRate: 'Normal rate', normalRateHint: 'Share of valid numeric answers equal to 21 in the last 10 completed tests. Request failures and invalid formats are excluded; — means no valid answers.',
         pause: 'Pause', pauseHint: 'Pause automatic tests for this account, keeping settings and history', blockedHint: 'Automatic tests are skipped while the account is unavailable and resume after recovery. No test record is created.',
         blocked: { expired: 'Skipped · Account expired', account_error: 'Skipped · Account error', inactive: 'Skipped · Account disabled', unschedulable: 'Skipped · Scheduling disabled', cooldown: 'Skipped · Cooling down', rate_limited: 'Skipped · Rate limited', overloaded: 'Skipped · Overloaded' },
@@ -679,6 +684,9 @@ export default {
       },
       // OpenAI specific hints
       openai: {
+      excelReturnedNative: "Native · 403",
+      excel403History: "Excel was disabled after an upstream 403; native protocol is active",
+      excelEnabledByMonitor: "Excel enabled automatically after an incorrect test answer",
         baseUrlHint: 'Leave default for official OpenAI API',
         apiKeyHint: 'Your OpenAI API Key',
         oauthPassthrough: 'Auto passthrough (auth only)',
@@ -1037,6 +1045,8 @@ export default {
           idleTimeoutHint: 'Sessions will be released after idle timeout'
         },
         rpmLimit: {
+        overflow: "Continue with the least-used account when all RPM capacity is exhausted",
+        overflowHint: "Relaxes only this local limit when no eligible capacity remains; upstream rate limits still apply.",
           label: 'RPM Limit',
           hint: 'Limit requests per minute to protect upstream accounts',
           openaiHint: 'OpenAI OAuth only: count requests per calendar minute. Pause scheduling at the limit and resume next minute. Sticky requests are included; admitted failures still count.',

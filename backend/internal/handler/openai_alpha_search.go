@@ -141,6 +141,9 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			service.PlatformOpenAI,
 		)
 		if err != nil || selection == nil || selection.Account == nil {
+			if rpmAdmission.retryOverflowSelection(err) {
+				continue
+			}
 			err = rpmAdmission.selectionError(err)
 			if isOpenAIRPMError(err) {
 				rpmAdmission.retryAfter(c, err)

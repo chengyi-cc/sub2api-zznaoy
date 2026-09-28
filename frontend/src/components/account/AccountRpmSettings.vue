@@ -7,6 +7,7 @@ withDefaults(defineProps<{ strict?: boolean; showTitle?: boolean }>(), {
   showTitle: true
 })
 
+const overflow = defineModel<boolean>('overflow', { default: false })
 const enabled = defineModel<boolean>('enabled', { required: true })
 const baseRpm = defineModel<number | null>('baseRpm', { required: true })
 const strategy = defineModel<'tiered' | 'sticky_exempt'>('strategy', { default: 'tiered' })
@@ -47,6 +48,10 @@ const strategies = [
         <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.baseRpmHint') }}</p>
       </div>
 
+      <label v-if="strict" class="flex items-start gap-2 text-xs">
+        <input v-model="overflow" type="checkbox" data-testid="rpm-overflow" class="mt-0.5" />
+        <span>{{ t('admin.accounts.quotaControl.rpmLimit.overflow') }}<span class="block mt-1 text-gray-500">{{ t('admin.accounts.quotaControl.rpmLimit.overflowHint') }}</span></span>
+      </label>
       <template v-if="!strict">
         <div>
           <div class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.strategy') }}</div>

@@ -1537,7 +1537,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 		if rpm, ok := accountRPMStateFromContext(ctx, account); ok && account.IsOpenAIOAuth() {
 			rpmEligible++
-			if account.CheckRPMSchedulability(rpm.Current) == WindowCostNotSchedulable {
+			if account.CheckRPMSchedulability(rpm.Current) == WindowCostNotSchedulable && !openAIRPMCanOverflow(ctx, account) {
 				filterStats.exclude("oauth_rpm_exhausted")
 				continue
 			}
@@ -1548,6 +1548,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			MaxConcurrency: account.EffectiveLoadFactor(),
 		})
 	}
+	filtered = leastRPMOverflowAccounts(ctx, filtered)
 	if len(filtered) == 0 {
 		if rpmEligible > 0 && filterStats.reasons["oauth_rpm_exhausted"] == rpmEligible {
 			return nil, 0, 0, 0, fmt.Errorf("%w: %s", ErrOpenAIRPMExhausted, filterStats.summary("all eligible OAuth accounts are at their per-minute limit"))
@@ -2240,6 +2241,16 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	selection, decision, err := s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	if errors.Is(err, ErrOpenAIRPMExhausted) && !openAIRPMOverflowMode(ctx) {
+		overflowCtx := context.WithValue(ctx, openAIRPMOverflowKey{}, true)
+		fallback, fallbackDecision, fallbackErr := s.selectAccountWithSchedulerOnce(overflowCtx, groupID, previousResponseID, "", requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+		if fallbackErr == nil && fallback != nil && fallback.Account != nil && fallback.Account.IsOpenAIRPMOverflowEnabled() {
+			scoped := *fallback.Account
+			scoped.rpmOverflow = true
+			fallback.Account = &scoped
+			return fallback, fallbackDecision, nil
+		}
+	}
 	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
 		return selection, decision, err
 	}

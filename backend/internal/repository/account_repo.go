@@ -135,6 +135,9 @@ func (r *accountRepository) Create(ctx context.Context, account *service.Account
 }
 
 func createAccountRecord(ctx context.Context, client *dbent.Client, account *service.Account) error {
+	if account.IsExcelBPSEnabled() {
+		account.Extra = service.ExcelBPSActivationExtra(account.Extra, false, "manual")
+	}
 	if account == nil {
 		return service.ErrAccountNilInput
 	}
@@ -2761,6 +2764,9 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		}
 	}
 	extraExpression := "COALESCE(extra, '{}'::jsonb) || $1::jsonb"
+	if _, changesExcel := updates["openai_excel_bps"]; changesExcel {
+		extraExpression = excelBPSActivationSQL(extraExpression, "$1::jsonb")
+	}
 	if clearProbeSnapshot {
 		extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
 	}
@@ -3136,6 +3142,9 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				return 0, err
 			}
 			extraExpression += " || $" + itoa(idx) + "::jsonb"
+			if _, changesExcel := updates.Extra["openai_excel_bps"]; changesExcel {
+				extraExpression = excelBPSActivationSQL(extraExpression, "$"+itoa(idx)+"::jsonb")
+			}
 			args = append(args, payload)
 			idx++
 			if enabled, exists := updates.Extra["openai_excel_bps"].(bool); exists && !enabled {

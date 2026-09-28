@@ -46,16 +46,21 @@ func (r *accountRepository) disableExcelBPSOn403InTx(ctx context.Context, accoun
 	if err != nil {
 		return false, err
 	}
+	transition, err := json.Marshal(account.Extra["openai_excel_bps_last_transition"])
+	if err != nil {
+		return false, err
+	}
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(ctx, `
 UPDATE accounts
-SET extra = jsonb_set(extra, '{openai_excel_bps}', 'false'::jsonb), updated_at = NOW()
+SET extra = jsonb_set(extra, '{openai_excel_bps}', 'false'::jsonb) || jsonb_build_object('openai_excel_bps_last_transition',jsonb_build_object('reason','upstream_403','at',NOW())), updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL AND parent_account_id IS NULL
   AND platform = 'openai' AND type = 'oauth'
   AND credentials = $2::jsonb
+  AND COALESCE(extra->'openai_excel_bps_last_transition','null'::jsonb) = $3::jsonb
   AND extra -> 'openai_excel_bps' = 'true'::jsonb
   AND extra -> 'openai_excel_bps_auto_disable_on_403' = 'true'::jsonb`,
-		account.ID, string(credentials))
+		account.ID, string(credentials), string(transition))
 	if err != nil {
 		return false, err
 	}

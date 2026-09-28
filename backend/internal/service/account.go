@@ -21,6 +21,8 @@ import (
 )
 
 type Account struct {
+	rpmOverflow bool // Request-scoped admission mode; never persisted.
+
 	ID                      int64
 	Name                    string
 	Notes                   *string

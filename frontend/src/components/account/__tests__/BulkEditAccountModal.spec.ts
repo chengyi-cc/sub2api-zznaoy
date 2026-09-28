@@ -121,7 +121,7 @@ describe('BulkEditAccountModal', () => {
     await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
     await flushPromises()
     const payload=vi.mocked(adminAPI.accounts.bulkUpdate).mock.lastCall?.[1] as any
-    expect(payload.extra).toMatchObject({ openai_excel_bps: true, openai_excel_bps_models: models, openai_excel_bps_cache_creation_as_input: true, openai_excel_bps_auto_disable_on_403: true })
+    expect(payload.extra).toMatchObject({ base_rpm: 15, openai_rpm_overflow: true, openai_excel_bps: true, openai_excel_bps_models: models, openai_excel_bps_cache_creation_as_input: true, openai_excel_bps_auto_disable_on_403: true })
     wrapper.unmount()
   })
 

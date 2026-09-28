@@ -13,9 +13,11 @@ import (
 
 // Keep local RPM exhaustion distinct from an upstream failure across retries.
 type openAIRPMAdmission struct {
-	exhausted bool
-	resetAt   time.Time
-	state     service.AccountRPMState
+	overflowExcluded map[int64]struct{}
+	excluded         map[int64]struct{}
+	exhausted        bool
+	resetAt          time.Time
+	state            service.AccountRPMState
 }
 
 func (a *openAIRPMAdmission) acquire(ctx context.Context, gateway *service.OpenAIGatewayService, account *service.Account, release func(), excluded map[int64]struct{}) (retry bool, err error) {
@@ -31,6 +33,13 @@ func (a *openAIRPMAdmission) acquire(ctx context.Context, gateway *service.OpenA
 		a.exhausted = true
 		a.resetAt = state.ResetAt
 		excluded[account.ID] = struct{}{}
+		if account.IsOpenAIRPMOverflowEnabled() {
+			if a.overflowExcluded == nil {
+				a.overflowExcluded = make(map[int64]struct{})
+			}
+			a.overflowExcluded[account.ID] = struct{}{}
+			a.excluded = excluded
+		}
 		return true, nil
 	}
 	return false, err
@@ -76,4 +85,18 @@ func (a *openAIRPMAdmission) retryAfter(c *gin.Context, err error) {
 	}
 	seconds := max(1, int(math.Ceil(time.Until(resetAt).Seconds())))
 	c.Header("Retry-After", strconv.Itoa(seconds))
+}
+
+// A concurrent sender may consume the last slot after selection. Restore only
+// accounts excluded by this local RPM gate, so a fresh selection can enter the
+// all-full overflow pass. Never restore upstream-failed or otherwise excluded IDs.
+func (a *openAIRPMAdmission) retryOverflowSelection(err error) bool {
+	if len(a.overflowExcluded) == 0 || (!errors.Is(err, service.ErrNoAvailableAccounts) && !errors.Is(err, service.ErrOpenAIRPMExhausted)) {
+		return false
+	}
+	for id := range a.overflowExcluded {
+		delete(a.excluded, id)
+	}
+	a.overflowExcluded = nil
+	return true
 }

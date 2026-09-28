@@ -2982,14 +2982,23 @@
         </p>
       </div>
 
+      <div v-if="form.platform === 'openai' && accountCategory === 'oauth-based' && addMethod === 'oauth'" class="rounded-xl border border-primary-200 p-4 space-y-3">
+        <label class="flex gap-2"><input type="checkbox" :checked="excelBPSEnabled" @change="toggleExcelBPS" data-testid="create-excel-bps-toggle" />{{ t('admin.accounts.openai.excelBPS') }}</label>
+        <template v-if="excelBPSEnabled">
+          <AccountRpmSettings v-model:enabled="rpmLimitEnabled" v-model:base-rpm="baseRpm" v-model:overflow="rpmOverflow" strict />
+          <label class="flex gap-2 text-sm"><input v-model="excelBPSCacheCreationAsInput" type="checkbox" />{{ t('admin.accounts.openai.excelBPSCacheCreationAsInput') }}</label>
+          <label class="flex gap-2 text-sm"><input v-model="excelBPSAutoDisableOn403" type="checkbox" />{{ t('admin.accounts.openai.excelBPSAutoDisableOn403') }}</label>
+        </template>
+      </div>
       <!-- OpenAI OAuth RPM limit -->
       <div
-        v-if="form.platform === 'openai' && accountCategory === 'oauth-based' && addMethod === 'oauth'"
+        v-if="form.platform === 'openai' && accountCategory === 'oauth-based' && addMethod === 'oauth' && !excelBPSEnabled"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <AccountRpmSettings
           v-model:enabled="rpmLimitEnabled"
           v-model:base-rpm="baseRpm"
+          v-model:overflow="rpmOverflow"
           strict
         />
       </div>
@@ -4546,6 +4555,20 @@ const windowCostStickyReserve = ref<number | null>(null)
 const sessionLimitEnabled = ref(false)
 const maxSessions = ref<number | null>(null)
 const sessionIdleTimeout = ref<number | null>(null)
+const excelBPSEnabled = ref(false)
+const excelBPSCacheCreationAsInput = ref(true)
+const excelBPSAutoDisableOn403 = ref(true)
+const rpmOverflow = ref(false)
+function toggleExcelBPS() {
+  excelBPSEnabled.value = !excelBPSEnabled.value
+  if (excelBPSEnabled.value) {
+    rpmOverflow.value = true
+    excelBPSCacheCreationAsInput.value = true
+    excelBPSAutoDisableOn403.value = true
+    rpmLimitEnabled.value = true
+    if (!baseRpm.value || baseRpm.value < 1) baseRpm.value = 15
+  }
+}
 const rpmLimitEnabled = ref(false)
 const baseRpm = ref<number | null>(null)
 const rpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
@@ -5354,6 +5377,8 @@ const resetForm = () => {
   sessionLimitEnabled.value = false
   maxSessions.value = null
   sessionIdleTimeout.value = null
+  excelBPSEnabled.value = false
+  rpmOverflow.value = false
   rpmLimitEnabled.value = false
   baseRpm.value = null
   rpmStrategy.value = 'tiered'
@@ -5407,10 +5432,15 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   if (accountCategory.value === 'oauth-based') {
     extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
     extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
+    if (addMethod.value === 'oauth' && excelBPSEnabled.value) {
+      extra.openai_excel_bps = true
+      extra.openai_excel_bps_cache_creation_as_input = excelBPSCacheCreationAsInput.value
+      extra.openai_excel_bps_auto_disable_on_403 = excelBPSAutoDisableOn403.value
+    }
     applyAccountRPMSettings(extra, {
       enabled: addMethod.value === 'oauth' && rpmLimitEnabled.value,
       baseRpm: baseRpm.value,
-      strict: true
+      strict: true, overflow: rpmOverflow.value
     })
   } else if (accountCategory.value === 'apikey') {
     extra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value

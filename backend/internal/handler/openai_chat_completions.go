@@ -182,6 +182,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			requestPlatform,
 		)
 		if err != nil {
+			if rpmAdmission.retryOverflowSelection(err) {
+				continue
+			}
 			err = rpmAdmission.selectionError(err)
 			if isOpenAIRPMError(err) {
 				rpmAdmission.retryAfter(c, err)

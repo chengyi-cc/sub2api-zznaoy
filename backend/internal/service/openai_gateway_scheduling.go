@@ -1068,6 +1068,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		compactTiers[fresh.ID] = compactTier
 	}
 
+	eligible = leastRPMOverflowAccounts(ctx, eligible)
 	if len(eligible) == 0 {
 		return nil, compactBlocked, filterStats
 	}
@@ -1380,6 +1381,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		candidates = append(candidates, acc)
 	}
 
+	candidates = leastRPMOverflowAccounts(ctx, candidates)
 	if len(candidates) == 0 {
 		if rpmEligible > 0 && rpmExhausted == rpmEligible {
 			return nil, fmt.Errorf("%w: all eligible OAuth accounts are at their per-minute limit", ErrOpenAIRPMExhausted)

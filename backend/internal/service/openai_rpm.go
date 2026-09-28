@@ -87,6 +87,9 @@ func (s *OpenAIGatewayService) OpenAIRPMSchedulable(ctx context.Context, account
 	if !state.Enabled {
 		return true, state, nil
 	}
+	if openAIRPMCanOverflow(ctx, account) {
+		return true, state, nil
+	}
 	if account.CheckRPMSchedulability(state.Current) == WindowCostNotSchedulable {
 		return false, state, nil
 	}
@@ -105,6 +108,13 @@ func (s *OpenAIGatewayService) TryAcquireOpenAIOAuthRPM(ctx context.Context, acc
 	}
 	if s == nil || s.rpmCache == nil {
 		return false, AccountRPMState{Limit: account.GetBaseRPM(), Enabled: true}, fmt.Errorf("%w: counter cache is not configured", ErrOpenAIRPMUnavailable)
+	}
+	if account.rpmOverflow && account.IsOpenAIRPMOverflowEnabled() {
+		count, err := s.rpmCache.IncrementRPM(ctx, account.RPMAccountID())
+		if err != nil {
+			return false, AccountRPMState{}, fmt.Errorf("%w: %v", ErrOpenAIRPMUnavailable, err)
+		}
+		return true, accountRPMState(account, count), nil
 	}
 	strict, ok := s.rpmCache.(StrictRPMCache)
 	if !ok {

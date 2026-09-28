@@ -409,7 +409,7 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 			}
 			if rpm, err := h.rpmCache.GetRPM(ctx, rpmAccountID); err == nil {
 				item.CurrentRPM = &rpm
-				if account.IsOpenAIOAuth() && rpm >= account.GetBaseRPM() {
+				if account.IsOpenAIOAuth() && !account.IsOpenAIRPMOverflowEnabled() && rpm >= account.GetBaseRPM() {
 					item.RPMPaused = true
 					resetAt := time.Now().Truncate(time.Minute).Add(time.Minute).Unix()
 					item.RPMResetAt = &resetAt
@@ -853,7 +853,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 			}
 			if rpm, ok := rpmCounts[rpmAccountID]; ok {
 				item.CurrentRPM = &rpm
-				if acc.IsOpenAIOAuth() && acc.GetBaseRPM() > 0 && rpm >= acc.GetBaseRPM() {
+				if acc.IsOpenAIOAuth() && !acc.IsOpenAIRPMOverflowEnabled() && acc.GetBaseRPM() > 0 && rpm >= acc.GetBaseRPM() {
 					item.RPMPaused = true
 					resetAt := time.Now().Truncate(time.Minute).Add(time.Minute).Unix()
 					item.RPMResetAt = &resetAt

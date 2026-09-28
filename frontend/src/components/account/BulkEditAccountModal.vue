@@ -51,11 +51,12 @@
           aria-labelledby="bulk-edit-excel-bps-label">
           <button type="button" role="switch" :aria-checked="excelBPSEnabled"
             :aria-label="t('admin.accounts.openai.excelBPS')" data-testid="bulk-excel-bps-toggle"
-            @click="excelBPSEnabled = !excelBPSEnabled"
+            @click="toggleExcelBPS"
             :class="['relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2', excelBPSEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600']">
             <span :class="['pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition', excelBPSEnabled ? 'translate-x-5' : 'translate-x-0']" />
           </button>
           <div v-if="excelBPSEnabled" class="mt-3 space-y-3">
+            <AccountRpmSettings v-model:enabled="rpmLimitEnabled" v-model:base-rpm="bulkBaseRpm" v-model:overflow="rpmOverflow" strict />
             <div data-testid="bulk-excel-bps-model-selection">
               <label class="input-label">{{ t('admin.accounts.openai.excelBPSModels') }}</label>
               <ModelWhitelistSelector v-model="excelBPSModels" platform="openai" />
@@ -1319,7 +1320,7 @@
       </div>
 
       <!-- RPM Limit (Anthropic OAuth/SetupToken or OpenAI OAuth) -->
-      <div v-if="allAnthropicOAuthOrSetupToken || allOpenAIOAuthOnly" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="allAnthropicOAuthOrSetupToken || (allOpenAIOAuthOnly && !(enableExcelBPS && excelBPSEnabled))" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label
             id="bulk-edit-rpm-limit-label"
@@ -1346,6 +1347,7 @@
           <AccountRpmSettings
             v-model:enabled="rpmLimitEnabled"
             v-model:base-rpm="bulkBaseRpm"
+            v-model:overflow="rpmOverflow"
             v-model:strategy="bulkRpmStrategy"
             v-model:sticky-buffer="bulkRpmStickyBuffer"
             :strict="allOpenAIOAuthOnly"
@@ -1677,6 +1679,18 @@ const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
 const excelBPSEnabled = ref(false)
+const rpmOverflow = ref(false)
+function toggleExcelBPS() {
+  excelBPSEnabled.value = !excelBPSEnabled.value
+  if (excelBPSEnabled.value) {
+    rpmOverflow.value = true
+    excelBPSCacheCreationAsInput.value = true
+    excelBPSAutoDisableOn403.value = true
+    enableRpmLimit.value = true
+    rpmLimitEnabled.value = true
+    if (!bulkBaseRpm.value || bulkBaseRpm.value < 1) bulkBaseRpm.value = 15
+  }
+}
 const excelBPSModels = ref<string[]>(['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra'])
 const excelBPSCacheCreationAsInput = ref(false)
 const excelBPSAutoDisableOn403 = ref(false)
@@ -2125,6 +2139,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
       enabled: rpmLimitEnabled.value && bulkBaseRpm.value != null && bulkBaseRpm.value > 0,
       baseRpm: bulkBaseRpm.value,
       strict: allOpenAIOAuthOnly.value,
+      overflow: rpmOverflow.value,
       strategy: bulkRpmStrategy.value,
       stickyBuffer: bulkRpmStickyBuffer.value
     }, 'merge')
@@ -2377,6 +2392,7 @@ watch(
       excelBPSModels.value = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra']
       excelBPSCacheCreationAsInput.value = false
       excelBPSAutoDisableOn403.value = false
+      rpmOverflow.value = false
       // Reset all values
       baseUrl.value = ''
       openaiPassthroughEnabled.value = false

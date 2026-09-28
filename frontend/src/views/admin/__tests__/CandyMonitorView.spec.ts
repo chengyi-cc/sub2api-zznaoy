@@ -10,7 +10,7 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return { ...actual, useI18n: () => ({ t: (key: string) => key }) }
 })
-const defaults = { enabled: true, model_id: 'gpt-6-astra', interval_minutes: 60, max_results: 50 }
+const defaults = { enabled: true, model_id: 'gpt-6-astra', interval_minutes: 60, max_results: 50, auto_excel_on_incorrect: false }
 const account = { account_id: 42, name: 'Custom account', platform: 'openai', type: 'oauth', status: 'active', enabled: true, use_defaults: false, model_id: 'custom-model', interval_minutes: 17, latest: null, history: [], total_tests: 100, answer_21_count: 75, answer_29_count: 20, other_answer_count: 3, inconclusive_count: 2 }
 function setup() {
   return mount(CandyMonitorView, { global: { stubs: {
@@ -21,6 +21,17 @@ function setup() {
   } } })
 }
 describe('CandyMonitorView', () => {
+  it('allows an account to opt out independently of its inherited model settings', async () => {
+    api.list.mockResolvedValue({ items: [{ ...account, use_defaults: true, auto_excel_on_incorrect: null, excel_extra: { openai_excel_bps: false, openai_excel_bps_last_transition: { reason: 'upstream_403' } } }], total: 1 })
+    const wrapper = setup(); await flushPromises()
+    expect(wrapper.get('[data-testid="excel-protocol-badge"]').text()).toContain('excelReturnedNative')
+    await wrapper.findAll('button').find(b => b.text().endsWith('.configure'))!.trigger('click')
+    await wrapper.get('[data-testid="account-auto-excel"]').setValue('false')
+    await wrapper.get('#candy-account-settings').trigger('submit'); await flushPromises()
+    expect(api.configure).toHaveBeenCalledWith([42], expect.objectContaining({ use_defaults: true, auto_excel_on_incorrect: false }))
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     vi.useFakeTimers(); vi.clearAllMocks()
     api.settings.mockResolvedValue(defaults)
@@ -52,7 +63,7 @@ describe('CandyMonitorView', () => {
     expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ group_id: 8, page: 1 }))
     await wrapper.get('input[aria-label="Custom account"]').setValue(true)
     await wrapper.get('[data-testid="apply-defaults"]').trigger('click'); await flushPromises()
-    expect(api.configure).toHaveBeenCalledWith([42], { enabled: true, use_defaults: true, model_id: 'gpt-6-astra', interval_minutes: 60 })
+    expect(api.configure).toHaveBeenCalledWith([42], { enabled: true, use_defaults: true, model_id: 'gpt-6-astra', interval_minutes: 60, auto_excel_on_incorrect: null })
     wrapper.unmount()
   })
   it('batch pause preserves overrides instead of rewriting them', async () => {
@@ -71,7 +82,7 @@ describe('CandyMonitorView', () => {
     await form.get('input[maxlength="200"]').setValue('another-text-model')
     await form.get('input[type="number"]').setValue(25)
     await form.trigger('submit'); await flushPromises()
-    expect(api.configure).toHaveBeenCalledWith([42], { enabled: true, use_defaults: false, model_id: 'another-text-model', interval_minutes: 25 })
+    expect(api.configure).toHaveBeenCalledWith([42], { enabled: true, use_defaults: false, model_id: 'another-text-model', interval_minutes: 25, auto_excel_on_incorrect: null })
     expect(api.saveSettings).not.toHaveBeenCalled()
     wrapper.unmount()
   })

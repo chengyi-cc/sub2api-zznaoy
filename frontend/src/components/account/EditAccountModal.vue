@@ -42,10 +42,12 @@
           <button type="button" role="switch" :aria-checked="excelBPSEnabled"
             :aria-label="t('admin.accounts.openai.excelBPS')" data-testid="excel-bps-toggle"
             :class="['relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2', excelBPSEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600']"
-            @click="excelBPSEnabled = !excelBPSEnabled">
+            @click="toggleExcelBPS">
             <span :class="['pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow transition', excelBPSEnabled ? 'translate-x-6' : 'translate-x-0']" />
           </button>
         </div>
+        <AccountRpmSettings v-if="excelBPSEnabled" class="mt-4" v-model:enabled="rpmLimitEnabled" v-model:base-rpm="baseRpm" v-model:overflow="rpmOverflow" strict />
+        <ExcelProtocolBadge :extra="account.extra" class="mt-2" />
         <div v-if="excelBPSEnabled" data-testid="excel-bps-models" class="mt-4 border-t border-primary-200/70 pt-4 dark:border-primary-800">
           <label class="input-label">{{ t('admin.accounts.openai.excelBPSModels') }}</label>
           <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSModelsDesc') }}</p>
@@ -1778,12 +1780,13 @@
       </div>
       <!-- OpenAI OAuth RPM limit -->
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'oauth'"
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !excelBPSEnabled"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <AccountRpmSettings
           v-model:enabled="rpmLimitEnabled"
           v-model:base-rpm="baseRpm"
+          v-model:overflow="rpmOverflow"
           strict
         />
       </div>
@@ -3128,6 +3131,7 @@ import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import ExcelProtocolBadge from './ExcelProtocolBadge.vue'
 import AccountRpmSettings from '@/components/account/AccountRpmSettings.vue'
 import { applyAccountRPMSettings } from '@/components/account/accountRpm'
 import Icon from '@/components/icons/Icon.vue'
@@ -3683,6 +3687,17 @@ const customBaseUrl = ref('')
 const openaiPassthroughEnabled = ref(false)
 const defaultExcelBPSModels = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra']
 const excelBPSEnabled = ref(false)
+const rpmOverflow = ref(false)
+function toggleExcelBPS() {
+  excelBPSEnabled.value = !excelBPSEnabled.value
+  if (excelBPSEnabled.value) {
+    rpmOverflow.value = true
+    excelBPSCacheCreationAsInput.value = true
+    excelBPSAutoDisableOn403.value = true
+    rpmLimitEnabled.value = true
+    if (!baseRpm.value || baseRpm.value < 1) baseRpm.value = 15
+  }
+}
 const codexTimezoneRewriteEnabled = ref(false)
 const excelBPSModels = ref<string[]>([...defaultExcelBPSModels])
 const excelBPSCacheCreationAsInput = ref(false)
@@ -4211,6 +4226,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
+  rpmOverflow.value = extra?.openai_rpm_overflow === true
   excelBPSEnabled.value = supportsExcelBPS.value && extra?.openai_excel_bps === true
   codexTimezoneRewriteEnabled.value = supportsExcelBPS.value && extra?.openai_codex_timezone_rewrite === true
   excelBPSAutoDisableOn403.value = supportsExcelBPS.value && extra?.openai_excel_bps_auto_disable_on_403 === true
@@ -5714,7 +5730,7 @@ const handleSubmit = async () => {
         applyAccountRPMSettings(newExtra, {
           enabled: rpmLimitEnabled.value,
           baseRpm: baseRpm.value,
-          strict: true
+          strict: true, overflow: rpmOverflow.value
         })
       }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
@@ -5732,9 +5748,11 @@ const handleSubmit = async () => {
       }
       if (supportsExcelBPS.value && excelBPSEnabled.value && excelBPSAutoDisableOn403.value) {
         newExtra.openai_excel_bps_auto_disable_on_403 = true
-      } else { delete newExtra.openai_excel_bps_auto_disable_on_403 }
+      } else if (excelBPSEnabled.value) { newExtra.openai_excel_bps_auto_disable_on_403 = false } else { delete newExtra.openai_excel_bps_auto_disable_on_403 }
       if (supportsExcelBPS.value && excelBPSEnabled.value && excelBPSCacheCreationAsInput.value) {
         newExtra.openai_excel_bps_cache_creation_as_input = true
+      } else if (excelBPSEnabled.value) {
+        newExtra.openai_excel_bps_cache_creation_as_input = false
       } else {
         delete newExtra.openai_excel_bps_cache_creation_as_input
       }

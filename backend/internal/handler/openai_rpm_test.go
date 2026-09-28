@@ -39,3 +39,13 @@ func TestOpenAIRPMRetryAfterOnlyOnExhaustedResponse(t *testing.T) {
 	require.GreaterOrEqual(t, seconds, 1)
 	require.LessOrEqual(t, seconds, 20)
 }
+
+func TestOpenAIRPMRetryRestoresOnlyLocallyExhaustedOverflowAccounts(t *testing.T) {
+	excluded := map[int64]struct{}{1: {}, 2: {}}
+	a := openAIRPMAdmission{excluded: excluded, overflowExcluded: map[int64]struct{}{1: {}}}
+	require.False(t, a.retryOverflowSelection(service.ErrOpenAIRPMUnavailable))
+	require.True(t, a.retryOverflowSelection(service.ErrNoAvailableAccounts))
+	require.NotContains(t, excluded, int64(1))
+	require.Contains(t, excluded, int64(2))
+	require.False(t, a.retryOverflowSelection(service.ErrNoAvailableAccounts))
+}
