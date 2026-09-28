@@ -25,12 +25,13 @@ func TestExcelBPSModelSelection(t *testing.T) {
 		{"astra default", nil, false, "gpt-6-astra", true},
 		{"5.6 sol default", nil, false, "gpt-5.6-sol", true},
 		{"5.6 terra default", nil, false, "gpt-5.6-terra", true},
-		{"6 sol native", nil, false, "gpt-6-sol", false},
+		{"6 sol default", nil, false, "gpt-6-sol", true},
 		{"6 luna native", nil, false, "gpt-6-luna", false},
 		{"no prefix matching", nil, false, "gpt-6-astra-other", false},
 		{"custom json list", []any{"gpt-6-sol"}, true, "gpt-6-sol", true},
 		{"custom list replaces defaults", []string{"gpt-6-sol"}, true, "gpt-6-astra", false},
 		{"explicit empty", []any{}, true, "gpt-6-astra", false},
+		{"saved selection omits sol", []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"}, true, "gpt-6-sol", false},
 		{"invalid type", "gpt-6-astra", true, "gpt-6-astra", false},
 		{"explicit null", nil, true, "gpt-6-astra", false},
 		{"trim and ignore invalid entries", []any{12, "  gpt-6-sol  ", "gpt-6-sol", ""}, true, "gpt-6-sol", true},
@@ -44,7 +45,7 @@ func TestExcelBPSModelSelection(t *testing.T) {
 		})
 	}
 	a := excelAccount()
-	a.Credentials["model_mapping"] = map[string]any{"alias": "gpt-6-astra", "gpt-6-astra": "gpt-6-sol"}
+	a.Credentials["model_mapping"] = map[string]any{"alias": "gpt-6-astra", "gpt-6-astra": "gpt-6-luna"}
 	require.True(t, a.UsesExcelBPSForModel("alias"))
 	require.False(t, a.UsesExcelBPSForModel("gpt-6-astra"))
 	a.Extra["openai_excel_bps"] = false
@@ -56,7 +57,7 @@ func TestExcelBPSModelScopePreservesNativeTransport(t *testing.T) {
 	a.Extra["openai_oauth_responses_websockets_v2_mode"] = "ctx_pool"
 	a.Extra["openai_oauth_responses_websockets_v2_enabled"] = true
 	require.Same(t, a, a.forOpenAIModel("gpt-6-astra"))
-	native := a.forOpenAIModel("gpt-6-sol")
+	native := a.forOpenAIModel("gpt-6-luna")
 	require.NotSame(t, a, native)
 	require.True(t, a.IsExcelBPSEnabled())
 	require.False(t, native.IsExcelBPSEnabled())
@@ -69,8 +70,8 @@ func TestExcelBPSModelScopePreservesNativeTransport(t *testing.T) {
 	require.Nil(t, (*Account)(nil).forOpenAIModel("gpt-6-sol"))
 	svc := openAIClientToolsTestService(nil)
 	svc.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
-	for _, model := range []string{"gpt-6-sol", "gpt-6-astra"} {
-		require.Equal(t, model == "gpt-6-sol", svc.isOpenAIAccountTransportCompatible(a, OpenAIUpstreamTransportResponsesWebsocketV2Ingress, model))
+	for _, model := range []string{"gpt-6-luna", "gpt-6-astra", "gpt-6-sol"} {
+		require.Equal(t, model == "gpt-6-luna", svc.isOpenAIAccountTransportCompatible(a, OpenAIUpstreamTransportResponsesWebsocketV2Ingress, model))
 	}
 }
 
@@ -82,7 +83,8 @@ func TestExcelBPSModelRoutingActualForward(t *testing.T) {
 		host, path  string
 	}{
 		{"selected", "gpt-6-astra", nil, false, "bps.openai.com", "/basispoints/api/responses"},
-		{"unselected", "gpt-6-sol", nil, false, "chatgpt.com", "/backend-api/codex/responses"},
+		{"sol default", "gpt-6-sol", nil, false, "bps.openai.com", "/basispoints/api/responses"},
+		{"unselected", "gpt-6-luna", nil, false, "chatgpt.com", "/backend-api/codex/responses"},
 		{"opt in sol", "gpt-6-sol", []string{"gpt-6-sol"}, true, "bps.openai.com", "/basispoints/api/responses"},
 		{"opt out all", "gpt-6-astra", []string{}, true, "chatgpt.com", "/backend-api/codex/responses"},
 	} {
@@ -122,9 +124,9 @@ func TestExcelBPSWebsocketModelSwitchGuard(t *testing.T) {
 		return model, nil
 	}}
 	hooks := withExcelBPSModelGuard(a, original)
-	model, err := hooks.MapRequestModel(1, "gpt-6-sol")
+	model, err := hooks.MapRequestModel(1, "gpt-6-luna")
 	require.NoError(t, err)
-	require.Equal(t, "gpt-6-sol", model)
+	require.Equal(t, "gpt-6-luna", model)
 	_, err = hooks.MapRequestModel(2, "group-alias")
 	require.ErrorContains(t, err, "HTTP")
 	_, err = hooks.MapRequestModel(3, "blocked")

@@ -114,7 +114,7 @@ describe('BulkEditAccountModal', () => {
     await wrapper.get('#bulk-edit-excel-bps-enabled').setValue(true)
     await wrapper.get('[data-testid="bulk-excel-bps-toggle"]').trigger('click')
     const selector=wrapper.get('[data-testid="bulk-excel-bps-model-selection"]').findComponent(ModelWhitelistSelector)
-    expect(selector.props('modelValue')).toEqual(['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra'])
+    expect(selector.props('modelValue')).toEqual(['gpt-6-astra','gpt-5.6-sol','gpt-5.6-terra','gpt-6-sol'])
     selector.vm.$emit('update:modelValue', models)
     await wrapper.get('[data-testid="bulk-excel-bps-cache-creation-as-input"]').setValue(true)
     await wrapper.get('[data-testid="bulk-excel-bps-auto-disable-on-403"]').setValue(true)

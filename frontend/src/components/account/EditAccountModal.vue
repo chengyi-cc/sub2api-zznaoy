@@ -3685,7 +3685,7 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
-const defaultExcelBPSModels = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra']
+const defaultExcelBPSModels = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6-sol']
 const excelBPSEnabled = ref(false)
 const rpmOverflow = ref(false)
 function toggleExcelBPS() {

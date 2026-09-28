@@ -1691,7 +1691,7 @@ function toggleExcelBPS() {
     if (!bulkBaseRpm.value || bulkBaseRpm.value < 1) bulkBaseRpm.value = 15
   }
 }
-const excelBPSModels = ref<string[]>(['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra'])
+const excelBPSModels = ref<string[]>(['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6-sol'])
 const excelBPSCacheCreationAsInput = ref(false)
 const excelBPSAutoDisableOn403 = ref(false)
 const openaiPassthroughEnabled = ref(false)
@@ -2389,7 +2389,7 @@ watch(
       enableRpmLimit.value = false
 
       excelBPSEnabled.value = false
-      excelBPSModels.value = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra']
+      excelBPSModels.value = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6-sol']
       excelBPSCacheCreationAsInput.value = false
       excelBPSAutoDisableOn403.value = false
       rpmOverflow.value = false

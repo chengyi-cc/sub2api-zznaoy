@@ -6,7 +6,7 @@ import (
 	coderws "github.com/coder/websocket"
 )
 
-// Missing configuration uses the models verified against BPS on 2026-09-25.
+// Missing configuration uses the models verified against BPS, including gpt-6-sol on 2026-09-28.
 // An explicitly empty or malformed list opts every model into the native route.
 func (a *Account) ExcelBPSModels() []string {
 	if a == nil {
@@ -14,7 +14,7 @@ func (a *Account) ExcelBPSModels() []string {
 	}
 	raw, exists := a.Extra["openai_excel_bps_models"]
 	if !exists {
-		return []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"}
+		return []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-sol"}
 	}
 	var values []string
 	switch list := raw.(type) {
