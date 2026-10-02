@@ -131,3 +131,39 @@ func TestExcelBPSManifestConflictingAliasDoesNotRestoreBundledV2(t *testing.T) {
 	require.Nil(t, model["multi_agent_version"])
 	require.Nil(t, model["multi_agent_reasoning_effort"])
 }
+
+// The new upstream descriptor carries native v2 defaults. It must still obey
+// our per-model BPS capability guard, including a public account alias.
+func TestExcelBPSManifestGPT61SolPreservesRouteCapabilities(t *testing.T) {
+	for _, useBPS := range []bool{false, true} {
+		name := "native"
+		if useBPS {
+			name = "bps"
+		}
+		t.Run(name, func(t *testing.T) {
+			account := *excelAccount()
+			account.Credentials["model_mapping"] = map[string]any{
+				"gpt-6.1-sol": "gpt-6.1-sol", "public-sol": "gpt-6.1-sol",
+			}
+			if useBPS {
+				account.Extra["openai_excel_bps_models"] = []string{"gpt-6.1-sol"}
+			}
+			body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI,
+				[]string{"gpt-6.1-sol", "public-sol"}, []Account{account}, nil, nil, true)
+			require.NoError(t, err)
+			models := decodeCodexManifestModels(t, body)
+			require.Len(t, models, 2)
+			for _, model := range models {
+				if useBPS {
+					require.Contains(t, model, "multi_agent_version")
+					require.Nil(t, model["multi_agent_version"])
+					require.Nil(t, model["multi_agent_reasoning_effort"])
+				} else {
+					require.Equal(t, "v2", model["multi_agent_version"])
+				}
+				require.Equal(t, "freeform", model["apply_patch_tool_type"])
+				require.Equal(t, "code_mode_only", model["tool_mode"])
+			}
+		})
+	}
+}

@@ -64,7 +64,7 @@ func TestCodexBareModelFallback(t *testing.T) {
 			}
 		})
 	}
-	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra", "codex-auto-review"} {
+	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra", "gpt-6.1-sol", "openai/gpt-6.1-sol", "gpt-6.1-sol-high", "codex-auto-review"} {
 		t.Run(model, func(t *testing.T) {
 			if !CodexUsesInputDeveloperInstructions(model) {
 				t.Fatal("catalog code-mode model must use developer input instructions")

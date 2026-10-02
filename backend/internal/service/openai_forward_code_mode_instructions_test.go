@@ -22,6 +22,11 @@ func TestForwardCodeModeInstructions(t *testing.T) {
 		wantDeveloper                                                              bool
 	}{
 		{name: "sol", model: "gpt-5.6-sol", wantDeveloper: true},
+		{name: "sol 6.1", model: "gpt-6.1-sol", wantDeveloper: true},
+		{name: "mapped to sol 6.1", model: "client-model", mapped: "gpt-6.1-sol", wantDeveloper: true},
+		{name: "sol 6.1 caller instructions", model: "gpt-6.1-sol", instructions: "Keep caller instructions"},
+		{name: "sol 6.1 compact", model: "gpt-6.1-sol", path: "/v1/responses/compact"},
+		{name: "sol 6.1 native client", model: "gpt-6.1-sol", userAgent: "codex_cli_rs/0.153.4"},
 		{name: "astra", model: "gpt-6-astra", wantDeveloper: true},
 		{name: "mapped to code mode", model: "client-model", mapped: "gpt-5.6-sol", wantDeveloper: true},
 		{name: "mapped away from code mode", model: "gpt-5.6-sol", mapped: "gpt-5.4"},
