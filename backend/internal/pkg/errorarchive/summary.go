@@ -1,6 +1,8 @@
 package errorarchive
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -98,6 +100,59 @@ func RequestSummary(body []byte) json.RawMessage {
 		}
 		return true
 	})
+	additionalDirectories := 0
+	root.Get("input").ForEach(func(_, item gjson.Result) bool {
+		if item.Get("type").String() == "additional_tools" {
+			additionalDirectories++
+			item.Get("tools").ForEach(func(_, entry gjson.Result) bool {
+				if entry.Get("type").String() == "namespace" {
+					entry.Get("tools").ForEach(func(_, child gjson.Result) bool { appendTool(entry.Get("name").String(), child); return true })
+				} else {
+					appendTool("", entry)
+				}
+				return true
+			})
+		}
+		return true
+	})
+	result["additional_tool_directories"] = additionalDirectories
+	// Diagnose result-only history even when the wire archive ends inside a
+	// large image. Store only indices and hashes, never identifiers or scripts.
+	calls := make(map[[32]byte]struct{})
+	callCount, resultCount, missingCount := 0, 0, 0
+	pairingLimited := false
+	root.Get("input").ForEach(func(_, item gjson.Result) bool {
+		kind := item.Get("type").String()
+		if kind == "function_call" || kind == "custom_tool_call" {
+			callCount++
+			if len(calls) < 8192 {
+				calls[sha256.Sum256([]byte(item.Get("call_id").String()))] = struct{}{}
+			} else {
+				pairingLimited = true
+			}
+		}
+		return true
+	})
+	var missing []map[string]any
+	index := 0
+	root.Get("input").ForEach(func(_, item gjson.Result) bool {
+		kind := item.Get("type").String()
+		if kind == "function_call_output" || kind == "custom_tool_call_output" {
+			resultCount++
+			id := item.Get("call_id").String()
+			digest := sha256.Sum256([]byte(id))
+			_, present := calls[digest]
+			if !pairingLimited && (id == "" || !present) {
+				missingCount++
+				if len(missing) < 16 {
+					missing = append(missing, map[string]any{"input_index": index, "call_id_sha256": hex.EncodeToString(digest[:])})
+				}
+			}
+		}
+		index++
+		return true
+	})
+	result["tool_history_pairing"] = map[string]any{"calls_in_request": callCount, "results_in_request": resultCount, "results_without_call_in_request": missingCount, "samples": missing, "limited": pairingLimited, "cache_state": "not_inferred"}
 	result["input_items"], result["content_parts"], result["content_types"] = inputCount, contentCount, types
 	result["images"], result["inline_images"], result["inline_image_encoded_bytes"] = imageCount, inlineCount, encodedBytes
 	result["content_samples"], result["tool_count"], result["tool_catalog"] = samples, toolCount, catalog

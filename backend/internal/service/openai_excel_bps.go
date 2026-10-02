@@ -195,6 +195,10 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	upstreamBody, bridge, err := basispoints.PrepareWithCatalogOptions(imageBody, scope, replay, catalog, catalogScope, options)
 	if err != nil {
 		var contentErr *basispoints.ContentValidationError
+		var historyErr *basispoints.MissingToolHistoryError
+		if errors.As(err, &historyErr) {
+			return fail(400, "basispoints_history_incomplete", historyErr.Error(), historyErr.Path())
+		}
 		if errors.As(err, &contentErr) {
 			return fail(400, "basispoints_request_invalid", err.Error(), contentErr.Path)
 		}
@@ -405,7 +409,18 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 	}
 	bridge.SetSSEMaxBytes(maxLineSize)
+	var streamIdle time.Duration
+	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
+		streamIdle = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+	}
+	resp.Body = withExcelBPSIdleTimeout(resp.Body, streamIdle)
+	var downstreamDeliveryFailed atomic.Bool
+	deliveryCtx, stopDelivery := context.WithCancel(requestCtx)
+	defer stopDelivery()
 	converted := bridge.StreamWithToolRepair(requestCtx, resp.Body, func(repairCtx context.Context, failed map[string]any, validation error) (map[string]any, error) {
+		if downstreamDeliveryFailed.Load() {
+			return nil, context.Canceled
+		}
 		correctedBody, buildErr := basispoints.BuildToolRepairRequest(repairBody, failed, validation)
 		if buildErr != nil {
 			return nil, buildErr
@@ -413,6 +428,8 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		// Limit the total time spent on an individual corrective continuation.
 		repairCtx, cancel := context.WithTimeout(repairCtx, 45*time.Second)
 		defer cancel()
+		stopCancel := context.AfterFunc(deliveryCtx, cancel)
+		defer stopCancel()
 		repairReq, buildErr := newExcelBPSRequest(repairCtx, correctedBody, token, accountID)
 		if buildErr != nil {
 			return nil, buildErr
@@ -450,7 +467,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		}
 		s.UpdateCodexUsageSnapshotFromHeaders(repairCtx, account.ID, repairResp.Header)
 		repairBody = correctedBody
-		return basispoints.ReadToolRepairResponse(repairResp.Body)
+		return basispoints.ReadToolRepairResponse(withExcelBPSIdleTimeout(repairResp.Body, streamIdle))
 	})
 	defer func() { _ = converted.Close() }()
 	requestedEffort := coalesceRequestedReasoningEffort(RequestedReasoningEffortFromContext(ctx), &bridge.RequestedEffort)
@@ -467,14 +484,34 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	defer scanner.Close()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
+	// Like the ordinary Responses path, stop delivery on a failed flush while
+	// still consuming the bounded upstream stream for already-incurred usage.
+	var downstreamErr error
+	writeDownstream := func(text string, flush bool) {
+		if downstreamErr != nil || !stream {
+			return
+		}
+		_, downstreamErr = c.Writer.WriteString(text)
+		if downstreamErr == nil && flush {
+			downstreamErr = flushOpenAIStream(c.Writer)
+		}
+		if downstreamErr != nil {
+			downstreamDeliveryFailed.Store(true)
+			stopDelivery()
+			result.ClientDisconnect = true
+			MarkResponseCommitted(c)
+			MarkOpsClientCancellation(c, stream)
+		}
+	}
 	keepalive := func() {
 		if stream && ctx.Err() == nil {
-			_, _ = c.Writer.WriteString(": keepalive\n\n")
-			c.Writer.Flush()
+			writeDownstream(": keepalive\n\n", true)
 		}
 	}
 	var completed []byte
 	terminal := ""
+	// The raw body above owns the idle deadline; the translated tool stream
+	// may legitimately remain silent while native arguments are arriving.
 	for scanner.Next(ctx, 0, heartbeat.C, keepalive) {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "data: ") {
@@ -501,18 +538,7 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 			}
 		}
 		if stream {
-			if _, err = c.Writer.WriteString(line + "\n"); err != nil {
-				result.streamReadIncomplete = true
-				result.ClientDisconnect = true
-				if isExcelBPSClientCancellation(c, c.Request.Context().Err()) {
-					MarkOpsClientCancellation(c, stream)
-				}
-				result.Duration = time.Since(start)
-				return result, err
-			}
-			if line == "" {
-				c.Writer.Flush()
-			}
+			writeDownstream(line+"\n", line == "")
 		}
 	}
 	result.Duration = time.Since(start)
@@ -529,8 +555,22 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 		if ctx.Err() != nil {
 			err = ctx.Err()
 		}
+		if err == nil {
+			err = io.ErrUnexpectedEOF
+		}
 		archiveDiagnostic("stream_transport", recordExcelBPSTransportFailure(c, account, activeTransportRequest.Load(), err))
 		MarkResponseCommitted(c)
+		if downstreamErr != nil {
+			return result, fmt.Errorf("excel BPS upstream ended after client disconnect: %w", err)
+		}
+		if errors.Is(err, errOpenAISSEIdle) {
+			if stream {
+				writeOpenAICompactSSEFailureMessage(c, 504, "basispoints_stream_timeout", "Excel BPS upstream stream exceeded its configured idle timeout; request was not replayed")
+			} else {
+				c.JSON(504, gin.H{"error": gin.H{"code": "basispoints_stream_timeout", "message": "Excel BPS upstream stream exceeded its configured idle timeout; request was not replayed"}})
+			}
+			return result, fmt.Errorf("excel BPS stream idle timeout: %w", err)
+		}
 		if stream {
 			writeOpenAICompactSSEFailureMessage(c, 502, "basispoints_stream_incomplete", "Upstream stream ended before completion")
 		} else {
@@ -550,6 +590,9 @@ func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Conte
 	}
 	if terminal != "response.completed" {
 		return result, fmt.Errorf("excel BPS terminal: %s", terminal)
+	}
+	if result.ClientDisconnect {
+		return result, nil
 	}
 	// A rejected request alone does not prove recovery works. Remember only
 	// digests whose removal led to a fully completed response.

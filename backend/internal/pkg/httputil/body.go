@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,12 +14,41 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
+type requestBodyLimitKey struct{}
+
+// WithRequestBodyLimit carries the route's wire/decoded byte budget through
+// preread middleware. Standalone callers retain the legacy decoded fallback.
+func WithRequestBodyLimit(ctx context.Context, limit int64) context.Context {
+	if limit <= 0 {
+		return ctx
+	}
+	if existing, ok := ctx.Value(requestBodyLimitKey{}).(int64); ok && existing > 0 && existing < limit {
+		return ctx
+	}
+	return context.WithValue(ctx, requestBodyLimitKey{}, limit)
+}
+
+func bodyLimitProbeSize(limit int64) int64 {
+	if limit == int64(^uint64(0)>>1) {
+		return limit
+	}
+	return limit + 1
+}
+
+func requestBodySizeLimit(req *http.Request, limit int64) int64 {
+	if req != nil {
+		if route, ok := req.Context().Value(requestBodyLimitKey{}).(int64); ok && route > 0 && (limit <= 0 || route < limit) {
+			return route
+		}
+	}
+	return limit
+}
+
 const (
 	requestBodyReadInitCap    = 512
 	requestBodyReadMaxInitCap = 1 << 20
 	jsonUTF8BOMLen            = 3
-	// maxDecompressedBodySize limits the decompressed request body to 64 MB
-	// to prevent decompression bomb attacks.
+	// Standalone decoded-body fallback when no route or handler budget exists.
 	maxDecompressedBodySize = 64 << 20
 )
 
@@ -64,6 +94,10 @@ func (p *PrereadBody) Bytes() []byte {
 // 已由 PrereadBody 回填的请求体直接返回其完整切片（零拷贝），不检查内部
 // reader 是否已被消费——见 PrereadBody 的文档说明。
 func ReadRequestBodyWithPrealloc(req *http.Request) (body []byte, readErr error) {
+	return readRequestBodyWithLimit(req, 0)
+}
+
+func readRequestBodyWithLimit(req *http.Request, limit int64) (body []byte, readErr error) {
 	defer func() {
 		if req != nil && readErr != nil {
 			if observer, ok := req.Body.(interface{ OnBodyReadError(error) }); ok {
@@ -74,7 +108,11 @@ func ReadRequestBodyWithPrealloc(req *http.Request) (body []byte, readErr error)
 	if req == nil || req.Body == nil {
 		return nil, nil
 	}
+	limit = requestBodySizeLimit(req, limit)
 	if preread, ok := req.Body.(*PrereadBody); ok {
+		if limit > 0 && int64(len(preread.Bytes())) > limit {
+			return nil, &http.MaxBytesError{Limit: limit}
+		}
 		return preread.Bytes(), nil
 	}
 
@@ -90,9 +128,16 @@ func ReadRequestBodyWithPrealloc(req *http.Request) (body []byte, readErr error)
 		}
 	}
 
-	raw, err := readRequestBodyChunks(req.Body, capHint, req.ContentLength)
+	var input io.Reader = req.Body
+	if limit > 0 {
+		input = io.LimitReader(input, bodyLimitProbeSize(limit))
+	}
+	raw, err := readRequestBodyChunks(input, capHint, req.ContentLength)
 	if err != nil {
 		return nil, err
+	}
+	if limit > 0 && int64(len(raw)) > limit {
+		return nil, &http.MaxBytesError{Limit: limit}
 	}
 	// The chunk reader also accepts allocation hints from non-HTTP callers.
 	// Validate declared transport length only at the HTTP request boundary.
@@ -105,7 +150,11 @@ func ReadRequestBodyWithPrealloc(req *http.Request) (body []byte, readErr error)
 		return raw, nil
 	}
 
-	decoded, err := decompressRequestBody(enc, raw)
+	decodedLimit := limit
+	if decodedLimit <= 0 {
+		decodedLimit = maxDecompressedBodySize
+	}
+	decoded, err := decompressRequestBodyWithLimit(enc, raw, decodedLimit)
 	if err != nil {
 		return nil, fmt.Errorf("decode Content-Encoding %q: %w", enc, err)
 	}
@@ -170,7 +219,8 @@ func readRequestBodyChunks(reader io.Reader, initialCapacity int, contentLength 
 // ReadLenientJSONRequestBodyWithPrealloc reads a request body and normalizes
 // JSON string control bytes before strict validation.
 func ReadLenientJSONRequestBodyWithPrealloc(req *http.Request, maxNormalizedBytes int64) ([]byte, error) {
-	body, err := ReadRequestBodyWithPrealloc(req)
+	maxNormalizedBytes = requestBodySizeLimit(req, maxNormalizedBytes)
+	body, err := readRequestBodyWithLimit(req, maxNormalizedBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -178,28 +228,48 @@ func ReadLenientJSONRequestBodyWithPrealloc(req *http.Request, maxNormalizedByte
 }
 
 func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
+	return decompressRequestBodyWithLimit(encoding, raw, maxDecompressedBodySize)
+}
+
+func decompressRequestBodyWithLimit(encoding string, raw []byte, limit int64) ([]byte, error) {
+	if limit <= 0 {
+		limit = maxDecompressedBodySize
+	}
+	read := func(r io.Reader) ([]byte, error) {
+		body, err := io.ReadAll(io.LimitReader(r, bodyLimitProbeSize(limit)))
+		if errors.Is(err, zstd.ErrDecoderSizeExceeded) || errors.Is(err, zstd.ErrWindowSizeExceeded) {
+			return nil, &http.MaxBytesError{Limit: limit}
+		}
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(body)) > limit {
+			return nil, &http.MaxBytesError{Limit: limit}
+		}
+		return body, nil
+	}
 	switch encoding {
 	case "zstd":
-		dec, err := zstd.NewReader(bytes.NewReader(raw))
+		dec, err := zstd.NewReader(bytes.NewReader(raw), zstd.WithDecoderMaxMemory(uint64(max(limit, 1<<20))))
 		if err != nil {
 			return nil, err
 		}
 		defer dec.Close()
-		return io.ReadAll(io.LimitReader(dec, maxDecompressedBodySize))
+		return read(dec)
 	case "gzip", "x-gzip":
 		gr, err := gzip.NewReader(bytes.NewReader(raw))
 		if err != nil {
 			return nil, err
 		}
 		defer func() { _ = gr.Close() }()
-		return io.ReadAll(io.LimitReader(gr, maxDecompressedBodySize))
+		return read(gr)
 	case "deflate":
 		zr, err := zlib.NewReader(bytes.NewReader(raw))
 		if err != nil {
 			return nil, err
 		}
 		defer func() { _ = zr.Close() }()
-		return io.ReadAll(io.LimitReader(zr, maxDecompressedBodySize))
+		return read(zr)
 	default:
 		return nil, errors.New("unsupported Content-Encoding")
 	}

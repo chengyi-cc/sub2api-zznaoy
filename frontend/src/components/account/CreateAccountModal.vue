@@ -51,6 +51,54 @@
         :bindings="openaiTemplateBindings"
         :proxies="proxies" :groups="groups" :profiles="tlsFingerprintProfiles"
       />
+      <div v-if="supportsExcelBPS" data-testid="create-codex-timezone-card" class="rounded-xl border border-primary-200 bg-primary-50/50 p-5 dark:border-primary-800 dark:bg-primary-950/20">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ t('admin.accounts.openai.codexTimezoneRewrite') }}</label>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexTimezoneRewriteDesc') }}</p>
+          </div>
+          <button type="button" role="switch" :aria-checked="codexTimezoneRewriteEnabled"
+            :aria-label="t('admin.accounts.openai.codexTimezoneRewrite')" data-testid="create-codex-timezone-toggle"
+            :class="['relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2', codexTimezoneRewriteEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600']"
+            @click="codexTimezoneRewriteEnabled = !codexTimezoneRewriteEnabled">
+            <span :class="['pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow transition', codexTimezoneRewriteEnabled ? 'translate-x-6' : 'translate-x-0']" />
+          </button>
+        </div>
+      </div>
+      <!-- Optional Excel protocol for direct OpenAI OAuth accounts. -->
+      <div v-if="supportsExcelBPS" data-testid="create-excel-bps-card" class="rounded-xl border border-primary-200 bg-primary-50/50 p-5 dark:border-primary-800 dark:bg-primary-950/20">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ t('admin.accounts.openai.excelBPS') }}</label>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSDesc') }}</p>
+          </div>
+          <button type="button" role="switch" :aria-checked="excelBPSEnabled"
+            :aria-label="t('admin.accounts.openai.excelBPS')" data-testid="create-excel-bps-toggle"
+            :class="['relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2', excelBPSEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600']"
+            @click="toggleExcelBPS">
+            <span :class="['pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow transition', excelBPSEnabled ? 'translate-x-6' : 'translate-x-0']" />
+          </button>
+        </div>
+        <AccountRpmSettings v-if="excelBPSEnabled" class="mt-4" v-model:enabled="rpmLimitEnabled" v-model:base-rpm="baseRpm" v-model:overflow="rpmOverflow" strict />
+        <div v-if="excelBPSEnabled" data-testid="create-excel-bps-models" class="mt-4 border-t border-primary-200/70 pt-4 dark:border-primary-800">
+          <label class="input-label">{{ t('admin.accounts.openai.excelBPSModels') }}</label>
+          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSModelsDesc') }}</p>
+          <ModelWhitelistSelector v-model="excelBPSModels" platform="openai" />
+        </div>
+        <label v-if="excelBPSEnabled" class="mt-4 flex cursor-pointer items-start gap-3 border-t border-primary-200/70 pt-4 dark:border-primary-800">
+          <input v-model="excelBPSCacheCreationAsInput" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" data-testid="create-excel-bps-cache-creation-as-input" />
+          <span>
+            <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('admin.accounts.openai.excelBPSCacheCreationAsInput') }}</span>
+            <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.excelBPSCacheCreationAsInputDesc') }}</span>
+          </span>
+        </label>
+        <label v-if="excelBPSEnabled" class="mt-3 flex cursor-pointer items-start gap-3">
+          <input v-model="excelBPSAutoDisableOn403" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600" data-testid="create-excel-bps-auto-disable-on-403" />
+          <span><span class="block text-sm font-medium">{{ t('admin.accounts.openai.excelBPSAutoDisableOn403') }}</span>
+          <span class="mt-1 block text-xs text-gray-500">{{ t('admin.accounts.openai.excelBPSAutoDisableOn403Desc') }}</span></span>
+        </label>
+        <p v-if="excelBPSEnabled" class="mt-2 text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.excelBPSNotice') }}</p>
+      </div>
       <div>
         <label class="input-label">{{ t('admin.accounts.accountName') }}</label>
         <input
@@ -2982,14 +3030,6 @@
         </p>
       </div>
 
-      <div v-if="form.platform === 'openai' && accountCategory === 'oauth-based' && addMethod === 'oauth'" class="rounded-xl border border-primary-200 p-4 space-y-3">
-        <label class="flex gap-2"><input type="checkbox" :checked="excelBPSEnabled" @change="toggleExcelBPS" data-testid="create-excel-bps-toggle" />{{ t('admin.accounts.openai.excelBPS') }}</label>
-        <template v-if="excelBPSEnabled">
-          <AccountRpmSettings v-model:enabled="rpmLimitEnabled" v-model:base-rpm="baseRpm" v-model:overflow="rpmOverflow" strict />
-          <label class="flex gap-2 text-sm"><input v-model="excelBPSCacheCreationAsInput" type="checkbox" />{{ t('admin.accounts.openai.excelBPSCacheCreationAsInput') }}</label>
-          <label class="flex gap-2 text-sm"><input v-model="excelBPSAutoDisableOn403" type="checkbox" />{{ t('admin.accounts.openai.excelBPSAutoDisableOn403') }}</label>
-        </template>
-      </div>
       <!-- OpenAI OAuth RPM limit -->
       <div
         v-if="form.platform === 'openai' && accountCategory === 'oauth-based' && addMethod === 'oauth' && !excelBPSEnabled"
@@ -3842,6 +3882,8 @@
 </template>
 
 <script setup lang="ts">
+import { DEFAULT_EXCEL_BPS_MODELS } from '@/utils/excelBPSDefaults'
+
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -4555,6 +4597,13 @@ const windowCostStickyReserve = ref<number | null>(null)
 const sessionLimitEnabled = ref(false)
 const maxSessions = ref<number | null>(null)
 const sessionIdleTimeout = ref<number | null>(null)
+const codexTimezoneRewriteEnabled = ref(true)
+const excelBPSModels = ref<string[]>([...DEFAULT_EXCEL_BPS_MODELS])
+const supportsExcelBPS = computed(() => form.platform === 'openai' && accountCategory.value === 'oauth-based' && addMethod.value === 'oauth' && !['agent_identity', 'codex_pat'].includes(oauthFlowRef.value?.inputMethod || ''))
+const omitDirectOAuthExtra = (extra: Record<string, unknown> | undefined) => {
+  if (!extra) return
+  for (const key of ['openai_codex_timezone_rewrite', 'openai_excel_bps', 'openai_excel_bps_models', 'openai_excel_bps_cache_creation_as_input', 'openai_excel_bps_auto_disable_on_403']) delete extra[key]
+}
 const excelBPSEnabled = ref(false)
 const excelBPSCacheCreationAsInput = ref(true)
 const excelBPSAutoDisableOn403 = ref(true)
@@ -5377,6 +5426,8 @@ const resetForm = () => {
   sessionLimitEnabled.value = false
   maxSessions.value = null
   sessionIdleTimeout.value = null
+  codexTimezoneRewriteEnabled.value = true
+  excelBPSModels.value = [...DEFAULT_EXCEL_BPS_MODELS]
   excelBPSEnabled.value = false
   rpmOverflow.value = false
   rpmLimitEnabled.value = false
@@ -5429,11 +5480,14 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   }
 
   const extra: Record<string, unknown> = { ...(base || {}) }
+  if (supportsExcelBPS.value) extra.openai_codex_timezone_rewrite = codexTimezoneRewriteEnabled.value
+  else omitDirectOAuthExtra(extra)
   if (accountCategory.value === 'oauth-based') {
     extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
     extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
-    if (addMethod.value === 'oauth' && excelBPSEnabled.value) {
+    if (supportsExcelBPS.value && excelBPSEnabled.value) {
       extra.openai_excel_bps = true
+      extra.openai_excel_bps_models = [...new Set(excelBPSModels.value.map(model => model.trim()).filter(Boolean))]
       extra.openai_excel_bps_cache_creation_as_input = excelBPSCacheCreationAsInput.value
       extra.openai_excel_bps_auto_disable_on_403 = excelBPSAutoDisableOn403.value
     }
@@ -6463,6 +6517,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
 
   try {
     const extra = buildOpenAICodexImportExtra()
+    if (isAgentIdentityImportContent(trimmed)) omitDirectOAuthExtra(extra)
     const result = await adminAPI.accounts.importCodexSession({
       content: trimmed,
       name: form.name,
@@ -6541,6 +6596,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
 
   try {
     const extra = buildOpenAICodexImportExtra()
+    omitDirectOAuthExtra(extra)
     await adminAPI.accounts.createOpenAICodexPAT({
       access_token: trimmed,
       name: form.name,

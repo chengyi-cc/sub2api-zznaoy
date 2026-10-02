@@ -692,7 +692,7 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         excelBPS: 'Excel / BPS protocol',
         codexTimezoneRewrite: 'Timezone and Date Rewrite',
-        codexTimezoneRewriteDesc: 'Off by default. Uses the account egress timezone from the allowed list, falling back to Singapore, and updates the current date in the request environment. Does not change the server clock.',
+        codexTimezoneRewriteDesc: 'Selected by default for new accounts; you can turn it off. Uses a supported timezone for the account exit address, falls back to Singapore when unavailable, and updates the request date without changing server time.',
         excelBPSCacheCreationAsInput: 'Bill cache creation as ordinary input',
         excelBPSCacheCreationAsInputDesc: 'Off by default. Bill cache creation at the input price while keeping cache reads unchanged. Applies consistently to local billing and client-visible cache-write usage, without changing upstream caching.',
         excelBPSAutoDisableOn403: 'Disable Excel after an upstream 403',

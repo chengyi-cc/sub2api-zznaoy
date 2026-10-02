@@ -74,6 +74,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import CreateAccountModal from '../CreateAccountModal.vue'
+import { DEFAULT_EXCEL_BPS_MODELS } from '@/utils/excelBPSDefaults'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -198,6 +199,81 @@ async function openCodexImportStep(toggleClicks = 0) {
   await wrapper.get('form#create-account-form').trigger('submit.prevent')
   return wrapper
 }
+
+describe('CreateAccountModal direct OAuth timezone and Excel settings', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'oauth' })
+    importCodexSessionMock.mockReset().mockResolvedValue({ created: 1, updated: 0, skipped: 0, failed: 0, errors: [], warnings: [] })
+    createOpenAICodexPATMock.mockReset().mockResolvedValue({})
+    probeUpstreamBillingMock.mockReset().mockResolvedValue({})
+    syncUpstreamModelsMock.mockReset().mockResolvedValue({ models: [], metadata: {} })
+    showWarningMock.mockReset()
+  })
+
+  it('shows controls above the name and defaults only timezone on', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    const zone = wrapper.get('[data-testid="create-codex-timezone-toggle"]')
+    expect(zone.attributes('aria-checked')).toBe('true')
+    expect(wrapper.get('[data-testid="create-excel-bps-toggle"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.findAll('[data-testid="create-excel-bps-toggle"]')).toHaveLength(1)
+    const name = wrapper.get('[data-tour="account-form-name"]').element
+    expect(zone.element.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('submits chosen timezone and Excel defaults with OAuth imports', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-tour="account-form-name"]').setValue('new OAuth')
+    await wrapper.get('[data-testid="create-excel-bps-toggle"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+    expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
+    expect(importCodexSessionMock.mock.calls[0][0].extra).toMatchObject({
+      openai_codex_timezone_rewrite: true,
+      openai_excel_bps: true,
+      openai_excel_bps_models: [...DEFAULT_EXCEL_BPS_MODELS],
+      openai_excel_bps_auto_disable_on_403: true,
+      openai_excel_bps_cache_creation_as_input: true,
+    })
+  })
+
+  it('preserves an explicit timezone opt-out', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-tour="account-form-name"]').setValue('timezone off')
+    await wrapper.get('[data-testid="create-codex-timezone-toggle"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+    expect(importCodexSessionMock.mock.calls[0][0].extra.openai_codex_timezone_rewrite).toBe(false)
+  })
+
+  it('omits direct OAuth switches for personal access tokens', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-tour="account-form-name"]').setValue('personal token')
+    await wrapper.get('[data-testid="create-excel-bps-toggle"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-pat"]').trigger('click')
+    await flushPromises()
+    const extra = createOpenAICodexPATMock.mock.calls[0][0].extra
+    expect(extra).not.toHaveProperty('openai_codex_timezone_rewrite')
+    expect(extra).not.toHaveProperty('openai_excel_bps')
+    expect(extra).not.toHaveProperty('openai_excel_bps_models')
+  })
+
+  it('hides controls and omits their keys for API-key accounts', async () => {
+    const wrapper = await submitApiKeyAccount('openai')
+    expect(wrapper.find('[data-testid="create-codex-timezone-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="create-excel-bps-toggle"]').exists()).toBe(false)
+    const extra = createAccountMock.mock.calls[0][0].extra
+    expect(extra).not.toHaveProperty('openai_codex_timezone_rewrite')
+    expect(extra).not.toHaveProperty('openai_excel_bps')
+  })
+})
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
   beforeEach(() => {

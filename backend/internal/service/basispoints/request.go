@@ -178,7 +178,7 @@ func PrepareWithOptions(raw []byte, scope string, replay *ReplayCache, options P
 	}
 	parallelInstructions := "Call one client tool at a time."
 	if b.parallelTools {
-		parallelInstructions = "Independent client tools may be called in parallel: emit a separate native run_officejs call for each tool in the same response. Each outer call carries exactly one catalog tool; never put an array or batch of tools inside one code field. Wait for results before dependent calls."
+		parallelInstructions = "When two or more requested client tools are independent and read-only according to their declared descriptions, emit them in the same response as separate native run_officejs calls; do not wait for one result merely to schedule another. Each outer call carries exactly one catalog tool; never put an array or batch of tools inside one code field. Keep state-changing tools, command execution, patches, calls that depend on another result, and any tool whose safety is unclear serial. Wait for results before dependent calls."
 	}
 	protocol := "This request comes from an external Responses client. Return assistant text. Do not call Excel, Office, workbook or connector tools."
 	if len(catalog) > 0 {

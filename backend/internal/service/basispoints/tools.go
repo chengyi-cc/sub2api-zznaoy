@@ -394,7 +394,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 			if !seenCalls[id] {
 				native := b.replay.get(b.scope, id)
 				if native == nil {
-					return nil, fmt.Errorf("basispoints original tool item is unavailable for this tool result; start a new conversation")
+					return nil, &MissingToolHistoryError{Index: index}
 				}
 				result = append(result, native)
 				seenCalls[id] = true
@@ -614,6 +614,24 @@ func (b *Bridge) finishClientToolCall(native object, info tool, envelope object,
 		result["namespace"] = info.Namespace
 	}
 	if info.Kind == "custom" {
+		// Recover only the known JavaScript exec tool's legacy single-code
+		// function envelope. The decoded script remains byte-for-byte intact.
+		_, hasInputField := envelope["input"]
+		_, hasArgsField := envelope["args"]
+		if !marked && len(envelope) == 2 && !hasInputField && !hasArgsField &&
+			(info.Name == "exec" || info.Name == "functions.exec") && (len(info.ExecFunctions) > 0 || info.ExecRuntimeCatalog) {
+			if args, ok := envelope["arguments"].(object); ok && len(args) == 1 {
+				if code, ok := args["code"].(string); ok {
+					copy := make(object, len(envelope))
+					for key, value := range envelope {
+						copy[key] = value
+					}
+					delete(copy, "arguments")
+					copy["input"] = code
+					envelope = copy
+				}
+			}
+		}
 		if recovered, ok, err := b.recoverLegacyExecCommand(native, info, envelope); ok || err != nil {
 			return recovered, err
 		}

@@ -3102,6 +3102,8 @@
 </template>
 
 <script setup lang="ts">
+import { DEFAULT_EXCEL_BPS_MODELS } from '@/utils/excelBPSDefaults'
+
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -3685,7 +3687,7 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
-const defaultExcelBPSModels = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6-sol']
+const defaultExcelBPSModels = DEFAULT_EXCEL_BPS_MODELS
 const excelBPSEnabled = ref(false)
 const rpmOverflow = ref(false)
 function toggleExcelBPS() {
