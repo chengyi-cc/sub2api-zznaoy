@@ -12,6 +12,46 @@
 
 ## 功能和开关
 
+### 在账号开关旁管理服务（集成版）
+
+账号的 Prism 卡片现在直接展示共享浏览器服务状态，并提供启动、停止、重启、连接检查和运行日志。账号开关仍随账号保存；服务操作立即生效，作用于当前实例的全部 Prism 账号，停止或重启前页面会确认中断影响。
+
+首次使用需部署下面的集成镜像，普通主程序更新不会自动安装系统浏览器。集成镜像包含匹配版本的浏览器、Python 运行环境及管理程序，内部密钥自动生成并保存在原有数据卷 `/app/data/prism/bridge.key`。浏览器首次默认停止，点击“启动”后记住状态，容器重启会按保存状态恢复；点击“停止”不会删除会话、未决请求或工具记录。
+
+日志展示本实例最近 200 条固定服务事件，刷新周期 5 秒，管理进程重启后清空。不传回凭据、请求正文、上游原始异常消息或任意进程输出。连接检查仅证明转接进程可达；实际浏览器登录、账号权限和模型质量仍需执行账号测试。串行模式下先用一个账号验证。
+
+如果显示“未安装集成服务”，按下面步骤升级；“外部管理”表示现有独立适配器未由本管理程序启动，不会接管或停止它。多实例部署时，页面仅管理收到当前请求的实例，须保持管理访问落到同一实例。
+
+### 首次切换到集成容器
+
+代码仓库中的 Dockerfile 新增 `prism` 构建目标（包含浏览器的镜像版本），默认普通镜像保持原样。需要 Linux 服务器；首次下载镜像较大，浏览器会额外占用内存，应在原有网关内存之外预留约 1 GB 并按实际负载观察。
+
+使用 Docker Compose（容器编排工具）2.24.4 或以上。下面的追加配置保留现有项目、数据库、端口及 `/app/data` 数据卷，只替换应用服务；无需手动设置浏览器地址或桥接密钥。将占位路径替换为当前部署的真实路径和项目名，**不要使用其他实例的项目名**。
+
+```sh
+export PRISM_SOURCE_DIR=/absolute/path/to/sub2api-new
+docker compose -p ORIGINAL_PROJECT --env-file /original/.env \
+  -f /original/compose.yml -f "$PRISM_SOURCE_DIR/deploy/prism/compose.managed.yml" config --quiet
+docker compose -p ORIGINAL_PROJECT --env-file /original/.env \
+  -f /original/compose.yml -f "$PRISM_SOURCE_DIR/deploy/prism/compose.managed.yml" build sub2api
+docker compose -p ORIGINAL_PROJECT --env-file /original/.env \
+  -f /original/compose.yml -f "$PRISM_SOURCE_DIR/deploy/prism/compose.managed.yml" up -d --no-deps --no-build sub2api
+```
+
+默认应用服务名为 `sub2api`，不同名称需调整追加配置。构建前保留原镜像、配置及数据库备份，确认现有数据卷仍挂载到 `/app/data`。追加配置替换 `security_opt`（容器权限限制配置），允许非 root 浏览器启动自身沙箱；不挂载 Docker 管理套接字、不启用特权容器、不关闭浏览器沙箱。仅发布原网关端口，8319/8320 留在容器内部本机地址。
+
+已有独立 Prism 适配器时，先停用相关账号并停止旧适配器，将旧持久状态完整迁到新数据卷 `/app/data/prism/adapter` 后再开启，保留原状态备份；不能同时让两套适配器处理同一组未决请求。主程序普通部署或旧预编译包的 `compose.prism.yml` 不等于这里的集成部署。
+
+更新完成后进入账号编辑 → Prism → 启动 → 检查连接，再启用当前账号、保存并测试。停止/重启服务可能使正在进行的请求结果不明，不自动重发。回退时关闭账号 Prism，恢复原镜像及原启动配置，保留 `/app/data/prism`，无需删除数据或回滚数据库。
+
+本次集成管理使用本地受认证管理接口，配置项为 `GATEWAY_PRISM_BROWSER_MANAGEMENT_URL`。集成入口自动设置它及原有三项网关变量；旧独立部署默认留空。原生 systemd 部署仍按后文安装，新增网页控制不代表普通二进制能自行获得安装系统依赖的权限。
+
+管理程序独立验证命令：`python -m unittest discover -s prism-adapter -p test_managed_runtime.py -v`。完整 Linux 浏览器验证仍使用 `deploy/prism/verify_linux.sh`，容器内可通过 `docker compose exec --user pwuser sub2api python3 /opt/sub2api/prism-adapter/container_runtime.py python3 -m unittest discover -s /opt/sub2api/prism-adapter -p 'test_*.py'` 运行测试，浏览器模拟测试脚本亦在相同目录。它们不调用真实账号。
+
+新增管理功能已通过后台接口及竞态测试、页面交互和账号编辑回归、8 项管理器测试（包括真实本地模拟进程启停与状态恢复）、前端类型检查及构建、Linux 主程序交叉编译、Compose 配置合并及脚本语法检查。Windows 上部分 Vitest 子进程退出超时后，改用线程池完整重跑通过，没有跳过测试。集成容器镜像的实际构建、Linux 浏览器沙箱运行和真实账号请求仍未在本机验证，不能把连接检查通过视作真实模型验收。
+
+以下是原有独立部署方式与功能约束。
+
 1. **服务器总开关**：`GATEWAY_PRISM_BROWSER_ENABLED`，程序默认 false。还需配置本机适配器地址 `GATEWAY_PRISM_BROWSER_BASE_URL=http://127.0.0.1:8319/v1`，以及桥接密钥 `GATEWAY_PRISM_BROWSER_API_KEY`。
 2. **逐账号开关**：账号新建或编辑中的“Prism 浏览器通道”，默认关闭。只适用于直接 OpenAI OAuth（登录授权）账号，不适用于上游接口密钥、手动令牌、影子账号或代理身份。
 3. **模型范围**：勾选 `gpt-6.1-sol`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-6-luna`。按账号模型映射后的名字匹配；显式空列表表示不走 Prism，未勾选的模型保留原路由。Astra 不在此列表中，继续使用第一阶段借票或普通通道。

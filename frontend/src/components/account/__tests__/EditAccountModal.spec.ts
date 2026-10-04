@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 
+vi.mock('@/api/admin/prismRuntime', () => ({
+  getPrismRuntime: vi.fn().mockResolvedValue({ managed: false, state: 'not_installed' }),
+  controlPrismRuntime: vi.fn()
+}))
+
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, getAccountTemplateMock } = vi.hoisted(() => ({
   getAccountTemplateMock: vi.fn(),
   updateAccountMock: vi.fn(),

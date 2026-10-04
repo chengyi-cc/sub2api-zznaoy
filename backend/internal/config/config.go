@@ -1217,9 +1217,10 @@ type GatewayExcelBPSConfig struct {
 
 // PrismBrowser connects only to a trusted browser adapter on the same host.
 type GatewayPrismBrowserConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	BaseURL string `mapstructure:"base_url"`
-	APIKey  string `mapstructure:"api_key"`
+	Enabled       bool   `mapstructure:"enabled"`
+	BaseURL       string `mapstructure:"base_url"`
+	APIKey        string `mapstructure:"api_key"`
+	ManagementURL string `mapstructure:"management_url"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -2553,6 +2554,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.prism_browser.enabled", false)
 	viper.SetDefault("gateway.prism_browser.base_url", "http://127.0.0.1:8319/v1")
 	viper.SetDefault("gateway.prism_browser.api_key", "")
+	viper.SetDefault("gateway.prism_browser.management_url", "")
 	viper.SetDefault("gateway.openai_http2.allow_proxy_fallback_to_http1", true)
 	viper.SetDefault("gateway.openai_http2.fallback_error_threshold", 2)
 	viper.SetDefault("gateway.openai_http2.fallback_window_seconds", 60)

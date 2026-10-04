@@ -6,6 +6,7 @@
         <span :class="['pointer-events-none inline-block h-7 w-7 rounded-full bg-white shadow transition', enabled ? 'translate-x-6' : 'translate-x-0']" />
       </button>
     </div>
+    <PrismRuntimeControls />
     <fieldset v-if="enabled" class="mt-4 border-t border-violet-200 pt-4 dark:border-violet-900">
       <legend class="text-sm font-medium">{{ t('admin.prism.models') }}</legend>
       <div class="mt-2 grid gap-3 sm:grid-cols-2">
@@ -23,6 +24,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { PRISM_MODELS } from '@/utils/prismAccount'
+import PrismRuntimeControls from './PrismRuntimeControls.vue'
 const props = defineProps<{ enabled: boolean; models: string[] }>()
 const emit = defineEmits<{ 'update:enabled': [value: boolean]; 'update:models': [value: string[]] }>()
 const { t } = useI18n()

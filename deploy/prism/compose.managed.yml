@@ -1,0 +1,21 @@
+# Append to the EXISTING Compose project, retaining its env, data and project name.
+# PRISM_SOURCE_DIR must point to an updated checkout, not the old binary bundle.
+services:
+  sub2api:
+    image: sub2api-local:prism-managed
+    pull_policy: never
+    build:
+      context: ${PRISM_SOURCE_DIR:?Set the absolute repository directory}
+      dockerfile: Dockerfile
+      target: prism
+    init: true
+    stop_grace_period: 45s
+    entrypoint: ["/app/managed-entrypoint.sh"]
+    command: []
+    shm_size: 256m
+    # Compose >= 2.24.4. Replace inherited no-new-privileges so the Chromium
+    # SUID sandbox can initialize; keep the browser running as an ordinary user.
+    security_opt: !override
+      - seccomp=${PRISM_SOURCE_DIR:?Set the absolute repository directory}/deploy/prism/seccomp_profile.json
+    # Gateway and browser share /app/data from the original deployment.
+    # No extra port, Docker socket or separate bridge secret is required.

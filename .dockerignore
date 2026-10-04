@@ -64,6 +64,12 @@ logs/
 tmp/
 temp/
 *.tmp
+.cache/
+output/
+**/__pycache__/
+**/*.pyc
+**/venv/
+**/.venv/
 
 # Deploy files (not needed in image)
 deploy/install.sh

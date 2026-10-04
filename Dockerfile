@@ -105,7 +105,7 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 # -----------------------------------------------------------------------------
 # Stage 4: Final Runtime Image
 # -----------------------------------------------------------------------------
-FROM ${ALPINE_IMAGE}
+FROM ${ALPINE_IMAGE} AS runtime
 
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
@@ -159,3 +159,32 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 # Run the application (entrypoint fixes /app/data ownership then execs as sub2api)
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["/app/sub2api"]
+
+# Optional integrated browser deployment: docker build --target prism .
+# Keep the ordinary image as the default final target below.
+FROM mcr.microsoft.com/playwright/python:v1.63.0-noble AS prism
+USER root
+ENV HOME=/home/pwuser
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gosu gnupg tzdata && \
+    mkdir -p /usr/share/postgresql-common/pgdg && \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc && \
+    echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' > /etc/apt/sources.list.d/pgdg.list && \
+    apt-get update && apt-get install -y --no-install-recommends postgresql-client-18 && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/sub2api/prism-adapter
+COPY prism-adapter/requirements.txt ./
+RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
+COPY prism-adapter/ ./
+RUN python3 container_runtime.py --prepare-sandbox
+WORKDIR /app
+COPY --from=backend-builder /app/sub2api /app/sub2api
+COPY --from=backend-builder /app/backend/resources /app/resources
+COPY deploy/prism/managed-entrypoint.sh /app/managed-entrypoint.sh
+RUN mkdir -p /app/data && chown pwuser:pwuser /app/data && chmod +x /app/managed-entrypoint.sh
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -fsS --max-time 5 http://127.0.0.1:${SERVER_PORT:-8080}/health > /dev/null || exit 1
+ENTRYPOINT ["/app/managed-entrypoint.sh"]
+CMD []
+
+FROM runtime AS final

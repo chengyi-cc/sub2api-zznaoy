@@ -51,7 +51,7 @@
         :bindings="openaiTemplateBindings"
         :proxies="proxies" :groups="groups" :profiles="tlsFingerprintProfiles"
       />
-      <PrismAccountSettings v-if="supportsExcelBPS" v-model:enabled="prismBrowserEnabled" v-model:models="prismBrowserModels" />
+      <PrismAccountSettings v-if="show && supportsExcelBPS" v-model:enabled="prismBrowserEnabled" v-model:models="prismBrowserModels" />
       <div v-if="supportsExcelBPS" data-testid="create-codex-timezone-card" class="rounded-xl border border-primary-200 bg-primary-50/50 p-5 dark:border-primary-800 dark:bg-primary-950/20">
         <div class="flex items-center justify-between gap-4">
           <div>

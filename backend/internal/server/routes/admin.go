@@ -50,6 +50,9 @@ func RegisterAdminRoutes(
 		admin.PUT("/astra-borrow", h.Admin.Account.SaveAstraBorrow)
 		admin.POST("/astra-borrow/verify/:id", h.Admin.Account.VerifyAstraBorrow)
 		admin.GET("/astra-borrow/history", h.Admin.Account.AstraBorrowHistory)
+		admin.GET("/prism-runtime", h.Admin.Account.GetPrismRuntime)
+		admin.GET("/prism-runtime/logs", h.Admin.Account.GetPrismRuntimeLogs)
+		admin.POST("/prism-runtime/:action", h.Admin.Account.ControlPrismRuntime)
 
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)

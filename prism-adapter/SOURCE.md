@@ -5,7 +5,7 @@ Upstream: https://github.com/ranxi2001/sub2api
 Pinned commit: `0ae36e501952000c5c910a2e616c6e0861f66a49` (production, checked 2026-10-04).
 Latest published release at the time: v2.9.8. This source additionally includes the merged Prism fixes in PR #292.
 
-The upstream Python adapter, tests, smoke scripts, requirements, and systemd templates are preserved. Local additions are `Dockerfile`, `.dockerignore`, `container_runtime.py`, and this provenance record. The Go gateway integration is adapted to this repository's account, billing, scheduling, and session interfaces.
+The upstream Python adapter, tests, smoke scripts, requirements, and systemd templates are preserved. Local additions are `Dockerfile`, `.dockerignore`, `container_runtime.py`, `managed_runtime.py`, `managed_adapter.py`, `test_managed_runtime.py`, and this provenance record. The Go gateway integration is adapted to this repository's account, billing, scheduling, and session interfaces. The optional root Dockerfile `prism` target bundles the gateway and a local authenticated service manager; it does not change upstream browser execution or tool semantics. The managed adapter wrapper converts SIGTERM to a normal cleanup through the upstream finally block.
 
 The bundled `deploy/prism/seccomp_profile.json` comes from Playwright v1.63.0:
 https://github.com/microsoft/playwright/blob/v1.63.0/utils/docker/seccomp_profile.json
