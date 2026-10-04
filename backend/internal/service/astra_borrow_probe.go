@@ -43,7 +43,9 @@ func (s *AstraBorrowService) fire(ctx context.Context, account *Account, headers
 		return out, errors.New("astra_rate_limited")
 	}
 	body := []byte(`{"model":"gpt-6-astra","instructions":"Reply with OK.","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Reply with OK."}]}],"stream":true,"store":false,"parallel_tool_calls":true,"include":["reasoning.encrypted_content"]}`)
-	ctx = WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAI))
+	// Match the upstream two-shot probe: full Responses over fresh HTTP/1.1 connections.
+	// req.Close alone does not prevent HTTP/2 connection reuse.
+	ctx = WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAIHarvest))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
 	if err != nil {
 		return out, errors.New("astra_probe_request_failed")

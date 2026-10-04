@@ -142,10 +142,16 @@ func TestAstraBorrowEndToEndIdentityAndCache(t *testing.T) {
 	s, store, _, transport, a := astraFixture(t)
 	base := transport.fn
 	calls := 0
+	sessions := map[string]bool{}
 	transport.fn = func(r *http.Request, proxy string, id int64) (*http.Response, error) {
 		calls++
 		if calls <= 3 {
 			require.Empty(t, r.Header.Get(responsesLiteHeaderKey), "two-shot probes must use the full Responses protocol")
+			require.Equal(t, HTTPUpstreamProfileOpenAIHarvest, HTTPUpstreamProfileFromContext(r.Context()))
+			session := r.Header.Get("session_id")
+			require.NotEmpty(t, session)
+			require.False(t, sessions[session], "upstream's probe deliberately uses a new session for each shot")
+			sessions[session] = true
 		}
 		if id == 1 {
 			require.Equal(t, "Bearer source-secret", r.Header.Get("Authorization"))
@@ -161,13 +167,18 @@ func TestAstraBorrowEndToEndIdentityAndCache(t *testing.T) {
 			}
 			if calls == 3 {
 				require.Equal(t, "target-ticket", r.Header.Get("x-codex-turn-state"))
+				require.Contains(t, r.Header.Get("Cookie"), "__cflb=target-affinity")
 			}
 			if calls >= 4 {
 				require.Equal(t, "business-ticket", r.Header.Get("x-codex-turn-state"))
 				require.Contains(t, r.Header.Get("Cookie"), "own=value")
 			}
 		}
-		return base(r, proxy, id)
+		resp, err := base(r, proxy, id)
+		if calls == 2 {
+			resp.Header.Add("Set-Cookie", "__cflb=target-affinity; Secure; Path=/")
+		}
+		return resp, err
 	}
 	for i := 0; i < 2; i++ {
 		req := astraBusinessRequest(t, s, a)

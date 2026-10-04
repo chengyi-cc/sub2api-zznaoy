@@ -104,6 +104,7 @@ const (
 	upstreamProtocolModeBPSH2            = "bps_h2"
 	upstreamProtocolModeBPSH1            = "bps_h1"
 	upstreamProtocolModeOpenAIH1         = "openai_h1"
+	upstreamProtocolModeOpenAIH1NoReuse  = "openai_h1_no_reuse"
 	upstreamProtocolModeOpenAIH2         = "openai_h2"
 	upstreamProtocolModeOpenAIH1Fallback = "openai_h1_fallback"
 	upstreamProtocolModeGrok             = "grok"
@@ -587,8 +588,16 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
 	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
-	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
-	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
+	protocolMode := upstreamProtocolModeDefault
+	if upstreamProfile == service.HTTPUpstreamProfileOpenAIHarvest {
+		protocolMode = upstreamProtocolModeOpenAIH1NoReuse
+		// Preserve the configured fingerprint while requiring the probe's HTTP/1.1 protocol.
+		probeProfile := *profile
+		probeProfile.ALPNProtocols = []string{"http/1.1"}
+		profile = &probeProfile
+	}
+	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, protocolMode)
+	poolKey := buildPoolKey(settings, protocolMode) + ":tls"
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -643,6 +652,9 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	if err != nil {
 		s.mu.Unlock()
 		return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
+	}
+	if protocolMode == upstreamProtocolModeOpenAIH1NoReuse {
+		configureFreshHTTP1Transport(transport)
 	}
 
 	client := &http.Client{Transport: transport}
@@ -1097,6 +1109,9 @@ func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamPr
 	if profile == service.HTTPUpstreamProfileGrok {
 		return upstreamProtocolModeGrok
 	}
+	if profile == service.HTTPUpstreamProfileOpenAIHarvest {
+		return upstreamProtocolModeOpenAIH1NoReuse
+	}
 	if profile != service.HTTPUpstreamProfileOpenAI {
 		return upstreamProtocolModeDefault
 	}
@@ -1429,6 +1444,8 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 	case upstreamProtocolModeOpenAIH1, upstreamProtocolModeBPSH1:
 		transport.ForceAttemptHTTP2 = false
 		transport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+	case upstreamProtocolModeOpenAIH1NoReuse:
+		configureFreshHTTP1Transport(transport)
 	case upstreamProtocolModeOpenAIH1Fallback:
 		// 显式禁用 HTTP/2，确保代理不兼容场景回退到 HTTP/1.1。
 		transport.ForceAttemptHTTP2 = false
@@ -1438,6 +1455,15 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		return nil, err
 	}
 	return transport, nil
+}
+
+// configureFreshHTTP1Transport keeps probe transport identical across both shots.
+func configureFreshHTTP1Transport(transport *http.Transport) {
+	transport.ForceAttemptHTTP2 = false
+	transport.DisableKeepAlives = true
+	transport.MaxIdleConns = 0
+	transport.MaxIdleConnsPerHost = 0
+	transport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
 }
 
 // enableHTTP2KeepAlive 在 http.Transport 上显式配置 HTTP/2 并启用连接健康探测。
