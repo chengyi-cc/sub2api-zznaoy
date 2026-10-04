@@ -115,6 +115,13 @@ func isClientCanceledTransportError(ctx context.Context, err error) bool {
 //
 // passthrough tags the Ops error event for the OpenAI passthrough forward path.
 func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Context, c *gin.Context, account *Account, err error, passthrough bool) error {
+	var borrowErr *AstraBorrowRequestError
+	if errors.As(err, &borrowErr) {
+		if c != nil && !c.Writer.Written() {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"type": "astra_borrow_unavailable", "message": borrowErr.Code}})
+		}
+		return err
+	}
 	if IsOpenAIRPMError(err) || isClientCanceledTransportError(ctx, err) {
 		return err
 	}

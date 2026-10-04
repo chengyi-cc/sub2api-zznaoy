@@ -550,6 +550,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/astra-borrow',
+    name: 'AdminAstraBorrow',
+    component: () => import('@/views/admin/AstraBorrowView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Astra Gateway Borrowing',
+      titleKey: 'admin.astraBorrow.title',
+      descriptionKey: 'admin.astraBorrow.description'
+    }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),

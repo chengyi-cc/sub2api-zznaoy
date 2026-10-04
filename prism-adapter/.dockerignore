@@ -1,0 +1,11 @@
+__pycache__
+*.pyc
+venv
+.venv
+.env
+*.env
+state
+pending
+receipts
+tools
+*.sqlite3*

@@ -45,6 +45,11 @@ func RegisterAdminRoutes(
 
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
+		// Independent fixed-egress Astra borrowing; admin authentication/audit above.
+		admin.GET("/astra-borrow", h.Admin.Account.GetAstraBorrow)
+		admin.PUT("/astra-borrow", h.Admin.Account.SaveAstraBorrow)
+		admin.POST("/astra-borrow/verify/:id", h.Admin.Account.VerifyAstraBorrow)
+		admin.GET("/astra-borrow/history", h.Admin.Account.AstraBorrowHistory)
 
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)

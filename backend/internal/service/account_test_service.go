@@ -410,6 +410,21 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	if account.IsOpenAI() {
+		prismModel := modelID
+		if strings.TrimSpace(prismModel) == "" && accountHasPrismBrowser(account) {
+			for _, candidate := range PrismBrowserSupportedModels() {
+				if account.IsPrismBrowserEnabledForModel(candidate) {
+					prismModel = candidate
+					break
+				}
+			}
+		}
+		if account.IsPrismBrowserEnabledForModel(prismModel) {
+			if normalizeAccountTestMode(mode) != AccountTestModeDefault || testOpts.ImageDataURL != "" || testOpts.AudioDataURL != "" {
+				return s.sendErrorAndEnd(c, "Prism supports the default text test only")
+			}
+			return s.testPrismBrowserConnection(c, account, prismModel, prompt)
+		}
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
 	}
 

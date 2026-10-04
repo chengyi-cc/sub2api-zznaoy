@@ -84,6 +84,16 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return errors.New("account is nil")
 	}
 	hooks = withExcelBPSModelGuard(account, hooks)
+	if account.IsPrismBrowserEnabledForModel(gjson.GetBytes(firstClientMessage, "model").String()) {
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "this model uses Prism; use HTTP /v1/responses", nil)
+	}
+	hooks = withPrismBrowserModelGuard(account, hooks)
+	if s.astraBorrow != nil && account.IsOpenAIOAuth() {
+		if err := s.astraBorrow.RejectWebSocket(ctx, account.ID); err != nil {
+			return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, err.Error(), err)
+		}
+	}
+	hooks = s.withAstraBorrowWSGuard(ctx, account, hooks)
 	account = account.forOpenAIModel(gjson.GetBytes(firstClientMessage, "model").String())
 	// A handler may reuse the same gin context across account failover attempts.
 	// Never let an OAuth attempt's response aliases leak into the next account.

@@ -329,6 +329,33 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('saves Prism independently and keeps an explicit empty model selection', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { existing: 'keep', openai_prism_browser: true, openai_prism_browser_models: [] }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    await flushPromises()
+    expect(wrapper.get('[data-testid="prism-toggle"]').attributes('aria-checked')).toBe('true')
+    expect((wrapper.get('[data-testid="prism-model-gpt-6.1-sol"]').element as HTMLInputElement).checked).toBe(false)
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(updateAccountMock).toHaveBeenCalledWith(account.id, expect.objectContaining({ extra: expect.objectContaining({ existing: 'keep', openai_prism_browser: true, openai_prism_browser_models: [] }) }))
+    await wrapper.get('[data-testid="prism-toggle"]').trigger('click')
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    const extra = updateAccountMock.mock.calls.at(-1)?.[1].extra
+    expect(extra).not.toHaveProperty('openai_prism_browser')
+    expect(extra).not.toHaveProperty('openai_prism_browser_models')
+    expect(extra.existing).toBe('keep')
+    wrapper.unmount()
+  })
+
+  it('hides Prism on API key, setup-token and shadow accounts', async () => {
+    for (const account of [buildAccount(), buildOpenAISetupTokenAccount(), buildOpenAISparkShadowAccount()]) {
+      const wrapper = mountModal(account); await flushPromises()
+      expect(wrapper.find('[data-testid="prism-account-settings"]').exists()).toBe(false)
+      wrapper.unmount()
+    }
+  })
+
   it('applies a template to the existing account without replacing unselected settings or identity', async () => {
     const account = buildOpenAIOAuthParentAccount()
     account.priority = 9

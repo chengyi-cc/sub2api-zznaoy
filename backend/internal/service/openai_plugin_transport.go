@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -15,6 +16,12 @@ func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL string, account *Account) (*http.Response, error) {
 	if err := s.acquireOpenAIRPMForSend(request.Context(), account); err != nil {
 		return nil, err
+	}
+	if s.astraBorrow != nil && account != nil && account.IsOpenAIOAuth() {
+		borrowRequest := request.WithContext(context.WithValue(request.Context(), astraBorrowOwnedSlotKey{}, account.ID))
+		if resp, handled, err := s.astraBorrow.RoundTrip(borrowRequest, account, resolveOpenAITransportTLSProfile(s.tlsFPProfileService, account)); handled {
+			return resp, err
+		}
 	}
 	if account != nil && account.IsOpenAIOAuthLike() && (s.cfg == nil || !s.cfg.Gateway.DisableCodexZstdRequestBody) {
 		request = request.WithContext(WithCodexRequestCompression(request.Context()))
@@ -39,6 +46,11 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 	account *Account,
 	useTLSFallback bool,
 ) (*http.Response, error) {
+	if borrow := s.AstraBorrow(); borrow != nil && account != nil && account.IsOpenAIOAuth() {
+		if resp, handled, err := borrow.RoundTrip(request, account, resolveOpenAITransportTLSProfile(s.tlsFPProfileService, account)); handled {
+			return resp, err
+		}
+	}
 	if account != nil && account.IsOpenAIOAuthLike() && (s.cfg == nil || !s.cfg.Gateway.DisableCodexZstdRequestBody) {
 		request = request.WithContext(WithCodexRequestCompression(request.Context()))
 	}

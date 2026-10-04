@@ -1065,8 +1065,9 @@ type GatewayConfig struct {
 	// OpenAIScheduler: OpenAI 高级调度器粘性逃逸配置
 	OpenAIScheduler GatewayOpenAISchedulerConfig `mapstructure:"openai_scheduler"`
 	// OpenAIHTTP2: OpenAI HTTP 上游协议策略（默认启用 HTTP/2，可按代理能力回退 HTTP/1.1）
-	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
-	ExcelBPS    GatewayExcelBPSConfig    `mapstructure:"excel_bps"`
+	OpenAIHTTP2  GatewayOpenAIHTTP2Config  `mapstructure:"openai_http2"`
+	ExcelBPS     GatewayExcelBPSConfig     `mapstructure:"excel_bps"`
+	PrismBrowser GatewayPrismBrowserConfig `mapstructure:"prism_browser"`
 	// OpenAIProxyStreamCircuit: Responses SSE 代理断流熔断策略。
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
@@ -1212,6 +1213,13 @@ type GatewayExcelBPSConfig struct {
 	CompactionThresholdTokens *int `mapstructure:"compaction_threshold_tokens"`
 	// Emits one content-free, request-correlated timing event per BPS request.
 	LogRequestTiming bool `mapstructure:"log_request_timing"`
+}
+
+// PrismBrowser connects only to a trusted browser adapter on the same host.
+type GatewayPrismBrowserConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	BaseURL string `mapstructure:"base_url"`
+	APIKey  string `mapstructure:"api_key"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -2542,6 +2550,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_http2.enabled", true)
 	viper.SetDefault("gateway.excel_bps.compaction_threshold_tokens", 920000)
 	viper.SetDefault("gateway.excel_bps.log_request_timing", false)
+	viper.SetDefault("gateway.prism_browser.enabled", false)
+	viper.SetDefault("gateway.prism_browser.base_url", "http://127.0.0.1:8319/v1")
+	viper.SetDefault("gateway.prism_browser.api_key", "")
 	viper.SetDefault("gateway.openai_http2.allow_proxy_fallback_to_http1", true)
 	viper.SetDefault("gateway.openai_http2.fallback_error_threshold", 2)
 	viper.SetDefault("gateway.openai_http2.fallback_window_seconds", 60)

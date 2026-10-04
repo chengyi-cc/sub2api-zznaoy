@@ -2595,6 +2595,11 @@ func cloneExcludedAccountIDs(excludedIDs map[int64]struct{}) map[int64]struct{} 
 }
 
 func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport, requestedModels ...string) bool {
+	if requiredTransport != OpenAIUpstreamTransportAny && requiredTransport != OpenAIUpstreamTransportHTTPSSE && accountHasPrismBrowser(account) {
+		if len(requestedModels) == 0 || account.IsPrismBrowserEnabledForModel(requestedModels[0]) {
+			return false
+		}
+	}
 	if len(requestedModels) > 0 {
 		account = account.forOpenAIModel(requestedModels[0])
 	}
@@ -2620,6 +2625,10 @@ func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Accou
 }
 
 func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Account, model string, success bool, firstTokenMs *int, observedErr ...error) bool {
+	// Browser capacity and refusals do not represent native account health.
+	if account.IsPrismBrowserEnabledForModel(model) {
+		return false
+	}
 	if account == nil {
 		return false
 	}

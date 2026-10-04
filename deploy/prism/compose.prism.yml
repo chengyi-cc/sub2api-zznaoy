@@ -1,0 +1,49 @@
+# Overlay for the existing Compose project. Keep its project name, .env, and data.
+# PRISM_BUNDLE_DIR is the absolute extracted release directory.
+services:
+  sub2api:
+    image: sub2api-local:0.2.13-prism
+    pull_policy: never
+    build:
+      context: ${PRISM_BUNDLE_DIR:?Set the absolute release directory}/gateway
+      dockerfile: Dockerfile
+    environment:
+      GATEWAY_PRISM_BROWSER_ENABLED: "true"
+      GATEWAY_PRISM_BROWSER_BASE_URL: http://127.0.0.1:8319/v1
+      GATEWAY_PRISM_BROWSER_API_KEY: ${PRISM_ADAPTER_API_KEY:?Generate the private bridge key first}
+
+  prism-adapter:
+    image: sub2api-prism-adapter:0ae36e5019
+    build:
+      context: ${PRISM_BUNDLE_DIR:?Set the absolute release directory}/prism-adapter
+    restart: unless-stopped
+    init: true
+    # The gateway accepts only loopback adapter URLs. Share the app's namespace
+    # rather than publishing a credential-bearing adapter port on the host.
+    network_mode: service:sub2api
+    depends_on:
+      sub2api:
+        condition: service_started
+    security_opt:
+      - seccomp=${PRISM_BUNDLE_DIR:?Set the absolute release directory}/deploy/prism/seccomp_profile.json
+    environment:
+      PRISM_ADAPTER_API_KEY: ${PRISM_ADAPTER_API_KEY:?Generate the private bridge key first}
+      PRISM_ADAPTER_MODE: browser
+      PRISM_ADAPTER_CLIENT_TOOLS_ENABLED: "true"
+      PRISM_ADAPTER_STATE_DIR: /var/lib/sub2api-prism
+      PRISM_ADAPTER_PORT: "8319"
+    volumes:
+      - prism_state:/var/lib/sub2api-prism
+    shm_size: 256m
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8319/health', timeout=3).read()"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  prism_state:

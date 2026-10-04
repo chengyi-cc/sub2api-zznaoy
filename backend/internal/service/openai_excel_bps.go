@@ -81,6 +81,12 @@ func newExcelBPSRequest(ctx context.Context, body []byte, token, accountID strin
 // BPS deliberately bypasses Codex ticket/cookie injection and OAuth plugins:
 // only the selected account's bearer and ChatGPT account ID belong on this host.
 func (s *OpenAIGatewayService) forwardExcelBPS(ctx context.Context, c *gin.Context, account *Account, body []byte, start time.Time) (out *OpenAIForwardResult, outErr error) {
+	// A later account edit must not bypass an enabled borrowing policy.
+	if s.astraBorrow != nil && account.GetMappedModel(gjson.GetBytes(body, "model").String()) == astraBorrowModel {
+		if err := s.astraBorrow.RejectExcelTarget(ctx, account.ID); err != nil {
+			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+		}
+	}
 	timing := newExcelBPSRequestTiming(ctx, start, s.cfg != nil && s.cfg.Gateway.ExcelBPS.LogRequestTiming)
 	defer func() { timing.finish(ctx, account.ID, out, outErr) }()
 	// Generated only on failure. Healthy requests do not pay for a second JSON

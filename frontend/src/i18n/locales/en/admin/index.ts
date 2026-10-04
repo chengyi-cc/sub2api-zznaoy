@@ -7,6 +7,8 @@ import settings from './settings'
 import audit from './audit'
 import promptAudit from './promptAudit'
 import plugins from './plugins'
+import astraBorrow from './astraBorrow'
+import prism from './prism'
 
 export default {
   ...overview,
@@ -18,4 +20,6 @@ export default {
   ...audit,
   ...promptAudit,
   ...plugins,
+  ...astraBorrow,
+  ...prism,
 }

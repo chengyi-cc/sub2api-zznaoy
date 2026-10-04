@@ -18,6 +18,7 @@
         :bindings="openaiTemplateBindings"
         :proxies="proxies" :groups="groups" :profiles="tlsFingerprintProfiles"
       />
+      <PrismAccountSettings v-if="supportsExcelBPS" v-model:enabled="prismBrowserEnabled" v-model:models="prismBrowserModels" />
       <div v-if="supportsExcelBPS" data-testid="codex-timezone-card" class="rounded-xl border border-primary-200 bg-primary-50/50 p-5 dark:border-primary-800 dark:bg-primary-950/20">
         <div class="flex items-center justify-between gap-4">
           <div>
@@ -3141,6 +3142,8 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import PrismAccountSettings from '@/components/account/PrismAccountSettings.vue'
+import { PRISM_MODELS, readPrismAccount, applyPrismAccount } from '@/utils/prismAccount'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
@@ -3689,6 +3692,8 @@ const customBaseUrl = ref('')
 const openaiPassthroughEnabled = ref(false)
 const defaultExcelBPSModels = DEFAULT_EXCEL_BPS_MODELS
 const excelBPSEnabled = ref(false)
+const prismBrowserEnabled = ref(false)
+const prismBrowserModels = ref<string[]>([...PRISM_MODELS])
 const rpmOverflow = ref(false)
 function toggleExcelBPS() {
   excelBPSEnabled.value = !excelBPSEnabled.value
@@ -4231,6 +4236,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiPassthroughEnabled.value = false
   rpmOverflow.value = extra?.openai_rpm_overflow === true
   excelBPSEnabled.value = supportsExcelBPS.value && extra?.openai_excel_bps === true
+  const prismSettings = readPrismAccount(extra)
+  prismBrowserEnabled.value = supportsExcelBPS.value && prismSettings.enabled
+  prismBrowserModels.value = [...prismSettings.models]
   codexTimezoneRewriteEnabled.value = supportsExcelBPS.value && extra?.openai_codex_timezone_rewrite === true
   excelBPSAutoDisableOn403.value = supportsExcelBPS.value && extra?.openai_excel_bps_auto_disable_on_403 === true
   const savedExcelModels = extra?.openai_excel_bps_models
@@ -5731,6 +5739,7 @@ const handleSubmit = async () => {
     if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
+      applyPrismAccount(newExtra, prismBrowserEnabled.value, prismBrowserModels.value, supportsExcelBPS.value)
       if (props.account.type === 'oauth') {
         applyAccountRPMSettings(newExtra, {
           enabled: rpmLimitEnabled.value,

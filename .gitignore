@@ -142,6 +142,8 @@ deploy/docker-compose.override.yml
 vite.config.js
 docs/*
 !docs/EXCEL_BPS_REFERENCES.md
+!docs/ASTRA_GATEWAY_BORROW.md
+!docs/PRISM_MIGRATION.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md

@@ -86,6 +86,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	body = s.applyCodexTimezone(ctx, account, body)
+	if account.IsPrismBrowserEnabledForModel(gjson.GetBytes(body, "model").String()) {
+		return s.forwardPrismBrowser(ctx, c, account, body, startTime)
+	}
 
 	// Excel owns tool declarations, replay and compaction; keep their original
 	// structure by routing before generic Codex normalization and passthrough.
@@ -1118,7 +1121,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		upstreamStart := time.Now()
 		resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
-		if headerGuard != nil && headerGuard.stopHeaderWait() {
+		var borrowFailure *AstraBorrowRequestError
+		if headerGuard != nil && headerGuard.stopHeaderWait() && !errors.As(err, &borrowFailure) {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 			}

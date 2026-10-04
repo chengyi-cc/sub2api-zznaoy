@@ -206,6 +206,11 @@ func ProvideOpenAIGatewayService(
 	gateway.tlsFPProfileService = tlsFPProfileService
 	gateway.excelBPSImages = excelBPSImages
 	gateway.rpmCache = rpmCache
+	if settingService != nil {
+		if store, ok := settingService.settingRepo.(AstraBorrowStore); ok {
+			gateway.astraBorrow = NewAstraBorrowService(gateway, store)
+		}
+	}
 	return gateway
 }
 
