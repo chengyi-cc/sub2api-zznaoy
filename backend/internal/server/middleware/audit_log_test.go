@@ -188,3 +188,38 @@ func TestOllamaCloudUsageSessionRouteOmitsAuditBody(t *testing.T) {
 	require.Equal(t, "<credential-bearing body omitted>", logs[0].RequestBody)
 	require.NotContains(t, logs[0].RequestBody, "audit-canary")
 }
+
+func TestCredentialRecoveryOmitsLoginMaterialFromAudit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &auditCaptureRepository{}
+	audit := service.NewAuditLogService(repo, nil)
+	audit.Start()
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyUser), AuthSubject{UserID: 77})
+		c.Set(string(ContextKeyUserRole), "admin")
+		c.Next()
+	})
+	router.Use(gin.HandlerFunc(NewAuditLogMiddleware(audit)))
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		path := "/api/v1/admin/account-ops/token-guard-v2/accounts"
+		target := path
+		if method == http.MethodPut {
+			path += "/:id"
+			target += "/7"
+		}
+		router.Handle(method, path, func(c *gin.Context) { c.Status(http.StatusOK) })
+		request := httptest.NewRequest(method, target, bytes.NewBufferString(`{"password":"recovery-secret","totp_secret":"recovery-secret","otp_url":"https://example.test/private-code"}`))
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusOK, recorder.Code)
+	}
+	audit.Stop()
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Len(t, repo.logs, 2)
+	for _, entry := range repo.logs {
+		require.Equal(t, "<credential-bearing body omitted>", entry.RequestBody)
+	}
+}

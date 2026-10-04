@@ -23,6 +23,9 @@ func RegisterAdminRoutes(
 	// 插件 UI 使用短时能力 URL，仅提供经过安装校验的静态资源。
 	v1.GET("/plugin-ui/:token/*path", h.Admin.Plugin.ServeUIAsset)
 
+	if h.Admin != nil && h.Admin.OpenAIOAuthReauth != nil {
+		registerOpenAIOAuthReauthWorkerRoutes(v1, h)
+	}
 	admin := v1.Group("/admin")
 	admin.Use(gin.HandlerFunc(adminAuth))
 	// 面板全局按用户限流（默认管理员豁免，可在系统设置中关闭豁免）
@@ -50,6 +53,7 @@ func RegisterAdminRoutes(
 		admin.PUT("/astra-borrow", h.Admin.Account.SaveAstraBorrow)
 		admin.POST("/astra-borrow/verify/:id", h.Admin.Account.VerifyAstraBorrow)
 		admin.GET("/astra-borrow/history", h.Admin.Account.AstraBorrowHistory)
+		registerCredentialRecoveryRoutes(admin, h)
 		admin.GET("/prism-runtime", h.Admin.Account.GetPrismRuntime)
 		admin.GET("/prism-runtime/logs", h.Admin.Account.GetPrismRuntimeLogs)
 		admin.POST("/prism-runtime/:action", h.Admin.Account.ControlPrismRuntime)

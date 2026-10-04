@@ -5,6 +5,7 @@ import channelMonitorV2 from './channelMonitorV2'
 import batchImage from './batchImage'
 import admin from './admin'
 import misc from './misc'
+import tokenGuardV2 from './tokenGuardV2'
 
 export default {
   ...landing,
@@ -13,5 +14,6 @@ export default {
   ...channelMonitorV2,
   ...batchImage,
   admin,
+  tokenGuardV2,
   ...misc,
 }

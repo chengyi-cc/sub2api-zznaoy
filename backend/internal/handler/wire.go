@@ -11,6 +11,8 @@ import (
 
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
+	guardV2 *admin.AccountTokenGuardV2Handler,
+	reauth *admin.OpenAIOAuthReauthHandler,
 	dashboardHandler *admin.DashboardHandler,
 	userHandler *admin.UserHandler,
 	groupHandler *admin.GroupHandler,
@@ -59,6 +61,8 @@ func ProvideAdminHandlers(
 	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
 	accountHandler.SetClaudeResetCreditService(claudeResetCredits)
 	return &AdminHandlers{
+		AccountTokenGuardV2:    guardV2,
+		OpenAIOAuthReauth:      reauth,
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,
 		Group:                  groupHandler,
@@ -237,6 +241,8 @@ func ProvideHandlers(
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
+	admin.NewAccountTokenGuardV2Handler,
+	admin.NewOpenAIOAuthReauthHandler,
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,

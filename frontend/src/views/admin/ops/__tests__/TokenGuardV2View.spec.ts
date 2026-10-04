@@ -1,0 +1,500 @@
+
+vi.mock('@/api/admin/credentialEncryption', () => ({
+  getCredentialEncryption: vi.fn().mockResolvedValue({ configured: true, source: 'server_config' }),
+  initializeCredentialEncryption: vi.fn(),
+}))
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+
+import TokenGuardV2View from '../TokenGuardV2View.vue'
+
+const api = vi.hoisted(() => ({
+  listGuard: vi.fn(),
+  createGuard: vi.fn(),
+  updateGuard: vi.fn(),
+  deleteGuard: vi.fn(),
+  probeGuard: vi.fn(),
+  reloginGuard: vi.fn(),
+  saveRules: vi.fn(),
+  saveRuntime: vi.fn(),
+  updateSwitches: vi.fn(),
+  listAccounts: vi.fn(),
+  listGroups: vi.fn(),
+  listProxies: vi.fn(),
+}))
+
+vi.mock('@/api/admin/accountTokenGuardV2', () => ({
+  listTokenGuardV2Accounts: api.listGuard,
+  createTokenGuardV2Account: api.createGuard,
+  updateTokenGuardV2Account: api.updateGuard,
+  deleteTokenGuardV2Account: api.deleteGuard,
+  probeTokenGuardV2Account: api.probeGuard,
+  reloginTokenGuardV2Account: api.reloginGuard,
+  saveTokenGuardV2Rules: api.saveRules,
+  saveTokenGuardV2Runtime: api.saveRuntime,
+  updateTokenGuardV2Switches: api.updateSwitches,
+}))
+vi.mock('@/api/admin/accounts', () => ({ list: api.listAccounts, default: { list: api.listAccounts } }))
+vi.mock('@/api/admin/groups', () => ({ getByPlatform: api.listGroups, default: { getByPlatform: api.listGroups } }))
+vi.mock('@/api/admin/proxies', () => ({
+  getAllWithCount: api.listProxies,
+  default: { getAllWithCount: api.listProxies },
+}))
+vi.mock('vue-i18n', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-i18n')>()
+  return {
+    ...actual,
+    useI18n: () => ({
+      t: (key: string, params?: Record<string, unknown>) => params ? `${key} ${Object.values(params).join(' ')}` : key,
+    }),
+  }
+})
+
+let wrapper: VueWrapper | undefined
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  api.listGuard.mockResolvedValue({
+    runtime_settings: { engine: 'local_worker', worker_concurrency: 3 },
+    probe_interval_seconds: 1800,
+    retry_interval_seconds: 300,
+    relogin_cooldown_seconds: 1800,
+    fail_streak_threshold: 2,
+    accounts: [{
+      account_id: 42,
+      account_name: 'Primary',
+      account_status: 'active',
+      schedulable: true,
+      enabled: true,
+      auto_relogin_enabled: true,
+      probe_state: 'ok',
+      probe_detail: 'credential accepted',
+      fail_streak: 0,
+      next_probe_at: '2026-09-28T10:00:00Z',
+      login_config: {
+        account_id: 42,
+        login_email: 'user@example.com',
+        credential_mode: 'password_totp',
+        proxy_source: 'managed_proxy',
+        proxy_id: 7,
+        password_configured: true,
+        totp_configured: true,
+        configured: true,
+      },
+    }],
+  })
+  api.listAccounts.mockResolvedValue({ items: [
+    { id: 42, name: 'Primary', group_ids: [1], credentials: { plan_type: 'plus' } },
+    { id: 43, name: 'Backup', group_ids: [2], credentials: { plan_type: 'free' }, extra: { email_address: 'backup@example.com' } },
+    { id: 44, name: 'Secondary', group_ids: [1], credentials: { plan_type: 'plus' } },
+  ] })
+  api.listGroups.mockResolvedValue([
+    { id: 1, name: 'Main pool' },
+    { id: 2, name: 'Backup pool' },
+  ])
+  api.listProxies.mockResolvedValue([
+    { id: 7, name: 'Tokyo', protocol: 'socks5h', host: '203.0.113.7', port: 1080 },
+    { id: 8, name: 'Singapore', protocol: 'http', host: '198.51.100.8', port: 8080 },
+  ])
+  api.updateGuard.mockResolvedValue({})
+  api.saveRuntime.mockImplementation(async input => input)
+  api.updateSwitches.mockResolvedValue({ enabled: false, auto_relogin_enabled: true })
+  api.saveRules.mockResolvedValue({
+    probe_interval_seconds: 1800,
+    retry_interval_seconds: 300,
+    relogin_cooldown_seconds: 1800,
+    fail_streak_threshold: 2,
+  })
+})
+
+afterEach(() => {
+  wrapper?.unmount()
+  wrapper = undefined
+})
+
+describe('TokenGuardV2View', () => {
+  it('keeps saved password and TOTP secret hidden while allowing proxy changes', async () => {
+    wrapper = mount(TokenGuardV2View, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          SmartOpsNav: true,
+          Icon: true,
+          BaseDialog: {
+            props: ['show'],
+            template: '<section v-if="show"><slot /><footer><slot name="footer" /></footer></section>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('password-secret')
+    expect(wrapper.text()).not.toContain('totp-secret')
+    await wrapper.findAll('button').find(button => button.text() === 'tokenGuardV2.edit')!.trigger('click')
+
+    const modes = wrapper.findAll('input[type="radio"]').map(input => input.attributes('value'))
+    expect(modes).toEqual(['password_totp'])
+    expect(wrapper.findAll('input[type="password"]').map(input => input.element.value)).toEqual(['', ''])
+
+    expect(wrapper.text()).toContain('SOCKS5H')
+    await wrapper.get('#token-guard-v2-proxy').setValue('proxy:8')
+
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'tokenGuardV2.save')!
+    expect(saveButton.attributes()).toMatchObject({ type: 'submit', form: 'token-guard-v2-editor' })
+    await wrapper.get('#token-guard-v2-editor').trigger('submit')
+    await flushPromises()
+    expect(api.updateGuard).toHaveBeenCalledWith(42, expect.objectContaining({
+      credential_mode: 'password_totp',
+      proxy_source: 'managed_proxy',
+      proxy_id: 8,
+      password: '',
+      totp_secret: '',
+    }))
+  })
+
+  it('uses the account proxy and does not offer an uninstalled rotation pool', async () => {
+    wrapper = mount(TokenGuardV2View, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          SmartOpsNav: true,
+          Icon: true,
+          BaseDialog: {
+            props: ['show'],
+            template: '<section v-if="show"><slot /><footer><slot name="footer" /></footer></section>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === 'tokenGuardV2.edit')!.trigger('click')
+    expect(wrapper.find('option[value="mihomo"]').exists()).toBe(false)
+    expect(wrapper.find('option[value="session_studio"]').exists()).toBe(false)
+    await wrapper.get('#token-guard-v2-proxy').setValue('account')
+    await wrapper.get('#token-guard-v2-editor').trigger('submit')
+    await flushPromises()
+
+    expect(api.updateGuard).toHaveBeenCalledWith(42, expect.objectContaining({
+      proxy_source: 'account',
+      proxy_id: null,
+    }))
+  })
+
+  it('fills the login email from the selected managed account', async () => {
+    wrapper = mount(TokenGuardV2View, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          SmartOpsNav: true,
+          Icon: true,
+          BaseDialog: {
+            props: ['show'],
+            template: '<section v-if="show"><slot /><footer><slot name="footer" /></footer></section>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === 'tokenGuardV2.addAccount')!.trigger('click')
+    await wrapper.get('[data-account-id="43"]').trigger('click')
+
+    expect((wrapper.get('input[type="email"]').element as HTMLInputElement).value).toBe('backup@example.com')
+  })
+
+  it('filters available accounts by group and shows their plan labels', async () => {
+    wrapper = mount(TokenGuardV2View, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          SmartOpsNav: true,
+          Icon: true,
+          BaseDialog: {
+            props: ['show'],
+            template: '<section v-if="show"><slot /><footer><slot name="footer" /></footer></section>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === 'tokenGuardV2.addAccount')!.trigger('click')
+    expect(api.listGroups).toHaveBeenCalledWith('openai')
+
+    const accountList = wrapper.get('.account-picker-list')
+    expect(accountList.text()).toContain('Backup')
+    expect(accountList.text()).toContain('Free')
+    expect(accountList.text()).toContain('Secondary')
+    expect(accountList.text()).toContain('Plus')
+    expect(accountList.text()).not.toContain('Primary')
+
+    await wrapper.get('[data-group-id="1"]').trigger('click')
+    expect(accountList.text()).toContain('Secondary')
+    expect(accountList.text()).not.toContain('Backup')
+    expect(accountList.text()).not.toContain('Primary')
+
+    await wrapper.get('[data-group-id="all"]').trigger('click')
+    await wrapper.get('#token-guard-v2-account-search').setValue('backup')
+    expect(accountList.text()).toContain('Backup')
+    expect(accountList.text()).not.toContain('Secondary')
+  })
+
+  it('filters monitored accounts and shows the enforced probe rules', async () => {
+    api.listGuard.mockResolvedValueOnce({
+      probe_interval_seconds: 1800,
+      retry_interval_seconds: 300,
+      relogin_cooldown_seconds: 1800,
+      fail_streak_threshold: 2,
+      accounts: [
+        {
+          account_id: 42,
+          account_name: 'Primary',
+          account_status: 'active',
+          schedulable: true,
+          enabled: true,
+          auto_relogin_enabled: true,
+          probe_state: 'ok',
+          probe_detail: 'credential accepted',
+          fail_streak: 0,
+          next_probe_at: '2026-09-28T10:00:00Z',
+          login_config: { account_id: 42, login_email: 'user@example.com', credential_mode: 'password_totp', proxy_source: 'account', password_configured: true, totp_configured: false, configured: true },
+        },
+        {
+          account_id: 44,
+          account_name: 'Secondary',
+          account_status: 'error',
+          schedulable: false,
+          enabled: true,
+          auto_relogin_enabled: true,
+          probe_state: 'auth',
+          probe_detail: 'credential was rejected',
+          fail_streak: 2,
+          next_probe_at: '2026-09-28T10:00:00Z',
+          login_config: { account_id: 44, login_email: 'secondary@example.com', credential_mode: 'email_otp_url', proxy_source: 'account', password_configured: false, totp_configured: false, configured: true },
+        },
+      ],
+    })
+    wrapper = mount(TokenGuardV2View, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          SmartOpsNav: true,
+          Icon: true,
+          BaseDialog: {
+            props: ['show'],
+            template: '<section v-if="show"><slot /><footer><slot name="footer" /></footer></section>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-filter="attention"]').trigger('click')
+    expect(wrapper.get('tbody').text()).toContain('Secondary')
+    expect(wrapper.get('tbody').text()).not.toContain('Primary')
+
+    await wrapper.get('[data-filter="all"]').trigger('click')
+    await wrapper.get('#token-guard-v2-search').setValue('user@example.com')
+    expect(wrapper.get('tbody').text()).toContain('Primary')
+    expect(wrapper.get('tbody').text()).not.toContain('Secondary')
+
+    await wrapper.get('[data-testid="guard-tab-rules"]').trigger('click')
+    expect(wrapper.text()).toContain('tokenGuardV2.ruleProbeInterval')
+    expect(wrapper.text()).toContain('tokenGuardV2.ruleRetryInterval')
+    expect(wrapper.text()).toContain('tokenGuardV2.ruleCooldown')
+  })
+
+  it('saves configurable rules in seconds and keeps dirty values during refresh', async () => {
+    wrapper = mount(TokenGuardV2View, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          SmartOpsNav: true,
+          Icon: true,
+          BaseDialog: {
+            props: ['show'],
+            template: '<section v-if="show"><slot /><footer><slot name="footer" /></footer></section>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="guard-tab-rules"]').trigger('click')
+    await wrapper.get('#token-guard-v2-rule-probe').setValue('15')
+
+    api.listGuard.mockResolvedValueOnce({
+      probe_interval_seconds: 3600,
+      retry_interval_seconds: 600,
+      relogin_cooldown_seconds: 3600,
+      fail_streak_threshold: 4,
+      accounts: [],
+    })
+    await wrapper.findAll('button').find(button => button.text() === 'tokenGuardV2.refresh')!.trigger('click')
+    await flushPromises()
+    expect((wrapper.get('#token-guard-v2-rule-probe').element as HTMLInputElement).value).toBe('15')
+
+    await wrapper.get('#token-guard-v2-rule-retry').setValue('2')
+    await wrapper.get('#token-guard-v2-rule-threshold').setValue('3')
+    await wrapper.get('#token-guard-v2-rule-cooldown').setValue('120')
+    api.saveRules.mockResolvedValueOnce({
+      probe_interval_seconds: 900,
+      retry_interval_seconds: 120,
+      relogin_cooldown_seconds: 7200,
+      fail_streak_threshold: 3,
+    })
+    await wrapper.get('#token-guard-v2-rules').trigger('submit')
+    await flushPromises()
+
+    expect(api.saveRules).toHaveBeenCalledWith({
+      probe_interval_seconds: 900,
+      retry_interval_seconds: 120,
+      relogin_cooldown_seconds: 7200,
+      fail_streak_threshold: 3,
+    })
+    expect(wrapper.text()).toContain('tokenGuardV2.rulesSaved')
+  })
+
+  it('paginates monitored accounts and resets to page one after searching', async () => {
+    api.listGuard.mockResolvedValueOnce({
+      probe_interval_seconds: 1800,
+      retry_interval_seconds: 300,
+      relogin_cooldown_seconds: 1800,
+      fail_streak_threshold: 2,
+      accounts: Array.from({ length: 25 }, (_, index) => ({
+        account_id: index + 1,
+        account_name: `Account ${index + 1}`,
+        account_status: 'active',
+        schedulable: true,
+        enabled: true,
+        auto_relogin_enabled: false,
+        probe_state: 'ok',
+        probe_detail: 'credential accepted',
+        fail_streak: 0,
+        next_probe_at: '2026-09-28T10:00:00Z',
+        login_config: { account_id: index + 1, login_email: `user${index + 1}@example.com`, credential_mode: 'password_totp', proxy_source: 'account', password_configured: true, totp_configured: false, configured: true },
+      })),
+    })
+    wrapper = mount(TokenGuardV2View, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          SmartOpsNav: true,
+          Icon: true,
+          BaseDialog: true,
+          Pagination: {
+            props: ['page'],
+            emits: ['update:page'],
+            template: '<button data-testid="next-page" @click="$emit(\'update:page\', page + 1)">next</button>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(20)
+    await wrapper.get('[data-testid="next-page"]').trigger('click')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(5)
+    expect(wrapper.get('tbody').text()).toContain('Account 25')
+
+    await wrapper.get('#token-guard-v2-search').setValue('Account 2')
+    expect(wrapper.get('tbody').text()).toContain('Account 2')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(7)
+  })
+})
+
+describe('managed re-login availability', () => {
+  it('separates encrypted credential readiness from a failed runtime', async () => {
+    const data = await api.listGuard()
+    api.listGuard.mockResolvedValue({
+      ...data, worker: { mode: 'managed', state: 'unavailable', reason: 'runtime_install_failed' }
+    })
+    wrapper = mount(TokenGuardV2View, {
+      global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Icon: true, SmartOpsNav: true } }
+    })
+    await flushPromises()
+    const runtime = wrapper.get('[data-testid="reauth-runtime-status"]')
+    expect(runtime.text()).toContain('tokenGuardV2.runtimeStates.unavailable')
+    expect(runtime.text()).toContain('tokenGuardV2.runtimeReasons.runtime_install_failed')
+    expect(runtime.text()).toContain('tokenGuardV2.runtimeManaged')
+  })
+})
+
+async function mountControls() {
+  wrapper = mount(TokenGuardV2View, {
+    global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, SmartOpsNav: true, Icon: true,
+      BaseDialog: { props: ['show'], template: '<section v-if="show"><slot /><footer><slot name="footer" /></footer></section>' } } },
+  })
+  await flushPromises()
+  return wrapper
+}
+
+it('moves engine and worker count into encryption settings and saves immediately', async () => {
+  const view = await mountControls()
+  const controls = view.get('[data-testid="credential-encryption-setup"]')
+  await controls.get('#token-guard-v2-engine').setValue('local_worker'); await flushPromises()
+  expect(api.saveRuntime).toHaveBeenLastCalledWith({ engine: 'local_worker', worker_concurrency: 3 })
+  expect(controls.text()).toContain('tokenGuardV2.localWorkerEngineHint')
+  await controls.get('#token-guard-v2-concurrency').setValue('6'); await flushPromises()
+  expect(api.saveRuntime).toHaveBeenLastCalledWith({ engine: 'local_worker', worker_concurrency: 6 })
+  expect(api.updateGuard).not.toHaveBeenCalled()
+})
+
+it('keeps runtime switches out of account forms and preserves credentials', async () => {
+  const view = await mountControls()
+  await view.findAll('button').find(button => button.text() === 'tokenGuardV2.edit')!.trigger('click')
+  const form = view.get('#token-guard-v2-editor')
+  expect(form.find('#token-guard-v2-engine').exists()).toBe(false)
+  expect(form.find('#token-guard-v2-concurrency').exists()).toBe(false)
+  expect(form.find('input[role="switch"]').exists()).toBe(false)
+  expect(form.text()).not.toContain('tokenGuardV2.autoInspect')
+  expect(form.text()).not.toContain('tokenGuardV2.autoRelogin')
+  await form.trigger('submit'); await flushPromises()
+  const payload = api.updateGuard.mock.calls[0][1]
+  expect(payload).not.toHaveProperty('engine')
+  expect(payload).not.toHaveProperty('enabled')
+  expect(payload).not.toHaveProperty('auto_relogin_enabled')
+  expect(payload.password).toBe('')
+})
+
+it('updates only the selected automation flag without resubmitting credentials', async () => {
+  const view = await mountControls()
+  await view.get('[data-testid="auto-inspect-42"]').setValue(false); await flushPromises()
+  expect(api.updateSwitches).toHaveBeenCalledWith(42, { enabled: false })
+  expect(api.updateGuard).not.toHaveBeenCalled()
+  expect(view.find('#token-guard-v2-editor').exists()).toBe(false)
+  expect((view.get('[data-testid="auto-inspect-42"]').element as HTMLInputElement).checked).toBe(false)
+  api.updateSwitches.mockResolvedValueOnce({ enabled: false, auto_relogin_enabled: false })
+  await view.get('[data-testid="auto-relogin-42"]').setValue(false); await flushPromises()
+  expect(api.updateSwitches).toHaveBeenLastCalledWith(42, { auto_relogin_enabled: false })
+})
+
+it('rolls controls back when saving fails', async () => {
+  const view = await mountControls()
+  api.saveRuntime.mockRejectedValueOnce(new Error('save failed'))
+  await view.get('#token-guard-v2-engine').setValue('local_worker'); await flushPromises()
+  expect((view.get('#token-guard-v2-engine').element as HTMLSelectElement).value).toBe('local_worker')
+  api.updateSwitches.mockRejectedValueOnce(new Error('save failed'))
+  await view.get('[data-testid="auto-inspect-42"]').setValue(false); await flushPromises()
+  expect((view.get('[data-testid="auto-inspect-42"]').element as HTMLInputElement).checked).toBe(true)
+  expect(view.text()).toContain('save failed')
+})
+
+it('preserves legacy engine choices when only concurrency changes', async () => {
+  const data = await api.listGuard(); data.runtime_settings.engine = ''
+  api.listGuard.mockResolvedValue(data)
+  const view = await mountControls()
+  expect(view.text()).toContain('tokenGuardV2.legacyEngineHint')
+  await view.get('#token-guard-v2-concurrency').setValue('4'); await flushPromises()
+  expect(api.saveRuntime).toHaveBeenCalledWith({ engine: '', worker_concurrency: 4 })
+})
+
+it('offers only local password recovery and existing proxies', async () => {
+  const view = await mountControls()
+  expect(view.find('option[value="session_studio"]').exists()).toBe(false)
+  await view.findAll('button').find(button => button.text() === 'tokenGuardV2.edit')!.trigger('click')
+  expect(view.get('#token-guard-v2-proxy').attributes('disabled')).toBeUndefined()
+  expect(view.find('input[value="email_otp_url"]').exists()).toBe(false)
+  expect(view.find('option[value="mihomo"]').exists()).toBe(false)
+})

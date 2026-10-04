@@ -240,6 +240,7 @@ type RefreshTokenRequest struct {
 
 // IDTokenClaims represents the claims from OpenAI ID Token
 type IDTokenClaims struct {
+	SID string `json:"sid"`
 	// Standard claims
 	Sub           string   `json:"sub"`
 	Email         string   `json:"email"`

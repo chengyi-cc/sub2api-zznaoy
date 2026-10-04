@@ -562,6 +562,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/token-guard-v2',
+    name: 'AdminCredentialRecovery',
+    component: () => import('@/views/admin/ops/TokenGuardV2View.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '2FA Account Recovery',
+      titleKey: 'tokenGuardV2.title',
+      descriptionKey: 'tokenGuardV2.description'
+    }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),

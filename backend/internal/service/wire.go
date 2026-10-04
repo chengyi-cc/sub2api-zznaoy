@@ -900,6 +900,8 @@ func ProvideAPIKeyService(
 
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
+	ProvideOpenAIOAuthReauthService,
+	ProvideAccountTokenGuardV2Service,
 	// Core services
 	ProvideAuthService,
 	NewPasskeyService,
