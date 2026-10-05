@@ -21,7 +21,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # GitHub raw content base URL
-GITHUB_RAW_URL="https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy"
+GITHUB_RAW_URL="https://raw.githubusercontent.com/chengyi-cc/sub2api-zznaoy/main/deploy"
 
 # Print colored message
 print_info() {
@@ -86,6 +86,14 @@ main() {
         exit 1
     fi
     print_success "Downloaded docker-compose.yml"
+
+    # The standard image bundles Chromium; install its container sandbox policy.
+    mkdir -p prism
+    if command_exists curl; then
+        curl -fsSL "${GITHUB_RAW_URL}/prism/seccomp_profile.json" -o prism/seccomp_profile.json
+    else
+        wget -q "${GITHUB_RAW_URL}/prism/seccomp_profile.json" -O prism/seccomp_profile.json
+    fi
 
     # Download .env.example
     print_info "Downloading .env.example..."

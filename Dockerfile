@@ -160,8 +160,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["/app/sub2api"]
 
-# Optional integrated browser deployment: docker build --target prism .
-# Keep the ordinary image as the default final target below.
+# Standard runtime includes the browser; it stays stopped until enabled in UI.
 FROM mcr.microsoft.com/playwright/python:v1.63.0-noble AS prism
 USER root
 ENV HOME=/home/pwuser
@@ -176,6 +175,9 @@ COPY prism-adapter/requirements.txt ./
 RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
 COPY prism-adapter/ ./
 RUN python3 container_runtime.py --prepare-sandbox
+COPY deploy/prism/ /opt/sub2api/deploy/prism/
+RUN pip install --no-cache-dir --only-binary=:all: -r /opt/sub2api/deploy/prism/requirements-upgrade.txt
+LABEL io.sub2api.prism.managed="1"
 WORKDIR /app
 COPY --from=backend-builder /app/sub2api /app/sub2api
 COPY --from=backend-builder /app/backend/resources /app/resources
@@ -187,4 +189,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 ENTRYPOINT ["/app/managed-entrypoint.sh"]
 CMD []
 
-FROM runtime AS final
+FROM prism AS final

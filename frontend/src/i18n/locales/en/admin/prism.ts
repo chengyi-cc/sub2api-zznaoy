@@ -11,10 +11,11 @@ export default {
       confirm: 'Stopping or restarting interrupts active requests for all Prism accounts on this instance. Session state is retained. Do not automatically replay requests with unknown outcomes. Continue?',
       states: { loading: 'Loading', not_installed: 'Bundled service not installed', unmanaged: 'Externally managed', misconfigured: 'Misconfigured', unreachable: 'Manager unreachable', stopped: 'Stopped', starting: 'Starting', running: 'Running', error: 'Error' },
       hints: {
-        install: 'Upgrade once to the bundled browser deployment, then manage it here. Internal keys are configured automatically.',
+        install: 'This runtime has no bundled browser. After publishing the updated image, run the upgrade command once from the original deployment directory. Future updates follow the usual process; browser installation and internal keys are automatic.',
         unmanaged: 'A separate browser service is configured. Upgrade to the bundled version to manage it here. Existing external services are never taken over or stopped.',
         gatewayDisabled: 'Browser management is available, but Prism is disabled in the gateway. Bundled deployments configure this automatically.'
       },
+      copyUpgrade: 'Copy first-upgrade command',
       loadFailed: 'Unable to read service status. Check your connection and retry.', actionFailed: 'The operation was not confirmed. Check the connection and logs before retrying.',
       checkOK: 'The adapter process is reachable. Verify account access and model availability with an account test.', checkFailed: 'The adapter process is not ready. Check service logs.',
       logsHint: 'The latest 200 service events on this instance, refreshed automatically and cleared on manager restart. Credentials, conversation content and raw browser logs are excluded.', noLogs: 'No events yet',

@@ -112,7 +112,9 @@ class ReleaseMatrixTest(unittest.TestCase):
         args = self.fixture_artifacts()
         Path('Dockerfile.goreleaser').write_text('FROM scratch\nCOPY sub2api /sub2api\n')
         Path('deploy').mkdir()
-        Path('deploy/docker-entrypoint.sh').write_text('#!/bin/sh\nexec /app/sub2api\n')
+        shutil.copytree(ROOT / 'deploy/prism', 'deploy/prism')
+        shutil.copytree(ROOT / 'prism-adapter', 'prism-adapter',
+                        ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         Path('backend/resources').mkdir()
         Path('backend/resources/data').write_text('fixture')
         release.contexts(args)
@@ -120,6 +122,23 @@ class ReleaseMatrixTest(unittest.TestCase):
             binary = Path('contexts') / arch / 'sub2api'
             self.assertEqual(binary.read_bytes(), b'fixture')
             self.assertEqual(binary.stat().st_mode & 0o777, 0o755)
+            self.assertTrue((binary.parent / 'prism-adapter/managed_runtime.py').is_file())
+            self.assertTrue((binary.parent / 'deploy/prism/upgrade_config.py').is_file())
+            self.assertTrue((binary.parent / 'deploy/prism/seccomp_profile.json').is_file())
+
+    def test_older_tag_context_uses_its_original_packaging_inputs(self):
+        args = self.fixture_artifacts(True)
+        original = release.config()
+        original['dockers'][0]['extra_files'] = ['deploy/docker-entrypoint.sh', 'backend/resources']
+        release.FULL_CONFIG.write_text(yaml.safe_dump(original))
+        Path('Dockerfile.goreleaser').write_text('FROM scratch\nCOPY sub2api /sub2api\n')
+        Path('deploy').mkdir()
+        Path('deploy/docker-entrypoint.sh').write_text('#!/bin/sh\nexec /app/sub2api\n')
+        Path('backend/resources').mkdir()
+        Path('backend/resources/data').write_text('fixture')
+        release.contexts(args)
+        self.assertTrue(Path('contexts/amd64/deploy/docker-entrypoint.sh').is_file())
+        self.assertFalse(Path('contexts/amd64/prism-adapter').exists())
 
     def test_plan_requires_a_tag_for_publication(self):
         args = argparse.Namespace(ref='main', dry_run=False, simple=False)

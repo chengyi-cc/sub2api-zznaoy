@@ -5,6 +5,8 @@ import PrismRuntimeControls from '../PrismRuntimeControls.vue'
 import zh from '@/i18n/locales/zh/admin/prism'
 import { controlPrismRuntime, getPrismRuntime } from '@/api/admin/prismRuntime'
 
+const { copyCommand } = vi.hoisted(() => ({ copyCommand: vi.fn() }))
+vi.mock('@/composables/useClipboard', () => ({ useClipboard: () => ({ copyToClipboard: copyCommand }) }))
 vi.unmock('vue-i18n')
 vi.mock('@/api/admin/prismRuntime', () => ({ getPrismRuntime: vi.fn(), controlPrismRuntime: vi.fn() }))
 const stopped = { managed: true, gateway_enabled: true, state: 'stopped' as const, healthy: false, desired_enabled: false }
@@ -19,6 +21,13 @@ beforeEach(() => { vi.useFakeTimers(); vi.resetAllMocks(); vi.mocked(getPrismRun
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers() })
 
 describe('Prism service controls', () => {
+  it('copies a first-upgrade command only when the runtime is absent', async () => {
+    vi.mocked(getPrismRuntime).mockResolvedValue({ ...stopped, managed: false, state: 'not_installed' })
+    const w = await render()
+    await w.get('[data-testid="prism-copy-upgrade"]').trigger('click')
+    expect(copyCommand).toHaveBeenCalledWith(expect.stringContaining('/main/deploy/upgrade-prism.sh'))
+    expect(controlPrismRuntime).not.toHaveBeenCalled()
+  })
   it('starts the shared service without changing account settings', async () => {
     vi.mocked(controlPrismRuntime).mockResolvedValue({ ...stopped, state: 'starting', desired_enabled: true })
     const w = await render()

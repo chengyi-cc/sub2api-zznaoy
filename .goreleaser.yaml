@@ -64,7 +64,8 @@ dockers:
     dockerfile: Dockerfile.goreleaser
     use: buildx
     extra_files:
-      - deploy/docker-entrypoint.sh
+      - deploy/prism
+      - prism-adapter
       - backend/resources
     build_flag_templates:
       - "--platform=linux/amd64"
@@ -80,7 +81,8 @@ dockers:
     dockerfile: Dockerfile.goreleaser
     use: buildx
     extra_files:
-      - deploy/docker-entrypoint.sh
+      - deploy/prism
+      - prism-adapter
       - backend/resources
     build_flag_templates:
       - "--platform=linux/arm64"
@@ -96,7 +98,8 @@ dockers:
     dockerfile: Dockerfile.goreleaser
     use: buildx
     extra_files:
-      - deploy/docker-entrypoint.sh
+      - deploy/prism
+      - prism-adapter
       - backend/resources
     build_flag_templates:
       - "--platform=linux/amd64"
@@ -112,7 +115,8 @@ dockers:
     dockerfile: Dockerfile.goreleaser
     use: buildx
     extra_files:
-      - deploy/docker-entrypoint.sh
+      - deploy/prism
+      - prism-adapter
       - backend/resources
     build_flag_templates:
       - "--platform=linux/arm64"

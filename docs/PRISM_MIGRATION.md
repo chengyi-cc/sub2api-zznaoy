@@ -1,56 +1,56 @@
-# 第二阶段：Prism 独立通道
+# Prism 浏览器通道：常规镜像内置运行环境
 
-## 已核对的上游
+## 本次上游核对
 
-2026-10-04 查询：官方 Wei-Shaw/sub2api 最新发布仍为 v0.2.13，本项目已包含该版本；main 相比发布标签只多版本号同步提交。
+2026-10-05 通过 GitHub API 核对参考项目 ranxi2001/sub2api：最新发布 v2.9.9，发布时间 2026-10-05T07:09:27Z，production 为 `eaf64392f0488389e996a08bff1a30f040df0cd1`。相对此前参考提交 `0ae36e501952000c5c910a2e616c6e0861f66a49` 新增 40 个提交。
 
-参考分支 ranxi2001/sub2api 最新发布仍为 v2.9.8，但 production 已增加 12 次提交。Prism 修复 PR #292 已合并。本次固定参考提交 `0ae36e501952000c5c910a2e616c6e0861f66a49`，包含内存回收、有界启动等待、项目启动限流、明确沙箱重连及脱敏错误分类。
+与本次有关的 #299 将 Prism 的全局开关、地址和密钥放进系统设置，但依然需要外部浏览器适配器；它不是浏览器自动安装方案。浏览器目录没有新的差异，之前 #292 的内存回收与启动限流修复已经包含。本地继续保留账号开关旁的启停、日志及自动生成内部密钥，不移植会要求重新手填密钥的设置方式；渠道 V3、多模型质量检测、账号地区出口等新功能不在本次范围内。
 
-来源：https://github.com/ranxi2001/sub2api/pull/292
+来源：https://github.com/ranxi2001/sub2api/releases/tag/v2.9.9
 
-完整上游浏览器实现和测试位于 `prism-adapter/`。网关按本项目的账号、会话、调度与计费接口适配，不整体合并参考分支，不改动普通通道的会话解析。第一阶段借票另有独立配置和文档。
+## 使用方式
 
-## 功能和开关
+默认源码构建、完整发布和简化发布的 Docker 镜像（容器运行包）现在都包含固定版本的 Chromium（浏览器内核）、Python 和本地管理服务，不再要求选择特殊构建目标。浏览器首次保持停止，不访问真实账号；在账号编辑的 Prism 卡片点“启动”，就绪后选择模型、开启账号开关并保存。停止状态不会常驻浏览器进程，管理服务仍用于接收网页命令。
 
-### 在账号开关旁管理服务（集成版）
+内部密钥自动生成并保存在原数据卷 `/app/data/prism/bridge.key`，启停状态也持久保存。服务启动、停止、重启会影响本实例全部 Prism 账号；账号开关只影响当前账号，随账号保存生效。日志只显示固定事件码，不包含密码、令牌、对话正文或原始浏览器输出。
 
-账号的 Prism 卡片现在直接展示共享浏览器服务状态，并提供启动、停止、重启、连接检查和运行日志。账号开关仍随账号保存；服务操作立即生效，作用于当前实例的全部 Prism 账号，停止或重启前页面会确认中断影响。
+### 已有部署：首次执行一条命令
 
-首次使用需部署下面的集成镜像，普通主程序更新不会自动安装系统浏览器。集成镜像包含匹配版本的浏览器、Python 运行环境及管理程序，内部密钥自动生成并保存在原有数据卷 `/app/data/prism/bridge.key`。浏览器首次默认停止，点击“启动”后记住状态，容器重启会按保存状态恢复；点击“停止”不会删除会话、未决请求或工具记录。
+先按原来的发布流程发布包含本次代码的新镜像。仅推送 main 不会生成新镜像；旧镜像缺少内置标记时，升级脚本会明确停止，不改动原配置。
 
-日志展示本实例最近 200 条固定服务事件，刷新周期 5 秒，管理进程重启后清空。不传回凭据、请求正文、上游原始异常消息或任意进程输出。连接检查仅证明转接进程可达；实际浏览器登录、账号权限和模型质量仍需执行账号测试。串行模式下先用一个账号验证。
+在服务器**原部署目录**（存放原 Compose 配置和 .env 的目录）执行：
 
-如果显示“未安装集成服务”，按下面步骤升级；“外部管理”表示现有独立适配器未由本管理程序启动，不会接管或停止它。多实例部署时，页面仅管理收到当前请求的实例，须保持管理访问落到同一实例。
-
-### 首次切换到集成容器
-
-代码仓库中的 Dockerfile 新增 `prism` 构建目标（包含浏览器的镜像版本），默认普通镜像保持原样。需要 Linux 服务器；首次下载镜像较大，浏览器会额外占用内存，应在原有网关内存之外预留约 1 GB 并按实际负载观察。
-
-使用 Docker Compose（容器编排工具）2.24.4 或以上。下面的追加配置保留现有项目、数据库、端口及 `/app/data` 数据卷，只替换应用服务；无需手动设置浏览器地址或桥接密钥。将占位路径替换为当前部署的真实路径和项目名，**不要使用其他实例的项目名**。
-
-```sh
-export PRISM_SOURCE_DIR=/absolute/path/to/sub2api-new
-docker compose -p ORIGINAL_PROJECT --env-file /original/.env \
-  -f /original/compose.yml -f "$PRISM_SOURCE_DIR/deploy/prism/compose.managed.yml" config --quiet
-docker compose -p ORIGINAL_PROJECT --env-file /original/.env \
-  -f /original/compose.yml -f "$PRISM_SOURCE_DIR/deploy/prism/compose.managed.yml" build sub2api
-docker compose -p ORIGINAL_PROJECT --env-file /original/.env \
-  -f /original/compose.yml -f "$PRISM_SOURCE_DIR/deploy/prism/compose.managed.yml" up -d --no-deps --no-build sub2api
+```bash
+(f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/chengyi-cc/sub2api-zznaoy/main/deploy/upgrade-prism.sh -o "$f" && bash "$f"; rc=$?; [ -z "${f:-}" ] || rm -f -- "$f"; exit "$rc")
 ```
 
-默认应用服务名为 `sub2api`，不同名称需调整追加配置。构建前保留原镜像、配置及数据库备份，确认现有数据卷仍挂载到 `/app/data`。追加配置替换 `security_opt`（容器权限限制配置），允许非 root 浏览器启动自身沙箱；不挂载 Docker 管理套接字、不启用特权容器、不关闭浏览器沙箱。仅发布原网关端口，8319/8320 留在容器内部本机地址。
+旧页面更新后也可以在 Prism 开关旁点“复制首次升级命令”。默认升级到 `ghcr.io/chengyi-cc/sub2api:latest`；使用仓库内脚本时，可用 `bash repo/deploy/upgrade-prism.sh --image ghcr.io/chengyi-cc/sub2api:版本号` 指定已发布版本，或用 `--container 容器名` 明确选择实例。两套部署须分别在各自目录执行。脚本不安装宿主机 Python，不需要手写桥接密钥、浏览器地址或附加配置文件。
 
-已有独立 Prism 适配器时，先停用相关账号并停止旧适配器，将旧持久状态完整迁到新数据卷 `/app/data/prism/adapter` 后再开启，保留原状态备份；不能同时让两套适配器处理同一组未决请求。主程序普通部署或旧预编译包的 `compose.prism.yml` 不等于这里的集成部署。
+脚本会：
 
-更新完成后进入账号编辑 → Prism → 启动 → 检查连接，再启用当前账号、保存并测试。停止/重启服务可能使正在进行的请求结果不明，不自动重发。回退时关闭账号 Prism，恢复原镜像及原启动配置，保留 `/app/data/prism`，无需删除数据或回滚数据库。
+1. 根据现有容器记录识别原项目名、配置文件及环境文件，要求只有一个匹配的应用实例；不猜测其他部署。
+2. 拉取新镜像，确认其中已内置浏览器，备份原配置到原目录的 `.prism-upgrade-时间-随机值/original.yml`。
+3. 检查修改前后数据库服务、端口、挂载和环境变量保持一致；同时核对现有容器的环境与数据目录。配置里的 `${变量}` 表达式原样保留，不把 .env 的密钥展开写回配置。备份目录权限 0700、配置文件 0600。
+4. 用临时容器离线启动浏览器并验证沙箱，通过后才替换应用配置和应用容器。原数据库和缓存容器不会被重建，不执行删除数据卷的操作。
+5. 等待应用健康检查成功。浏览器仍由你在页面点击启动。以后继续原来的拉取镜像及重建应用命令即可，不必重复首次调整。
 
-本次集成管理使用本地受认证管理接口，配置项为 `GATEWAY_PRISM_BROWSER_MANAGEMENT_URL`。集成入口自动设置它及原有三项网关变量；旧独立部署默认留空。原生 systemd 部署仍按后文安装，新增网页控制不代表普通二进制能自行获得安装系统依赖的权限。
+脚本支持常规**单 Compose 文件、Linux Docker**部署。自定义入口、只读容器、主机网络、自定义安全策略、多文件组合等配置会停止并提示具体限制，不强行覆盖。要求当前用户能操作 Docker 且能写原部署目录。若原 .env 与运行中容器已经不一致，先核实差异再升级。应用健康检查失败会保留备份并返回错误，不自动回退可能已执行数据库迁移的版本。
 
-管理程序独立验证命令：`python -m unittest discover -s prism-adapter -p test_managed_runtime.py -v`。完整 Linux 浏览器验证仍使用 `deploy/prism/verify_linux.sh`，容器内可通过 `docker compose exec --user pwuser sub2api python3 /opt/sub2api/prism-adapter/container_runtime.py python3 -m unittest discover -s /opt/sub2api/prism-adapter -p 'test_*.py'` 运行测试，浏览器模拟测试脚本亦在相同目录。它们不调用真实账号。
+### 新安装与源码构建
 
-新增管理功能已通过后台接口及竞态测试、页面交互和账号编辑回归、8 项管理器测试（包括真实本地模拟进程启停与状态恢复）、前端类型检查及构建、Linux 主程序交叉编译、Compose 配置合并及脚本语法检查。Windows 上部分 Vitest 子进程退出超时后，改用线程池完整重跑通过，没有跳过测试。集成容器镜像的实际构建、Linux 浏览器沙箱运行和真实账号请求仍未在本机验证，不能把连接检查通过视作真实模型验收。
+使用本分支的 `deploy/docker-deploy.sh` 会同时下载默认配置和浏览器沙箱策略。手工复制部署文件时，需一起保留 `deploy/prism/seccomp_profile.json`；不要只复制 Compose 文件。默认 Dockerfile 和 deploy/Dockerfile 已内置浏览器，原来的 `--target prism` 仍兼容，但不再必需。发布版 Dockerfile.goreleaser 使用同样的环境；完整及简化发布流程都携带适配器和管理文件。
 
-以下是原有独立部署方式与功能约束。
+镜像包含浏览器，因此下载体积与构建时间增加。浏览器启动后额外占用内存，先用一个账号验证，再按负载观察资源。浏览器由普通用户运行，保留 Chromium 沙箱及 seccomp（系统调用限制），不使用特权容器、不关闭沙箱、不挂载 Docker 管理接口。首次升级会替换与该沙箱不兼容的 no-new-privileges 限制；这是已有容器必须进行一次配置调整的原因。
+
+原生二进制包（直接运行主程序的方式）不包含系统浏览器，这次自动集成针对 Docker 部署。
+
+## 验证与限制
+
+新增配置迁移测试验证原项目、其他服务、数据目录、环境表达式、备份和并发改动保护。Linux 自动化流程 `.github/workflows/prism-runtime.yml` 在 amd64、arm64 两种架构上构建实际发布镜像，离线验证浏览器沙箱、旧配置首次升级、服务启停和重复升级；使用模拟主程序，不使用真实账号或生产数据库。发布前应确认该流程通过。生产账号是否有 Prism 模型权限仍需部署后单独验证。
+
+旧独立适配器或原生部署参考以下附录；其中手动密钥和环境变量步骤不适用于新的默认集成镜像。
+
+
 
 1. **服务器总开关**：`GATEWAY_PRISM_BROWSER_ENABLED`，程序默认 false。还需配置本机适配器地址 `GATEWAY_PRISM_BROWSER_BASE_URL=http://127.0.0.1:8319/v1`，以及桥接密钥 `GATEWAY_PRISM_BROWSER_API_KEY`。
 2. **逐账号开关**：账号新建或编辑中的“Prism 浏览器通道”，默认关闭。只适用于直接 OpenAI OAuth（登录授权）账号，不适用于上游接口密钥、手动令牌、影子账号或代理身份。

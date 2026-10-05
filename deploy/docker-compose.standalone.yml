@@ -12,11 +12,14 @@
 
 services:
   sub2api:
-    image: weishaw/sub2api:latest
+    image: ghcr.io/chengyi-cc/sub2api:latest
     container_name: sub2api
     restart: unless-stopped
     security_opt:
-      - no-new-privileges:true
+      - seccomp=./prism/seccomp_profile.json
+    init: true
+    shm_size: 256m
+    stop_grace_period: 45s
     ulimits:
       nofile:
         soft: 100000

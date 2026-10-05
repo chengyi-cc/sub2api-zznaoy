@@ -19,7 +19,7 @@ check_application_security_opt() {
         in_security_opt = 1
         next
       }
-      in_application && in_security_opt && $0 == "      - no-new-privileges:true" {
+      in_application && in_security_opt && $0 == "      - seccomp=./prism/seccomp_profile.json" {
         count++
       }
       END { print count + 0 }
@@ -27,7 +27,7 @@ check_application_security_opt() {
   )
 
   if [ "$count" -ne 1 ]; then
-    printf '%s must enable no-new-privileges exactly once for the sub2api service\n' "$file" >&2
+    printf '%s must enable the Chromium sandbox seccomp policy exactly once for the sub2api service\n' "$file" >&2
     exit 1
   fi
 }

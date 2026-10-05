@@ -149,9 +149,18 @@ def contexts(args):
                 shutil.copyfileobj(source, output)
         (dest / 'sub2api').chmod(0o755)
         shutil.copy2('Dockerfile.goreleaser', dest / 'Dockerfile')
-        (dest / 'deploy').mkdir(exist_ok=True)
-        shutil.copy2('deploy/docker-entrypoint.sh', dest / 'deploy/docker-entrypoint.sh')
-        shutil.copytree('backend/resources', dest / 'backend/resources', dirs_exist_ok=True)
+        # Read packaging inputs from the selected source revision. The workflow
+        # can also release older tags that predate the bundled browser runtime.
+        for extra in config()['dockers'][0]['extra_files']:
+            source = Path(extra)
+            target_path = dest / source
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_dir():
+                shutil.copytree(source, target_path, dirs_exist_ok=True,
+                                ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '.venv', 'venv'))
+            else:
+                shutil.copy2(source, target_path)
+
 
 
 def main():

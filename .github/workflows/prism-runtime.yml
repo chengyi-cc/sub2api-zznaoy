@@ -1,0 +1,39 @@
+name: Prism bundled runtime
+on:
+  push:
+    paths:
+      - 'Dockerfile*'
+      - 'deploy/**'
+      - 'prism-adapter/**'
+      - '.github/release-tools/**'
+      - '.github/workflows/prism-runtime.yml'
+      - '.goreleaser*'
+  pull_request:
+    paths:
+      - 'Dockerfile*'
+      - 'deploy/**'
+      - 'prism-adapter/**'
+      - '.github/release-tools/**'
+      - '.github/workflows/prism-runtime.yml'
+      - '.goreleaser*'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r deploy/prism/requirements-upgrade.txt
+      - run: python -m unittest discover -s deploy/prism -p test_upgrade_config.py -v
+      - run: python -m unittest discover -s .github/release-tools -p test_release_matrix.py -v
+      - name: Build image and exercise first upgrade, sandbox, and controls
+        run: bash deploy/tests/prism-image-test.sh

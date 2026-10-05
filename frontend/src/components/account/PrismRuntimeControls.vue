@@ -17,6 +17,7 @@
     </div>
     <p class="mt-2 text-xs text-gray-500">{{ t('admin.prism.runtime.scope') }}</p>
     <p v-if="status && !status.managed" class="mt-2 text-xs text-amber-700 dark:text-amber-400">{{ t(`admin.prism.runtime.hints.${status.state === 'unmanaged' ? 'unmanaged' : 'install'}`) }}</p>
+    <button v-if="status?.state === 'not_installed'" type="button" class="btn btn-sm btn-secondary mt-2" data-testid="prism-copy-upgrade" @click="copyToClipboard(upgradeCommand)">{{ t('admin.prism.runtime.copyUpgrade') }}</button>
     <p v-if="status?.managed && !status.gateway_enabled" class="mt-2 text-xs text-amber-700 dark:text-amber-400">{{ t('admin.prism.runtime.hints.gatewayDisabled') }}</p>
     <p v-if="actionError || error" role="alert" class="mt-2 text-xs text-red-600">{{ actionError || error }}</p>
     <p v-if="checkResult" role="status" class="mt-2 text-xs text-gray-500">{{ checkResult }}</p>
@@ -40,9 +41,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useClipboard } from '@/composables/useClipboard'
 import { controlPrismRuntime, getPrismRuntime, type PrismRuntimeAction, type PrismRuntimeLog, type PrismRuntimeStatus } from '@/api/admin/prismRuntime'
 
 const { t, te } = useI18n()
+const { copyToClipboard } = useClipboard()
+const upgradeCommand = "(f=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/chengyi-cc/sub2api-zznaoy/main/deploy/upgrade-prism.sh -o \"$f\" && bash \"$f\"; rc=$?; [ -z \"${f:-}\" ] || rm -f -- \"$f\"; exit \"$rc\")"
 const status = ref<PrismRuntimeStatus | null>(null)
 const logs = ref<PrismRuntimeLog[]>([])
 const operating = ref(false)
