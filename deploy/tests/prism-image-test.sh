@@ -42,7 +42,7 @@ services:
   postgres:
     image: $image
     entrypoint: ["sleep", "infinity"]
-    healthcheck: {disable: true}
+    healthcheck: {test: ["CMD", "true"], interval: 1s}
 YAML
 printf 'TEST_DB_PASSWORD=fixture-only\nTEST_JWT_SECRET=fixture-only-token\n' > "$work/deployment/.env"
 cd "$work/deployment"
