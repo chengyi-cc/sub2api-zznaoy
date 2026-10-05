@@ -31,4 +31,8 @@ assert_line deploy/Dockerfile 'COPY --from=backend-builder /app/backend/resource
 assert_count .goreleaser.yaml '      - backend/resources' 4
 assert_count .goreleaser.simple.yaml '      - backend/resources' 1
 
+for dockerfile in Dockerfile Dockerfile.goreleaser deploy/Dockerfile; do
+  assert_line "$dockerfile" '    ln -s /app/managed-entrypoint.sh /app/docker-entrypoint.sh'
+done
+
 printf 'docker runtime resources test passed\n'

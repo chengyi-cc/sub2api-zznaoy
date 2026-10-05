@@ -182,11 +182,14 @@ WORKDIR /app
 COPY --from=backend-builder /app/sub2api /app/sub2api
 COPY --from=backend-builder /app/backend/resources /app/resources
 COPY deploy/prism/managed-entrypoint.sh /app/managed-entrypoint.sh
-RUN mkdir -p /app/data && chown pwuser:pwuser /app/data && chmod +x /app/managed-entrypoint.sh
+# Existing container managers can retain the old explicit entrypoint on update.
+# Keep both paths functional, including the old /app/sub2api command argument.
+RUN mkdir -p /app/data && chown pwuser:pwuser /app/data && chmod +x /app/managed-entrypoint.sh && \
+    ln -s /app/managed-entrypoint.sh /app/docker-entrypoint.sh
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -fsS --max-time 5 http://127.0.0.1:${SERVER_PORT:-8080}/health > /dev/null || exit 1
-ENTRYPOINT ["/app/managed-entrypoint.sh"]
-CMD []
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["/app/sub2api"]
 
 FROM prism AS final

@@ -34,6 +34,9 @@ cat > "$work/deployment/compose.yml" <<YAML
 services:
   sub2api:
     image: $image
+    # Simulate a container panel retaining the old entrypoint and command.
+    entrypoint: ["/app/docker-entrypoint.sh"]
+    command: ["/app/sub2api"]
     security_opt: ["no-new-privileges:true"]
     volumes: ["./data:/app/data"]
     environment:
@@ -48,6 +51,9 @@ printf 'TEST_DB_PASSWORD=fixture-only\nTEST_JWT_SECRET=fixture-only-token\n' > "
 cd "$work/deployment"
 compose=(docker compose -p "$project" -f compose.yml)
 "${compose[@]}" up -d --wait --wait-timeout 90
+# This must start before running the migration helper: merely pulling the
+# standard image must not strand panels that retained the original entrypoint.
+echo 'Legacy explicit entrypoint and command started successfully'
 app=$("${compose[@]}" ps -q sub2api)
 other=$("${compose[@]}" ps -q postgres)
 bash "$root/deploy/upgrade-prism.sh" --container "$app" --local-image "$image"
