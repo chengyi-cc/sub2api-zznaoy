@@ -93,12 +93,13 @@ type AstraBorrowStore interface {
 }
 
 type AstraBorrowStatus struct {
-	AccountID       int64      `json:"account_id"`
-	SourceAccountID int64      `json:"source_account_id"`
-	State           string     `json:"state"`
-	Reason          string     `json:"reason"`
-	CheckedAt       time.Time  `json:"checked_at"`
-	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
+	Probe           *AstraBorrowProbeDetails `json:"probe,omitempty"`
+	AccountID       int64                    `json:"account_id"`
+	SourceAccountID int64                    `json:"source_account_id"`
+	State           string                   `json:"state"`
+	Reason          string                   `json:"reason"`
+	CheckedAt       time.Time                `json:"checked_at"`
+	ExpiresAt       *time.Time               `json:"expires_at,omitempty"`
 }
 
 type AstraBorrowSnapshot struct {
@@ -218,7 +219,7 @@ func (s *AstraBorrowService) headers(ctx context.Context, a *Account) (http.Head
 	if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.gateway.accountRepo, h, a); err != nil {
 		return nil, errors.New("astra_auth_failed")
 	}
-	applyOpenAICodexProbeHeaders(h)
+	applyAstraBorrowProbeIdentity(h)
 	return h, nil
 }
 
@@ -331,7 +332,7 @@ func (s *AstraBorrowService) current(ctx context.Context, v AstraBorrowSettings)
 	return err == nil && now.Enabled && now.Revision == v.Revision
 }
 
-func (s *AstraBorrowService) record(v AstraBorrowSettings, source, target int64, passed bool, reason string, expiry *time.Time) {
+func (s *AstraBorrowService) record(v AstraBorrowSettings, source, target int64, passed bool, reason string, expiry *time.Time, evidence ...*AstraBorrowProbeDetails) {
 	now := time.Now()
 	s.mu.Lock()
 	if s.revision != v.Revision {
@@ -346,7 +347,12 @@ func (s *AstraBorrowService) record(v AstraBorrowSettings, source, target int64,
 	if passed {
 		state = "ready"
 	}
-	s.statuses[id] = AstraBorrowStatus{AccountID: id, SourceAccountID: source, State: state, Reason: reason, CheckedAt: now, ExpiresAt: expiry}
+	var probe *AstraBorrowProbeDetails
+	if len(evidence) != 0 && evidence[0] != nil {
+		copy := *evidence[0]
+		probe = &copy
+	}
+	s.statuses[id] = AstraBorrowStatus{Probe: probe, AccountID: id, SourceAccountID: source, State: state, Reason: reason, CheckedAt: now, ExpiresAt: expiry}
 	s.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -425,6 +431,7 @@ func (s *AstraBorrowService) ensureRoute(ctx context.Context, v AstraBorrowSetti
 	s.statuses[target.ID] = AstraBorrowStatus{AccountID: target.ID, State: "verifying", Reason: "verifying", CheckedAt: time.Now()}
 	s.mu.Unlock()
 	reason := "astra_no_source_route"
+	lastRecordedTargetReason := ""
 	for _, sourceID := range v.SourceAccountIDs {
 		if ctx.Err() != nil {
 			reason = "astra_probe_timeout"
@@ -439,7 +446,8 @@ func (s *AstraBorrowService) ensureRoute(ctx context.Context, v AstraBorrowSetti
 		if v.FollowSourceProxy {
 			proxy = route.proxy
 		}
-		err = s.probeTarget(ctx, target, headers, profile, route, proxy)
+		details, probeErr := s.probeTarget(ctx, target, headers, profile, route, proxy)
+		err = probeErr
 		if err == nil && (!s.current(ctx, v) || !time.Now().Before(route.expires) || !s.routeStored(route) || !s.routeIdentityValid(ctx, route)) {
 			err = errors.New("astra_configuration_changed")
 		}
@@ -459,12 +467,16 @@ func (s *AstraBorrowService) ensureRoute(ctx context.Context, v AstraBorrowSetti
 			s.checks[target.ID] = astraBorrowValidation{route: route, targetIdentity: identity, passed: passed, retryAfter: time.Now().Add(30 * time.Second)}
 		}
 		s.mu.Unlock()
-		s.record(v, sourceID, target.ID, passed, reason, &route.expires)
+		s.record(v, sourceID, target.ID, passed, reason, &route.expires, &details)
+		lastRecordedTargetReason = reason
 		if passed {
 			return route, nil
 		}
 	}
-	s.record(v, 0, target.ID, false, reason, nil)
+	// Do not duplicate a recorded target failure with an anonymous summary row.
+	if lastRecordedTargetReason != reason {
+		s.record(v, 0, target.ID, false, reason, nil)
+	}
 	return zero, errors.New(reason)
 }
 

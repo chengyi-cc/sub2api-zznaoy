@@ -51,6 +51,11 @@
             <p class="mt-1 text-sm" :class="row.state === 'ready' && remaining(row.expires_at) > 0 ? 'text-emerald-600' : 'text-gray-500'">{{ statusText(row) }} · {{ reasonText(row.reason) }}</p>
             <p v-if="row.source_account_id && row.source_account_id !== row.account_id" class="mt-1 text-xs text-gray-500">{{ tr('source') }}: {{ accountName(row.source_account_id) }}</p>
             <p v-if="row.expires_at" class="mt-1 text-xs text-gray-500">{{ tr('remaining', { seconds: remaining(row.expires_at) }) }}</p>
+            <div v-if="row.probe" class="mt-2 space-y-1 text-xs text-gray-500" data-testid="probe-details">
+              <p>{{ tr('probeStatuses', { mint: row.probe.mint_status || '—', continuation: row.probe.continue_status || '—' }) }}</p>
+              <p>{{ tr('probeTickets', { mint: row.probe.ticket_length, continuation: row.probe.continue_ticket_length }) }}</p>
+              <p v-if="row.probe.ticket_length > 0 && row.probe.ticket_length !== 780" class="text-amber-600" data-testid="probe-ticket-warning">{{ tr('ticketLengthWarning') }}</p>
+            </div>
           </div>
           <button v-if="saved?.target_account_ids.includes(row.account_id)" type="button" class="btn btn-secondary btn-sm" :disabled="!saved.enabled || dirty || verifying !== null || snapshot?.preparing" @click="verify(row.account_id)">{{ verifying === row.account_id ? tr('verifying') : tr('verify') }}</button>
         </div>

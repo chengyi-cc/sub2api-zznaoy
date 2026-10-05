@@ -12,12 +12,37 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
+// Only non-secret evidence is exposed; raw tickets and cookies stay local.
+type AstraBorrowProbeDetails struct {
+	MintStatus           int  `json:"mint_status"`
+	ContinueStatus       int  `json:"continue_status"`
+	TicketLength         int  `json:"ticket_length"`
+	ContinueTicketLength int  `json:"continue_ticket_length"`
+	NewTicket            bool `json:"new_ticket"`
+}
+
+// Match the reference harvest identity, including its Astra-specific version floor.
+func applyAstraBorrowProbeIdentity(h http.Header) {
+	if h == nil {
+		return
+	}
+	ensureCodexIdentityHeaders(h)
+	enforceCodexIdentityHeaders(h)
+	if CompareVersions(h.Get("version"), "0.153.4") < 0 {
+		h.Set("version", "0.153.4")
+		h.Set("user-agent", buildCodexCLIUserAgent("0.153.4"))
+		h.Set("originator", openai.CodexDefaultOriginator)
+	}
+}
+
 type astraBorrowShot struct {
+	status     int
 	state      string
 	cookies    []*http.Cookie
 	receivedAt time.Time
@@ -81,6 +106,7 @@ func (s *AstraBorrowService) fire(ctx context.Context, account *Account, headers
 		return out, errors.New("astra_stream_incomplete")
 	}
 	defer func() { _ = resp.Body.Close() }()
+	out.status = resp.StatusCode
 	if resp.StatusCode != http.StatusOK {
 		return out, fmt.Errorf("astra_upstream_%d", resp.StatusCode)
 	}
@@ -175,17 +201,18 @@ func validateAstraBorrowStream(data []byte) error {
 	return nil
 }
 
-func (s *AstraBorrowService) probeTarget(ctx context.Context, target *Account, headers http.Header, profile *tlsfingerprint.Profile, route astraBorrowRoute, proxy string) error {
+func (s *AstraBorrowService) probeTarget(ctx context.Context, target *Account, headers http.Header, profile *tlsfingerprint.Profile, route astraBorrowRoute, proxy string) (details AstraBorrowProbeDetails, resultErr error) {
 	seed := (&http.Cookie{Name: "__oailb", Value: route.cookie.Value}).String()
 	first, err := s.fire(ctx, target, headers, profile, proxy, "", seed)
+	details.MintStatus, details.TicketLength = first.status, len(first.state)
 	if err != nil {
-		return err
+		return details, err
 	}
 	if astraCookiesChanged(first.cookies, route.cookie.Value) {
-		return errors.New("astra_route_changed")
+		return details, errors.New("astra_route_changed")
 	}
 	if first.state == "" {
-		return errors.New("astra_ticket_missing")
+		return details, errors.New("astra_ticket_missing")
 	}
 	// __cflb belongs to the target response, never to the source account.
 	cookies := seed
@@ -196,19 +223,21 @@ func (s *AstraBorrowService) probeTarget(ctx context.Context, target *Account, h
 		}
 	}
 	if !time.Now().Before(route.expires) {
-		return errors.New("astra_route_expired")
+		return details, errors.New("astra_route_expired")
 	}
 	second, err := s.fire(ctx, target, headers, profile, proxy, first.state, cookies)
+	details.ContinueStatus, details.ContinueTicketLength = second.status, len(second.state)
+	details.NewTicket = second.state != "" && second.state != first.state
 	if err != nil {
-		return err
+		return details, err
 	}
 	if astraCookiesChanged(second.cookies, route.cookie.Value) {
-		return errors.New("astra_route_changed")
+		return details, errors.New("astra_route_changed")
 	}
 	if second.state != "" && second.state != first.state {
-		return errors.New("astra_ticket_changed")
+		return details, errors.New("astra_ticket_changed")
 	}
-	return nil
+	return details, nil
 }
 
 func astraRouteChanged(resp *http.Response, value string) bool {

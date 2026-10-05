@@ -15,6 +15,13 @@ export interface AstraBorrowStatus {
   reason: string
   checked_at: string
   expires_at?: string
+  probe?: {
+    mint_status: number
+    continue_status: number
+    ticket_length: number
+    continue_ticket_length: number
+    new_ticket: boolean
+  }
 }
 export interface AstraBorrowSnapshot {
   settings: AstraBorrowSettings

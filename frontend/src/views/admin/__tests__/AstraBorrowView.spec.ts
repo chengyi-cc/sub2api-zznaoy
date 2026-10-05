@@ -19,6 +19,14 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('Astra borrowing', () => {
+  it('shows safe probe evidence and flags ticket shapes outside the documented criterion', async () => {
+    api.get.mockResolvedValue({ settings: { ...defaults }, statuses: [{ account_id: 2, source_account_id: 1, state: 'failed', reason: 'astra_ticket_changed', probe: { mint_status: 200, continue_status: 200, ticket_length: 332, continue_ticket_length: 332, new_ticket: true } }], preparing: false })
+    const w = setup(); await flushPromises()
+    expect(w.get('[data-testid="probe-details"]').text()).toContain('probeStatuses')
+    expect(w.get('[data-testid="probe-ticket-warning"]').text()).toContain('ticketLengthWarning')
+    expect(api.verify).not.toHaveBeenCalled()
+    w.unmount()
+  })
   it('reading and polling never save or probe and polling stops on unmount', async () => {
     const w = setup(); await flushPromises(); await vi.advanceTimersByTimeAsync(15000)
     expect(api.get).toHaveBeenCalledTimes(4); expect(api.save).not.toHaveBeenCalled(); expect(api.verify).not.toHaveBeenCalled()
