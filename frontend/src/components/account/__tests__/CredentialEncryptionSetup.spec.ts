@@ -1,10 +1,10 @@
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CredentialEncryptionSetup from '../CredentialEncryptionSetup.vue'
-import { getCredentialEncryption, initializeCredentialEncryption } from '@/api/admin/credentialEncryption'
+import { getCredentialEncryption, initializeCredentialEncryption, resetCredentialEncryption } from '@/api/admin/credentialEncryption'
 
 vi.mock('vue-i18n', async importOriginal => ({ ...await importOriginal<typeof import('vue-i18n')>(), useI18n: () => ({ t: (key: string) => key }) }))
-vi.mock('@/api/admin/credentialEncryption', () => ({ getCredentialEncryption: vi.fn(), initializeCredentialEncryption: vi.fn() }))
+vi.mock('@/api/admin/credentialEncryption', () => ({ getCredentialEncryption: vi.fn(), initializeCredentialEncryption: vi.fn(), resetCredentialEncryption: vi.fn() }))
 enableAutoUnmount(afterEach)
 beforeEach(() => {
   vi.resetAllMocks()
@@ -13,6 +13,32 @@ beforeEach(() => {
 })
 
 describe('CredentialEncryptionSetup', () => {
+  it('clears old credentials only after explicit confirmation of a missing-key recovery', async () => {
+    vi.mocked(getCredentialEncryption).mockRejectedValue({ reason: 'CREDENTIAL_ENCRYPTION_KEY_MISSING' })
+    vi.mocked(resetCredentialEncryption).mockResolvedValue({ configured: true, source: 'local_file' })
+    const wrapper = mount(CredentialEncryptionSetup)
+    await flushPromises()
+    expect(wrapper.text()).toContain('keyMissing')
+    expect(resetCredentialEncryption).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="reset-credential-encryption"]').trigger('click')
+    expect(resetCredentialEncryption).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="confirm-reset-credential-encryption"]').trigger('click')
+    await flushPromises()
+    expect(resetCredentialEncryption).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('ready')?.at(-1)).toEqual([true])
+  })
+  it('explains a missing persistent mount without offering further destructive operations', async () => {
+    vi.mocked(getCredentialEncryption).mockRejectedValue({ reason: 'CREDENTIAL_ENCRYPTION_KEY_MISSING' })
+    vi.mocked(resetCredentialEncryption).mockRejectedValue({ reason: 'CREDENTIAL_ENCRYPTION_DATA_NOT_PERSISTENT' })
+    const wrapper = mount(CredentialEncryptionSetup)
+    await flushPromises()
+    await wrapper.get('[data-testid="reset-credential-encryption"]').trigger('click')
+    await wrapper.get('[data-testid="confirm-reset-credential-encryption"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('notPersistent')
+    expect(wrapper.find('[data-testid="reset-credential-encryption"]').exists()).toBe(false)
+    expect(wrapper.emitted('ready')?.at(-1)).toEqual([false])
+  })
   it('checks status without generating a key and initializes only on a click', async () => {
     const wrapper = mount(CredentialEncryptionSetup)
     await flushPromises()

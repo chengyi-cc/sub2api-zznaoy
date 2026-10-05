@@ -36,6 +36,17 @@ export default {
   },
 
   encryption: {
+    unavailable: 'Encryption is unavailable; saved credentials may still exist',
+    keyMissing: 'Saved re-login credentials remain, but the original encryption key is missing. Restore it, or explicitly clear old credentials and set up encryption again.',
+    notPersistent: 'The key directory has no writable persistent mount. Mount /app/data (or your custom DATA_DIR) to a stable host directory or volume, then retry. Old credentials were not cleared.',
+    reset: 'Clear old re-login credentials and enable encryption',
+    resetConfirm: 'Permanently clear saved login emails, encrypted passwords, 2FA secrets and legacy OTP links. You must enter them again. Account records, access tokens, balances and site two-factor authentication are preserved. Remove all monitored accounts and finish active re-login tasks first.',
+    resetConfirmButton: 'Confirm clearing and reinitialize',
+    cancel: 'Cancel',
+    recoveryInUse: 'Monitored accounts or active re-login tasks remain. Nothing was cleared. Remove the monitors and wait for tasks to finish before retrying.',
+    recoveryNotNeeded: 'A usable key already exists. Nothing was cleared. Refresh the status.',
+    clearFailed: 'Cleanup was not confirmed. Check database connectivity and retry.',
+    recoveryInitializeFailed: 'Old credentials were cleared, but key initialization failed. Check persistent directory permissions, refresh the status, then initialize encryption.',
     "title": "Credential encryption",
     "ready": "Enabled; login credentials can be saved",
     "checking": "Checking encryption configuration…",

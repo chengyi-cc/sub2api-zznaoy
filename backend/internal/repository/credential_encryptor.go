@@ -26,6 +26,7 @@ type credentialEncryptor struct {
 	fixed                bool
 	keyPath              string
 	hasStoredCredentials func() (bool, error)
+	checkStorage         func() error
 }
 
 func NewOpenAICredentialEncryptor(cfg *config.Config, fallback service.SecretEncryptor, db *sql.DB) service.OpenAICredentialEncryptor {
@@ -37,7 +38,7 @@ func NewOpenAICredentialEncryptor(cfg *config.Config, fallback service.SecretEnc
 			dir = "./data"
 		}
 	}
-	return &credentialEncryptor{fallback: fallback, fixed: cfg != nil && cfg.Totp.EncryptionKeyConfigured, keyPath: filepath.Join(dir, "secrets", "credential-operations.key"), hasStoredCredentials: func() (bool, error) {
+	return &credentialEncryptor{fallback: fallback, fixed: cfg != nil && cfg.Totp.EncryptionKeyConfigured, keyPath: filepath.Join(dir, "secrets", "credential-operations.key"), checkStorage: func() error { return checkCredentialContainerStorage(filepath.Join(dir, "secrets")) }, hasStoredCredentials: func() (bool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		var exists bool
@@ -85,7 +86,7 @@ func (e *credentialEncryptor) EncryptionStatus() (service.CredentialEncryptionSt
 				return service.CredentialEncryptionStatus{}, readErr
 			}
 			if exists {
-				return service.CredentialEncryptionStatus{}, errors.New("restore the original credential encryption key")
+				return service.CredentialEncryptionStatus{}, service.ErrCredentialEncryptionKeyMissing
 			}
 		}
 		return service.CredentialEncryptionStatus{Source: "unconfigured"}, nil
@@ -99,6 +100,9 @@ func (e *credentialEncryptor) EncryptionStatus() (service.CredentialEncryptionSt
 func (e *credentialEncryptor) InitializeEncryption() (service.CredentialEncryptionStatus, error) {
 	status, err := e.EncryptionStatus()
 	if err != nil || status.Configured {
+		return status, err
+	}
+	if err := e.ValidatePersistentStorage(); err != nil {
 		return status, err
 	}
 	dir := filepath.Dir(e.keyPath)
@@ -137,6 +141,13 @@ func (e *credentialEncryptor) InitializeEncryption() (service.CredentialEncrypti
 		return status, err
 	}
 	return e.EncryptionStatus()
+}
+
+func (e *credentialEncryptor) ValidatePersistentStorage() error {
+	if e.checkStorage != nil {
+		return e.checkStorage()
+	}
+	return nil
 }
 
 func (e *credentialEncryptor) Encrypt(plaintext string) (string, error) {

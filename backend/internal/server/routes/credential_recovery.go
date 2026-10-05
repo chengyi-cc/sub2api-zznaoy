@@ -31,6 +31,7 @@ func registerCredentialRecoveryRoutes(admin *gin.RouterGroup, h *handler.Handler
 	})
 	group.GET("/encryption", h.Admin.OpenAIOAuthReauth.CredentialEncryption)
 	group.POST("/encryption/initialize", h.Admin.OpenAIOAuthReauth.InitializeCredentialEncryption)
+	group.POST("/encryption/reset", h.Admin.OpenAIOAuthReauth.ResetCredentialEncryption)
 	group.GET("/accounts", h.Admin.AccountTokenGuardV2.List)
 	group.PUT("/rules", h.Admin.AccountTokenGuardV2.SaveRules)
 	group.PUT("/runtime", h.Admin.AccountTokenGuardV2.SaveRuntime)

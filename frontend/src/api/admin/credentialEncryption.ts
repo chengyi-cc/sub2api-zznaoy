@@ -14,3 +14,7 @@ export async function getCredentialEncryption(): Promise<CredentialEncryptionSta
 export async function initializeCredentialEncryption(): Promise<CredentialEncryptionStatus> {
   return (await apiClient.post(`${path}/initialize`)).data
 }
+
+export async function resetCredentialEncryption(): Promise<CredentialEncryptionStatus> {
+  return (await apiClient.post(`${path}/reset`, { discard_saved_login_credentials: true })).data
+}

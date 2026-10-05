@@ -182,6 +182,7 @@ type OpenAIOAuthReauthAccountReader interface {
 }
 
 type OpenAIOAuthReauthService struct {
+	credentialRecoveryMu    sync.RWMutex
 	settings                AccountTokenGuardV2Settings
 	worker                  *reauthruntime.Manager
 	workerToken             string
@@ -373,6 +374,8 @@ func (s *OpenAIOAuthReauthService) SaveCredentialConfig(ctx context.Context, acc
 	if err := s.ensureReady(); err != nil {
 		return nil, err
 	}
+	s.credentialRecoveryMu.RLock()
+	defer s.credentialRecoveryMu.RUnlock()
 	if err := s.ensureDurableEncryption(); err != nil {
 		return nil, err
 	}
@@ -588,6 +591,8 @@ func (s *OpenAIOAuthReauthService) CreateTask(ctx context.Context, accountID int
 	if err := s.ensureReady(); err != nil {
 		return nil, err
 	}
+	s.credentialRecoveryMu.RLock()
+	defer s.credentialRecoveryMu.RUnlock()
 	if err := s.ensureDurableEncryption(); err != nil {
 		return nil, err
 	}
