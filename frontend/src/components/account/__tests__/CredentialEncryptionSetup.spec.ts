@@ -15,7 +15,7 @@ beforeEach(() => {
 describe('CredentialEncryptionSetup', () => {
   it('clears old credentials only after explicit confirmation of a missing-key recovery', async () => {
     vi.mocked(getCredentialEncryption).mockRejectedValue({ reason: 'CREDENTIAL_ENCRYPTION_KEY_MISSING' })
-    vi.mocked(resetCredentialEncryption).mockResolvedValue({ configured: true, source: 'local_file' })
+    vi.mocked(resetCredentialEncryption).mockResolvedValue({ configured: true, source: 'database' })
     const wrapper = mount(CredentialEncryptionSetup)
     await flushPromises()
     expect(wrapper.text()).toContain('keyMissing')
@@ -26,16 +26,17 @@ describe('CredentialEncryptionSetup', () => {
     await flushPromises()
     expect(resetCredentialEncryption).toHaveBeenCalledTimes(1)
     expect(wrapper.emitted('ready')?.at(-1)).toEqual([true])
+    expect(wrapper.text()).toContain('databaseHint')
   })
-  it('explains a missing persistent mount without offering further destructive operations', async () => {
+  it('does not offer destructive recovery while database availability is unknown', async () => {
     vi.mocked(getCredentialEncryption).mockRejectedValue({ reason: 'CREDENTIAL_ENCRYPTION_KEY_MISSING' })
-    vi.mocked(resetCredentialEncryption).mockRejectedValue({ reason: 'CREDENTIAL_ENCRYPTION_DATA_NOT_PERSISTENT' })
+    vi.mocked(resetCredentialEncryption).mockRejectedValue({ reason: 'CREDENTIAL_ENCRYPTION_STORAGE_FAILED' })
     const wrapper = mount(CredentialEncryptionSetup)
     await flushPromises()
     await wrapper.get('[data-testid="reset-credential-encryption"]').trigger('click')
     await wrapper.get('[data-testid="confirm-reset-credential-encryption"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[role="alert"]').text()).toContain('notPersistent')
+    expect(wrapper.get('[role="alert"]').text()).toContain('initializeFailed')
     expect(wrapper.find('[data-testid="reset-credential-encryption"]').exists()).toBe(false)
     expect(wrapper.emitted('ready')?.at(-1)).toEqual([false])
   })

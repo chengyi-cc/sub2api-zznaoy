@@ -2,7 +2,7 @@ import { apiClient } from '../client'
 
 export interface CredentialEncryptionStatus {
   configured: boolean
-  source: 'unconfigured' | 'server_config' | 'local_file'
+  source: 'unconfigured' | 'server_config' | 'local_file' | 'database'
 }
 
 const path = '/admin/account-ops/token-guard-v2/encryption'

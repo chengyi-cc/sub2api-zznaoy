@@ -19,6 +19,7 @@
     </div>
     <p v-if="status && !status.configured" class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('tokenGuardV2.encryption.description') }}</p>
     <p v-if="status?.source === 'local_file'" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('tokenGuardV2.encryption.backupHint') }}</p>
+    <p v-if="status?.source === 'database'" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('tokenGuardV2.encryption.databaseHint') }}</p>
     <slot />
   </section>
 </template>
@@ -51,7 +52,6 @@ async function request(action: 'check' | 'initialize' | 'reset') {
     const reason = (err as { reason?: string })?.reason
     const messages: Record<string, string> = {
       CREDENTIAL_ENCRYPTION_KEY_MISSING: 'keyMissing',
-      CREDENTIAL_ENCRYPTION_DATA_NOT_PERSISTENT: 'notPersistent',
       CREDENTIAL_RECOVERY_IN_USE: 'recoveryInUse',
       CREDENTIAL_RECOVERY_NOT_NEEDED: 'recoveryNotNeeded',
       CREDENTIAL_RECOVERY_CLEAR_FAILED: 'clearFailed',

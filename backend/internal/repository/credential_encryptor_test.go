@@ -168,14 +168,15 @@ func TestCredentialEncryptionProviderChecksExistingDatabaseSecrets(t *testing.T)
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
 			defer func() { _ = db.Close() }()
+			mock.ExpectQuery("SELECT value FROM security_secrets").WithArgs(credentialDatabaseKey).WillReturnRows(sqlmock.NewRows([]string{"value"}))
 			mock.ExpectQuery("SELECT EXISTS ").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(exists))
 			e := NewOpenAICredentialEncryptor(&config.Config{}, aesEncryptor(t), db)
-			status, err := e.InitializeEncryption()
+			status, err := e.EncryptionStatus()
 			if exists {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				require.True(t, status.Configured)
+				require.False(t, status.Configured)
 			}
 			require.NoError(t, mock.ExpectationsWereMet())
 		})

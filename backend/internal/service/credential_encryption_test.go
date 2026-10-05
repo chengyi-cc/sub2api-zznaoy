@@ -70,12 +70,10 @@ func (r *credentialResetTestRepo) ClearOrphanedCredentialConfigs(context.Context
 
 type credentialResetTestEncryptor struct {
 	managedReauthTestEncryptor
-	persistenceErr error
-	initializeErr  error
-	initialized    bool
+	initializeErr error
+	initialized   bool
 }
 
-func (e *credentialResetTestEncryptor) ValidatePersistentStorage() error { return e.persistenceErr }
 func (e *credentialResetTestEncryptor) InitializeEncryption() (CredentialEncryptionStatus, error) {
 	e.initialized = true
 	if e.initializeErr != nil {
@@ -88,16 +86,15 @@ func (e *credentialResetTestEncryptor) InitializeEncryption() (CredentialEncrypt
 
 func TestCredentialEncryptionRecoveryGuardsAndSuccess(t *testing.T) {
 	for _, tc := range []struct {
-		name                                 string
-		keyErr, storageErr, repoErr, initErr error
-		ready, clear, init                   bool
-		reason                               string
+		name                     string
+		keyErr, repoErr, initErr error
+		ready, clear, init       bool
+		reason                   string
 	}{
 		{name: "missing key recovery", keyErr: ErrCredentialEncryptionKeyMissing, clear: true, init: true},
 		{name: "retry empty setup", clear: true, init: true},
 		{name: "readable key preserved", ready: true, reason: "CREDENTIAL_RECOVERY_NOT_NEEDED"},
 		{name: "invalid key preserved", keyErr: errors.New("private-path-and-key"), reason: "CREDENTIAL_ENCRYPTION_STORAGE_FAILED"},
-		{name: "mount required before cleanup", keyErr: ErrCredentialEncryptionKeyMissing, storageErr: ErrCredentialEncryptionNotPersistent, reason: "CREDENTIAL_ENCRYPTION_DATA_NOT_PERSISTENT"},
 		{name: "active state blocks cleanup", keyErr: ErrCredentialEncryptionKeyMissing, repoErr: ErrCredentialRecoveryInUse, clear: true, reason: "CREDENTIAL_RECOVERY_IN_USE"},
 		{name: "database failure blocks initialization", keyErr: ErrCredentialEncryptionKeyMissing, repoErr: errors.New("private-database-error"), clear: true, reason: "CREDENTIAL_RECOVERY_CLEAR_FAILED"},
 		{name: "initialization failure remains explicit", keyErr: ErrCredentialEncryptionKeyMissing, initErr: errors.New("private-file-error"), clear: true, init: true, reason: "CREDENTIAL_RECOVERY_INITIALIZE_FAILED"},
@@ -105,7 +102,7 @@ func TestCredentialEncryptionRecoveryGuardsAndSuccess(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, _, _, _, _, _ := newReauthTestService("acct-1")
 			repo := &credentialResetTestRepo{err: tc.repoErr}
-			encryptor := &credentialResetTestEncryptor{managedReauthTestEncryptor: managedReauthTestEncryptor{ready: tc.ready, err: tc.keyErr}, persistenceErr: tc.storageErr, initializeErr: tc.initErr}
+			encryptor := &credentialResetTestEncryptor{managedReauthTestEncryptor: managedReauthTestEncryptor{ready: tc.ready, err: tc.keyErr}, initializeErr: tc.initErr}
 			svc.repo = repo
 			svc.encryptor = encryptor
 			status, err := svc.ResetCredentialEncryption(context.Background())

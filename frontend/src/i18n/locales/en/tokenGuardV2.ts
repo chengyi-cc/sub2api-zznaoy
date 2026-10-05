@@ -38,7 +38,7 @@ export default {
   encryption: {
     unavailable: 'Encryption is unavailable; saved credentials may still exist',
     keyMissing: 'Saved re-login credentials remain, but the original encryption key is missing. Restore it, or explicitly clear old credentials and set up encryption again.',
-    notPersistent: 'The key directory has no writable persistent mount. Mount /app/data (or your custom DATA_DIR) to a stable host directory or volume, then retry. Old credentials were not cleared.',
+    databaseHint: 'Encryption configuration is saved in the existing database and survives container recreation. No additional mount or manually entered key is required. Include it in full database backups.',
     reset: 'Clear old re-login credentials and enable encryption',
     resetConfirm: 'Permanently clear saved login emails, encrypted passwords, 2FA secrets and legacy OTP links. You must enter them again. Account records, access tokens, balances and site two-factor authentication are preserved. Remove all monitored accounts and finish active re-login tasks first.',
     resetConfirmButton: 'Confirm clearing and reinitialize',
@@ -46,7 +46,7 @@ export default {
     recoveryInUse: 'Monitored accounts or active re-login tasks remain. Nothing was cleared. Remove the monitors and wait for tasks to finish before retrying.',
     recoveryNotNeeded: 'A usable key already exists. Nothing was cleared. Refresh the status.',
     clearFailed: 'Cleanup was not confirmed. Check database connectivity and retry.',
-    recoveryInitializeFailed: 'Old credentials were cleared, but key initialization failed. Check persistent directory permissions, refresh the status, then initialize encryption.',
+    recoveryInitializeFailed: 'Old credentials were cleared, but saving the new key failed. Check database connectivity and write permissions, refresh the status, then initialize encryption.',
     "title": "Credential encryption",
     "ready": "Enabled; login credentials can be saved",
     "checking": "Checking encryption configuration…",
@@ -56,8 +56,8 @@ export default {
     "retry": "Check again",
     "description": "The server generates and persists a dedicated encryption key. It takes effect immediately without environment variables or a restart. Enter the account’s 2FA secret separately in the account form.",
     "backupHint": "Back up secrets/credential-operations.key in the persistent data directory together with the database. Multiple instances must share this key file.",
-    "initializeFailed": "Could not enable encryption. Check persistent directory permissions. Existing keys are never replaced; restore the original file if it was lost.",
-    "loadFailed": "Could not read encryption status. Retry, or restore the original key file if it is damaged or missing.",
+    "initializeFailed": "Could not enable encryption. Check database connectivity, write permissions or the original encryption configuration. Existing keys are never replaced.",
+    "loadFailed": "Could not read encryption status. Check database connectivity or the original encryption configuration and retry.",
     "editorHint": "Close this dialog and enable credential encryption at the top of the page before continuing."
 },
   totpOptionalHint: "Optional only when account 2FA is disabled; otherwise enter its secret",

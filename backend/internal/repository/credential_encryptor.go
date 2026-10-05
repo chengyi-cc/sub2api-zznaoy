@@ -26,7 +26,7 @@ type credentialEncryptor struct {
 	fixed                bool
 	keyPath              string
 	hasStoredCredentials func() (bool, error)
-	checkStorage         func() error
+	db                   *sql.DB
 }
 
 func NewOpenAICredentialEncryptor(cfg *config.Config, fallback service.SecretEncryptor, db *sql.DB) service.OpenAICredentialEncryptor {
@@ -38,7 +38,7 @@ func NewOpenAICredentialEncryptor(cfg *config.Config, fallback service.SecretEnc
 			dir = "./data"
 		}
 	}
-	return &credentialEncryptor{fallback: fallback, fixed: cfg != nil && cfg.Totp.EncryptionKeyConfigured, keyPath: filepath.Join(dir, "secrets", "credential-operations.key"), checkStorage: func() error { return checkCredentialContainerStorage(filepath.Join(dir, "secrets")) }, hasStoredCredentials: func() (bool, error) {
+	return &credentialEncryptor{fallback: fallback, fixed: cfg != nil && cfg.Totp.EncryptionKeyConfigured, keyPath: filepath.Join(dir, "secrets", "credential-operations.key"), db: db, hasStoredCredentials: func() (bool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		var exists bool
@@ -78,7 +78,7 @@ func (e *credentialEncryptor) EncryptionStatus() (service.CredentialEncryptionSt
 	if e.fixed {
 		return service.CredentialEncryptionStatus{Configured: true, Source: "server_config"}, nil
 	}
-	_, err := e.localEncryptor()
+	_, err := e.activeEncryptor()
 	if errors.Is(err, os.ErrNotExist) {
 		if e.hasStoredCredentials != nil {
 			exists, readErr := e.hasStoredCredentials()
@@ -94,7 +94,11 @@ func (e *credentialEncryptor) EncryptionStatus() (service.CredentialEncryptionSt
 	if err != nil {
 		return service.CredentialEncryptionStatus{}, err
 	}
-	return service.CredentialEncryptionStatus{Configured: true, Source: "local_file"}, nil
+	source := "local_file"
+	if e.db != nil {
+		source = "database"
+	}
+	return service.CredentialEncryptionStatus{Configured: true, Source: source}, nil
 }
 
 func (e *credentialEncryptor) InitializeEncryption() (service.CredentialEncryptionStatus, error) {
@@ -102,8 +106,8 @@ func (e *credentialEncryptor) InitializeEncryption() (service.CredentialEncrypti
 	if err != nil || status.Configured {
 		return status, err
 	}
-	if err := e.ValidatePersistentStorage(); err != nil {
-		return status, err
+	if e.db != nil {
+		return e.initializeDatabaseEncryption()
 	}
 	dir := filepath.Dir(e.keyPath)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -143,18 +147,11 @@ func (e *credentialEncryptor) InitializeEncryption() (service.CredentialEncrypti
 	return e.EncryptionStatus()
 }
 
-func (e *credentialEncryptor) ValidatePersistentStorage() error {
-	if e.checkStorage != nil {
-		return e.checkStorage()
-	}
-	return nil
-}
-
 func (e *credentialEncryptor) Encrypt(plaintext string) (string, error) {
 	if e.fixed {
 		return e.fallback.Encrypt(plaintext)
 	}
-	local, err := e.localEncryptor()
+	local, err := e.activeEncryptor()
 	if err != nil {
 		return "", errors.New("credential encryption is unavailable")
 	}
@@ -167,7 +164,7 @@ func (e *credentialEncryptor) Encrypt(plaintext string) (string, error) {
 
 func (e *credentialEncryptor) Decrypt(ciphertext string) (string, error) {
 	if strings.HasPrefix(ciphertext, credentialCipherPrefix) {
-		local, err := e.localEncryptor()
+		local, err := e.activeEncryptor()
 		if err != nil {
 			return "", errors.New("credential encryption is unavailable")
 		}

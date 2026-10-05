@@ -9,18 +9,13 @@ import (
 )
 
 var ErrCredentialEncryptionKeyMissing = errors.New("original credential encryption key missing")
-var ErrCredentialEncryptionNotPersistent = errors.New("credential encryption data directory is not persistently mounted")
 var ErrCredentialRecoveryInUse = errors.New("credential recovery still has monitored accounts or active tasks")
 
 type credentialRecoveryStore interface {
 	ClearOrphanedCredentialConfigs(context.Context) error
 }
 
-type credentialPersistentStorage interface {
-	ValidatePersistentStorage() error
-}
-
-// CredentialEncryptionStatus never contains a key or a ciphertext. The local
+// CredentialEncryptionStatus never contains a key or a ciphertext. The dedicated
 // key belongs only to account re-login credentials, not user TOTP or payments.
 type CredentialEncryptionStatus struct {
 	Configured bool   `json:"configured"`
@@ -75,9 +70,8 @@ func (s *OpenAIOAuthReauthService) ResetCredentialEncryption(ctx context.Context
 	s.credentialRecoveryMu.Lock()
 	defer s.credentialRecoveryMu.Unlock()
 	manager, managed := s.encryptor.(OpenAICredentialEncryptor)
-	storage, checkable := s.encryptor.(credentialPersistentStorage)
 	repo, recoverable := s.repo.(credentialRecoveryStore)
-	if !managed || !checkable || !recoverable {
+	if !managed || !recoverable {
 		return CredentialEncryptionStatus{}, infraerrors.New(http.StatusServiceUnavailable, "CREDENTIAL_ENCRYPTION_UNAVAILABLE", "Credential recovery is unavailable")
 	}
 	status, err := manager.EncryptionStatus()
@@ -87,11 +81,6 @@ func (s *OpenAIOAuthReauthService) ResetCredentialEncryption(ctx context.Context
 	if err == nil && status.Configured {
 		return CredentialEncryptionStatus{}, infraerrors.Conflict("CREDENTIAL_RECOVERY_NOT_NEEDED", "A usable encryption key already exists; it will not be replaced")
 	}
-	// Check before deleting anything. A container-local replacement would be lost
-	// again on the next container recreation.
-	if err = storage.ValidatePersistentStorage(); err != nil {
-		return CredentialEncryptionStatus{}, credentialEncryptionStorageError(err)
-	}
 	if err = repo.ClearOrphanedCredentialConfigs(ctx); err != nil {
 		if errors.Is(err, ErrCredentialRecoveryInUse) {
 			return CredentialEncryptionStatus{}, infraerrors.Conflict("CREDENTIAL_RECOVERY_IN_USE", "Remove all monitored accounts and finish active re-login tasks before clearing saved login credentials")
@@ -100,7 +89,7 @@ func (s *OpenAIOAuthReauthService) ResetCredentialEncryption(ctx context.Context
 	}
 	status, err = manager.InitializeEncryption()
 	if err != nil {
-		return CredentialEncryptionStatus{}, infraerrors.New(http.StatusServiceUnavailable, "CREDENTIAL_RECOVERY_INITIALIZE_FAILED", "Old login credentials were cleared, but encryption could not be initialized. Check storage permissions and retry initialization")
+		return CredentialEncryptionStatus{}, infraerrors.New(http.StatusServiceUnavailable, "CREDENTIAL_RECOVERY_INITIALIZE_FAILED", "Old login credentials were cleared, but encryption could not be initialized. Check database availability and retry initialization")
 	}
 	return status, nil
 }
@@ -109,8 +98,6 @@ func credentialEncryptionStorageError(cause error) error {
 	if errors.Is(cause, ErrCredentialEncryptionKeyMissing) {
 		return infraerrors.New(http.StatusServiceUnavailable, "CREDENTIAL_ENCRYPTION_KEY_MISSING", "Saved login credentials remain, but the original encryption key is missing. Restore the key or explicitly discard the old login credentials")
 	}
-	if errors.Is(cause, ErrCredentialEncryptionNotPersistent) {
-		return infraerrors.New(http.StatusServiceUnavailable, "CREDENTIAL_ENCRYPTION_DATA_NOT_PERSISTENT", "Mount the credential data directory to persistent host storage before initializing encryption; no saved login credentials were deleted")
-	}
-	return infraerrors.New(http.StatusServiceUnavailable, "CREDENTIAL_ENCRYPTION_STORAGE_FAILED", "Cannot access the credential encryption key. Check the persistent data directory permissions or restore its original key; existing keys will not be replaced.")
+
+	return infraerrors.New(http.StatusServiceUnavailable, "CREDENTIAL_ENCRYPTION_STORAGE_FAILED", "Cannot access the credential encryption key. Check database availability or the original encryption configuration; existing keys will not be replaced.")
 }
