@@ -35,10 +35,11 @@ func shouldForceOpenAIPriority(c *gin.Context) bool {
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	account = account.forOpenAIModel(gjson.GetBytes(body, "model").String())
+
 	if c.GetBool(bpsAccountProbeRequiredContextKey) && (!account.IsExcelBPSEnabled() || basispoints.NativeFallbackReason(body) != "") {
 		return nil, errors.New("bps probe path is unavailable")
 	}
-	if account.IsExcelBPSEnabled() {
+	if account.IsExcelBPSEnabled() && s.excelBPSGloballyEnabled(ctx) {
 		if reason := basispoints.NativeFallbackReason(body); reason != "" {
 			c.Header("X-Codex2API-Upstream", "codex")
 			c.Header("X-Codex2API-Basispoints-Bypass", reason)
@@ -85,14 +86,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
+	if err := s.validateExcelOAuthRoute(ctx, account, gjson.GetBytes(body, "model").String()); err != nil {
+		return nil, writeExcelOAuthRouteError(c)
+	}
 	body = s.applyCodexTimezone(ctx, account, body)
-	if account.IsPrismBrowserEnabledForModel(gjson.GetBytes(body, "model").String()) {
+	if !account.IsExcelOAuth() && account.IsPrismBrowserEnabledForModel(gjson.GetBytes(body, "model").String()) {
 		return s.forwardPrismBrowser(ctx, c, account, body, startTime)
 	}
 
 	// Excel owns tool declarations, replay and compaction; keep their original
 	// structure by routing before generic Codex normalization and passthrough.
-	if account.IsExcelBPSEnabled() {
+	if account.IsExcelBPSEnabled() && s.excelBPSGloballyEnabled(ctx) {
 		return s.forwardExcelBPS(ctx, c, account, body, startTime)
 	}
 
@@ -1423,6 +1427,10 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
+	if codexAccountIdentitySource(c, account).IsExcelOAuth() {
+		return nil, errExcelOAuthRouteUnavailable
+	}
+
 	// Determine target URL based on account type
 	var targetURL string
 	switch account.Type {

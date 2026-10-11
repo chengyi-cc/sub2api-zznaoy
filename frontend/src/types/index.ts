@@ -268,6 +268,7 @@ export interface PublicSettings {
   balance_low_notify_enabled: boolean
   account_quota_notify_enabled: boolean
   balance_low_notify_threshold: number
+  excel_bps_enabled: boolean
   channel_monitor_enabled: boolean
   /** Exclusive mode: v1 active probes or v2 passive aggregation. Default v2. */
   channel_monitor_mode?: 'v1' | 'v2'
@@ -1202,7 +1203,16 @@ export interface OpenCodeGoUsageSettings {
   debounce_minutes: number
 }
 
+export interface ExcelBPSCredentialState {
+ status: string
+ expires_at?: string
+ observed_at?: string
+ error_code?: string
+ requires_manual_resume?: boolean
+}
+
 export interface Account {
+ excel_bps_credential_state?: ExcelBPSCredentialState
   id: number
   name: string
   notes?: string | null

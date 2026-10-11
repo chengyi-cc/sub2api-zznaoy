@@ -3,6 +3,8 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -21,7 +23,10 @@ func (s *AccountTestService) testExcelBPSConnection(c *gin.Context, account *Acc
 	if isOpenAIImageModel(model) {
 		return s.sendErrorAndEnd(c, "Excel BPS does not support image generation models")
 	}
-	ctx := c.Request.Context()
+	ctx := s.withBPSTestEvidence(c.Request.Context(), c)
+	if s.openaiGatewayService != nil && !s.openaiGatewayService.excelBPSGloballyEnabled(ctx) {
+		return s.sendErrorAndEnd(c, "Excel BPS is disabled globally")
+	}
 	payload := createOpenAITestPayload(model, true)
 	if strings.TrimSpace(prompt) != "" {
 		payload["input"] = prompt
@@ -43,9 +48,12 @@ func (s *AccountTestService) testExcelBPSConnection(c *gin.Context, account *Acc
 	// supports standalone test-service construction without a gateway dependency.
 	token := account.GetOpenAIAccessToken()
 	if s.openaiGatewayService != nil {
-		token, _, err = s.openaiGatewayService.GetAccessToken(ctx, account)
+		token, err = s.openaiGatewayService.getExcelBPSAccessToken(ctx, account)
 	}
 	if err != nil || token == "" {
+		if IsExcelAuthorizationError(err) {
+			return s.sendErrorAndEnd(c, "basispoints_auth_"+strings.ToLower(strings.TrimPrefix(infraerrors.Reason(err), "OPENAI_EXCEL_AUTH_"))+": "+err.Error())
+		}
 		return s.sendErrorAndEnd(c, "Excel BPS OAuth credential is unavailable")
 	}
 	accountID := excelBPSAccountID(account, token)
@@ -61,13 +69,26 @@ func (s *AccountTestService) testExcelBPSConnection(c *gin.Context, account *Acc
 		proxyURL = account.Proxy.URL()
 	}
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: model})
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	upstream := s.httpUpstream
+	if upstream == nil && s.openaiGatewayService != nil {
+		upstream = s.openaiGatewayService.httpUpstream
+	}
+	if upstream == nil {
+		return s.sendErrorAndEnd(c, "Excel BPS transport unavailable")
+	}
+	resp, err := upstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Excel BPS connection failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+		observeBPSTestResponse(ctx, resp, model, token, gjson.GetBytes(raw, "error.code").String())
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Excel BPS returned HTTP %d; no fallback was attempted", resp.StatusCode))
+	}
+	observeBPSTestResponse(ctx, resp, model, token, "")
+	if s.openaiGatewayService != nil {
+		s.openaiGatewayService.guardExcelBPSProgress(ctx, resp)
 	}
 	pump := newOpenAISSEReadPump(bridge.Stream(resp.Body), 16<<20)
 	defer pump.Close()

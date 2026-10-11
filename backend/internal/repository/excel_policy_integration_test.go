@@ -95,6 +95,13 @@ func TestExcelPolicyPostgres(t *testing.T) {
 	require.Nil(t, states[0].AutoExcelOnIncorrect)
 	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 	repo := newAccountRepositoryWithSQL(client, db, nil)
+	// The authorization callback activates BPS before a genuine upstream 403.
+	require.Equal(t, true, extra[service.ExcelBPSAuthorizationPendingKey])
+	_, err = db.ExecContext(ctx, `INSERT INTO openai_excel_oauth_credentials(account_id,credentials_ciphertext) VALUES($1,'synthetic-grant')`, id)
+	require.NoError(t, err)
+	loginRepo := NewOpenAIOAuthReauthRepository(db).(*openAIOAuthReauthRepository)
+	require.NoError(t, loginRepo.PrepareMissingExcelRoutes(ctx))
+	extra = readExtra(id)
 	snapshot := &service.Account{ID: id, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Credentials: map[string]any{}, Extra: extra}
 	changed, err := repo.DisableExcelBPSOn403(ctx, snapshot)
 	require.NoError(t, err)

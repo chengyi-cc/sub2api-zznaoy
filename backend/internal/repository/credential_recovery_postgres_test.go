@@ -42,6 +42,7 @@ func TestCredentialRecoveryPostgres(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	_, err = db.ExecContext(ctx, `
  CREATE TABLE accounts (id BIGINT PRIMARY KEY, credentials TEXT NOT NULL);
+ CREATE TABLE openai_excel_oauth_credentials (account_id BIGINT REFERENCES accounts(id), credentials_ciphertext TEXT);
  CREATE TABLE openai_oauth_reauth_configs (account_id BIGINT REFERENCES accounts(id), password_ciphertext TEXT, totp_secret_ciphertext TEXT, otp_url_ciphertext TEXT);
  CREATE TABLE security_secrets (key TEXT PRIMARY KEY, value TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
  CREATE TABLE account_token_guard_v2_accounts (account_id BIGINT REFERENCES accounts(id));

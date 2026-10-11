@@ -2,6 +2,7 @@ package basispoints
 
 import (
 	"container/list"
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -17,12 +18,15 @@ import (
 const catalogCacheIdleTTL = 30 * time.Minute
 
 type CatalogCache struct {
-	mu      sync.Mutex
-	entries map[string]*list.Element
-	order   list.List
-	bytes   int
-	version uint64
-	now     func() time.Time
+	ctx      context.Context
+	store    StateStore
+	storeErr error
+	mu       sync.Mutex
+	entries  map[string]*list.Element
+	order    list.List
+	bytes    int
+	version  uint64
+	now      func() time.Time
 }
 type catalogEntry struct {
 	scope   string
@@ -53,6 +57,11 @@ func (c *CatalogCache) prune(now time.Time) {
 	}
 }
 func (c *CatalogCache) snapshot(scope string) ([]byte, uint64) {
+	if c.store != nil {
+		raw, version, err := c.store.LoadBPSState(c.ctx, scope, "catalog")
+		c.stateError(err)
+		return raw, version
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := c.clock()
@@ -68,6 +77,11 @@ func (c *CatalogCache) snapshot(scope string) ([]byte, uint64) {
 	return v.raw, v.version
 }
 func (c *CatalogCache) commit(scope string, expected uint64, raw []byte) bool {
+	if c.store != nil {
+		changed, err := c.store.SaveBPSState(c.ctx, scope, "catalog", &expected, raw)
+		c.stateError(err)
+		return changed
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := c.clock()
@@ -126,6 +140,9 @@ func prepareWithCatalog(raw []byte, scope, catalogScope string, replay *ReplayCa
 	_, explicit := source["tools"]
 	for attempt := 0; attempt < 8; attempt++ {
 		previous, version := cache.snapshot(catalogScope)
+		if err := cache.Err(); err != nil {
+			return nil, nil, err
+		}
 		var candidate object
 		if err := decode(raw, &candidate); err != nil {
 			return nil, nil, err
@@ -140,6 +157,7 @@ func prepareWithCatalog(raw []byte, scope, catalogScope string, replay *ReplayCa
 				return nil, nil, err
 			}
 			candidate["tools"] = inherited
+			options.inheritedCatalog = true
 		}
 		encoded, err := json.Marshal(candidate)
 		if err != nil {
@@ -155,10 +173,16 @@ func prepareWithCatalog(raw []byte, scope, catalogScope string, replay *ReplayCa
 		}
 		if len(saved) > 1<<20 {
 			cache.commit(catalogScope, version, []byte("[]")) // Revoke older declarations.
-			return body, b, nil                               // Oversized valid catalogs work without being cached.
+			if err := cache.Err(); err != nil {
+				return nil, nil, err
+			}
+			return body, b, nil // Oversized valid catalogs work without being cached.
 		}
 		if cache.commit(catalogScope, version, saved) {
 			return body, b, nil
+		}
+		if err := cache.Err(); err != nil {
+			return nil, nil, err
 		}
 		// A concurrent explicit replacement is authoritative. This request keeps
 		// its own validated catalog, but cannot overwrite the newer snapshot.
@@ -175,27 +199,40 @@ func prepareWithCatalog(raw []byte, scope, catalogScope string, replay *ReplayCa
 // authority. Validate all current additions together before removing any cached
 // entry, so ambiguous declarations in one request are never silently accepted.
 func inheritedCatalogTools(inherited []any, input any) ([]any, error) {
-	current := &Bridge{tools: make(map[string]tool)}
+	replaced := map[string]bool{}
 	items, _ := input.([]any)
 	for _, raw := range items {
 		item, _ := raw.(object)
-		if text(item["type"]) == "additional_tools" {
-			if _, err := current.collectTools(item["tools"], ""); err != nil {
-				return nil, err
-			}
+		if !isCatalogItem(text(item["type"])) {
+			continue
+		}
+		declarations, err := flattenCatalog(item["tools"], "")
+		if err != nil {
+			return nil, err
+		}
+		for _, declaration := range declarations {
+			replaced[declaration.key] = true
 		}
 	}
-	if len(current.tools) == 0 {
+	if len(replaced) == 0 {
 		return inherited, nil
 	}
-	cached := &Bridge{tools: make(map[string]tool)}
-	if _, err := cached.collectTools(inherited, ""); err != nil {
+	declarations, err := flattenCatalog(inherited, "")
+	if err != nil {
 		return nil, err
 	}
-	for key := range current.tools {
-		delete(cached.tools, key)
+	var kept []any
+	for _, declaration := range declarations {
+		if replaced[declaration.key] {
+			continue
+		}
+		if declaration.namespace != "" {
+			kept = append(kept, object{"type": "namespace", "name": declaration.namespace, "tools": []any{declaration.item}})
+		} else {
+			kept = append(kept, declaration.item)
+		}
 	}
-	return catalogDeclarations(cached.tools), nil
+	return kept, nil
 }
 
 func catalogDeclarations(tools map[string]tool) []any {

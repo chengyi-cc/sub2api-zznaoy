@@ -80,6 +80,9 @@ func (b *Bridge) translateNativePlan(native object) (object, error) {
 		result["namespace"] = selected.Namespace
 	}
 	b.replay.put(b.scope, callID, native, result)
+	if err := b.replay.Err(); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 

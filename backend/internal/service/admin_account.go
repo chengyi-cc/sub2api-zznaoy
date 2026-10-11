@@ -423,6 +423,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
 	delete(accountExtra, OpenCodeGoUsageAutoRefreshExtraKey)
 	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
+	accountExtra = mergeExcelBPSManagedExtra(accountExtra, nil)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
 		Name:        input.Name,
@@ -533,6 +534,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		return nil, err
 	}
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
+		return nil, err
+	}
+	if err := s.validateExcelBPSActivation(ctx, account); err != nil {
 		return nil, err
 	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -707,6 +711,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				normalizedExtra[key] = v
 			}
 		}
+		normalizedExtra = mergeExcelBPSManagedExtra(normalizedExtra, account.Extra)
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
 		account.Extra = ExcelBPSActivationExtra(normalizedExtra, account.IsExcelBPSEnabled(), "manual")
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
@@ -861,6 +866,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
+	if err := s.validateExcelBPSActivation(ctx, account); err != nil {
+		return nil, err
+	}
 	billingSettingsAppliedAtomically := false
 	updater := s.accountBillingRepo
 	if updater == nil {
@@ -926,6 +934,26 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	updates = mergeExcelBPSManagedExtra(updates, nil)
+	if _, changed := updates["openai_excel_bps"]; changed && s.excelOAuthReauth != nil {
+		a, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		merged := *a
+		merged.Extra = make(map[string]any)
+		for k, v := range a.Extra {
+			merged.Extra[k] = v
+		}
+		for k, v := range updates {
+			merged.Extra[k] = v
+		}
+		if err := s.validateExcelBPSActivation(ctx, &merged); err != nil {
+			return err
+		}
+		updates[ExcelBPSAuthorizationPendingKey] = merged.Extra[ExcelBPSAuthorizationPendingKey]
+	}
+
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
@@ -954,6 +982,9 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	if input != nil && input.Extra != nil {
+		input.Extra = mergeExcelBPSManagedExtra(input.Extra, nil)
+	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
@@ -1111,6 +1142,29 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		input.Credentials = SanitizeStoredCredentials("", input.Credentials)
 	}
 
+	_, bpsChanged := input.Extra["openai_excel_bps"]
+	pendingByAccount := make(map[int64]bool)
+	if bpsChanged && s.excelOAuthReauth != nil {
+		targets, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range targets {
+			merged := *a
+			merged.Extra = make(map[string]any)
+			for k, v := range a.Extra {
+				merged.Extra[k] = v
+			}
+			for k, v := range input.Extra {
+				merged.Extra[k] = v
+			}
+			if err := s.validateExcelBPSActivation(ctx, &merged); err != nil {
+				return nil, err
+			}
+			pendingByAccount[a.ID] = merged.Extra[ExcelBPSAuthorizationPendingKey] == true
+		}
+	}
+
 	// Prepare bulk updates for columns and JSONB fields.
 	repoUpdates := AccountBulkUpdate{
 		Credentials:                input.Credentials,
@@ -1167,6 +1221,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 
 	// Run bulk update for column/jsonb fields first.
+	if s.excelOAuthReauth != nil && bpsChanged {
+		repoUpdates.ExcelBPSAuthorizationPending = pendingByAccount
+	}
 	if _, err := s.accountRepo.BulkUpdate(ctx, input.AccountIDs, repoUpdates); err != nil {
 		return nil, err
 	}

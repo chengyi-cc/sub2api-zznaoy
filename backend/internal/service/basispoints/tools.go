@@ -2,13 +2,16 @@ package basispoints
 
 import (
 	"container/list"
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	"strings"
 	"sync"
 )
 
 type tool struct {
+	Schema              *jsonschema.Schema
 	Name                string
 	Namespace           string
 	Kind                string
@@ -29,14 +32,21 @@ type replayEntry struct {
 // ReplayCache retains native tool identities without mixing accounts or sessions.
 // Both entry count and bytes are bounded because tool arguments can be large.
 type ReplayCache struct {
-	mu      sync.Mutex
-	entries map[string]*list.Element
-	order   list.List
-	bytes   int
+	ctx      context.Context
+	store    StateStore
+	storeErr error
+	mu       sync.Mutex
+	entries  map[string]*list.Element
+	order    list.List
+	bytes    int
 }
 
 func (c *ReplayCache) put(scope, id string, item object, clientCall ...object) {
 	if c == nil || id == "" {
+		return
+	}
+	if c.store != nil {
+		c.persist(scope, id, item, clientCall)
 		return
 	}
 	raw, err := json.Marshal(item)
@@ -127,6 +137,9 @@ func (c *ReplayCache) getMatching(scope, id, signature string, requireSignature 
 	if c == nil {
 		return nil
 	}
+	if c.store != nil {
+		return c.restore(scope, id, signature, requireSignature)
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	entry := c.entries[scope+"\x00"+id]
@@ -205,8 +218,18 @@ func (b *Bridge) collectTools(value any, namespace string) ([]any, error) {
 			}
 			continue
 		}
-		parameters, _ := entry["parameters"].(object)
-		b.tools[key] = tool{Name: name, Namespace: namespace, Kind: kind, Definition: definition, Catalog: item, Parameters: parameters, ExecFunctions: declaredExecFunctions(entry), ExecStringFunctions: declaredExecStringFunctions(entry), ExecRuntimeCatalog: execRuntimeCatalog(entry)}
+		parameters, ok := entry["parameters"].(object)
+		if entry["parameters"] != nil && !ok {
+			return nil, fmt.Errorf("basispoints function parameters must be a schema object")
+		}
+		schema, err := compileToolSchema(parameters)
+		if err != nil {
+			return nil, err
+		}
+		b.tools[key] = tool{Name: name, Namespace: namespace, Kind: kind, Definition: definition, Catalog: item, Parameters: parameters, Schema: schema, ExecFunctions: declaredExecFunctions(entry), ExecStringFunctions: declaredExecStringFunctions(entry), ExecRuntimeCatalog: execRuntimeCatalog(entry)}
+		if kind == "function" {
+			entry["parameters"] = plaintextPromptParameters(name, namespace, parameters)
+		}
 		catalog = append(catalog, entry)
 	}
 	return catalog, nil
@@ -364,7 +387,7 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 					item["id"] = "msg_" + fingerprint(id)
 				}
 			}
-		case "additional_tools":
+		case "additional_tools", "tool_search_output":
 			continue
 		case "item_reference":
 			return nil, fmt.Errorf("basispoints requires full history; item_reference is unsupported")
@@ -378,7 +401,11 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 			continue
 		case "function_call", "custom_tool_call":
 			id := text(item["call_id"])
-			if native := b.replay.getForCall(b.scope, id, item); native != nil {
+			native := b.replay.getForCall(b.scope, id, item)
+			if err := b.replay.Err(); err != nil {
+				return nil, err
+			}
+			if native != nil {
 				item = native
 			} else {
 				native, err := b.rebuildNativeHistoryCall(item)
@@ -386,6 +413,9 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 					return nil, err
 				}
 				b.replay.put(b.scope, id, native, item)
+				if err := b.replay.Err(); err != nil {
+					return nil, err
+				}
 				item = native
 			}
 			seenCalls[id] = true
@@ -393,6 +423,9 @@ func (b *Bridge) translateHistory(input []any) ([]any, error) {
 			id := text(item["call_id"])
 			if !seenCalls[id] {
 				native := b.replay.get(b.scope, id)
+				if err := b.replay.Err(); err != nil {
+					return nil, err
+				}
 				if native == nil {
 					return nil, &MissingToolHistoryError{Index: index}
 				}
@@ -490,18 +523,24 @@ func (b *Bridge) translateCall(native object) (object, error) {
 			if result, recovered, err := b.recoverExecCall(native, envelope); recovered || err != nil {
 				if err == nil {
 					b.replay.put(b.scope, text(native["call_id"]), native, result)
+					if persistErr := b.replay.Err(); persistErr != nil {
+						return nil, persistErr
+					}
 				}
 				return result, err
 			}
 		}
 		return nil, fmt.Errorf("basispoints returned a tool outside the client's catalog")
 	}
-	result, err := b.finishClientToolCall(native, info, envelope, rawCustom)
+	result, err := b.finishClientToolCall(native, info, envelope, rawCustom, !strings.HasPrefix(text(arguments["summary"]), functionCmdTransportPrefix))
 	if err != nil {
 		return nil, err
 	}
 	// run_officejs is a real BPS-native tool, so its item replays upstream verbatim.
 	b.replay.put(b.scope, text(native["call_id"]), native, result)
+	if persistErr := b.replay.Err(); persistErr != nil {
+		return nil, persistErr
+	}
 	return result, nil
 }
 
@@ -545,6 +584,9 @@ func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 				return nil, err
 			}
 			b.replay.put(b.scope, text(native["call_id"]), wrapped, result)
+			if persistErr := b.replay.Err(); persistErr != nil {
+				return nil, persistErr
+			}
 			return result, nil
 		}
 		return nil, fmt.Errorf("basispoints returned an unsupported native tool; no tool was executed")
@@ -591,13 +633,16 @@ func (b *Bridge) translateDirectCatalogCall(native object) (object, error) {
 		return nil, err
 	}
 	b.replay.put(b.scope, text(native["call_id"]), wrapped, result)
+	if persistErr := b.replay.Err(); persistErr != nil {
+		return nil, persistErr
+	}
 	return result, nil
 }
 
 // finishClientToolCall builds the client-facing tool item from a resolved catalog
 // tool and its envelope. It performs no caching and executes nothing; callers decide
 // how the call replays upstream.
-func (b *Bridge) finishClientToolCall(native object, info tool, envelope object, marked bool) (object, error) {
+func (b *Bridge) finishClientToolCall(native object, info tool, envelope object, marked bool, validateSchema ...bool) (object, error) {
 	if marked && info.Kind != "custom" {
 		return nil, fmt.Errorf("basispoints raw transport requires a declared custom tool")
 	}
@@ -665,6 +710,12 @@ func (b *Bridge) finishClientToolCall(native object, info tool, envelope object,
 		if _, ok := args.(object); !ok {
 			return nil, fmt.Errorf("basispoints function arguments must be an object")
 		}
+		if info.Schema != nil {
+			if validateToolNumberBudget(args) != nil || ((len(validateSchema) == 0 || validateSchema[0]) && info.Schema.Validate(args) != nil) {
+				return nil, toolArgumentsSchemaError{}
+			}
+		}
+
 		encoded, _ := json.Marshal(args)
 		result["arguments"] = string(encoded)
 		// The relay envelope contains plaintext, even when a catalog parameter

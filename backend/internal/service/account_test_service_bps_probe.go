@@ -142,7 +142,7 @@ func (s *AccountTestService) runExcelBPSProbeStep(c *gin.Context, account *Accou
 	}
 	recorder := httptest.NewRecorder()
 	probeCtx, _ := gin.CreateTestContext(recorder)
-	probeCtx.Request = c.Request.Clone(c.Request.Context())
+	probeCtx.Request = c.Request.Clone(s.withBPSTestEvidence(c.Request.Context(), c))
 	probeCtx.Request.Header.Set("Session-Id", session)
 	probeCtx.Set(bpsAccountProbeRequiredContextKey, true)
 	result, err := s.openaiGatewayService.Forward(probeCtx.Request.Context(), probeCtx, account, raw)

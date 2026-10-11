@@ -1,4 +1,8 @@
 export interface AccountTestStreamEvent {
+  upstream_status?: number
+  upstream_model?: string
+  request_id?: string
+  upstream_error_code?: string
   type: string
   text?: string
   model?: string

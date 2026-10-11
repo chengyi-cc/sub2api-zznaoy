@@ -76,6 +76,14 @@ func enableExcelAfterCandyFailure(ctx context.Context, tx *sql.Tx, v *service.Ca
 	}
 	a.Extra["openai_excel_bps_models"] = models
 	a.Extra = service.ExcelBPSActivationExtra(a.Extra, false, "candy_incorrect")
+
+	if !a.IsExcelOAuth() {
+		var ready bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM openai_excel_oauth_credentials WHERE account_id=$1 AND credentials_ciphertext<>'')`, a.ID).Scan(&ready); err != nil {
+			return err
+		}
+		a.Extra[service.ExcelBPSAuthorizationPendingKey] = !ready
+	}
 	payload, err := json.Marshal(a.Extra)
 	if err != nil {
 		return err

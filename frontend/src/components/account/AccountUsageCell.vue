@@ -1,5 +1,6 @@
 <template>
   <div ref="rootRef" v-if="showUsageWindows">
+    <ExcelBPSCredentialStatus :state="account.excel_bps_credential_state" />
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="
@@ -674,6 +675,7 @@
 </template>
 
 <script setup lang="ts">
+import ExcelBPSCredentialStatus from './ExcelBPSCredentialStatus.vue'
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'

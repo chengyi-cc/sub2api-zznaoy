@@ -8,6 +8,12 @@ func ProvideOpenAIOAuthReauthService(repo OpenAIOAuthReauthRepository, admin Adm
 	updater, _ := accounts.(OpenAIOAuthReauthCredentialUpdater)
 	svc := NewOpenAIOAuthReauthService(repo, admin, updater, oauth, encryptor, cfg != nil && cfg.Totp.EncryptionKeyConfigured, invalidator, blocker)
 	svc.settings = settings
+	if gateway, ok := blocker.(*OpenAIGatewayService); ok {
+		gateway.excelOAuthReauth = svc
+	}
+	if a, ok := admin.(*adminServiceImpl); ok {
+		a.excelOAuthReauth = svc
+	}
 	// Managed rotation is not part of this port. Existing account/saved proxies work.
 	svc.acquireMihomoProxy = nil
 	svc.configureWorker(cfg, info)

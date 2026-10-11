@@ -749,6 +749,18 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("saves the global Excel BPS switch", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    const toggle = wrapper.get('[data-testid="excel-bps-global-settings"] input');
+    expect((toggle.element as HTMLInputElement).checked).toBe(true);
+    await toggle.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ excel_bps_enabled: false }));
+    wrapper.unmount();
+  });
+
   it("submits the compact home page toggle", async () => {
     const wrapper = mountView();
     await flushPromises();
