@@ -580,10 +580,6 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, error) {
-	if codexAccountIdentitySource(c, account).IsExcelOAuth() {
-		return nil, errExcelOAuthRouteUnavailable
-	}
-
 	targetURL := openaiPlatformAPIURL
 	switch account.Type {
 	case AccountTypeOAuth:

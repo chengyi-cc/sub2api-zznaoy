@@ -23,7 +23,7 @@ func TestCredentialRecoveryClearsOnlyUnusedLoginConfigs(t *testing.T) {
 			defer func() { _ = db.Close() }()
 			repo := &openAIOAuthReauthRepository{db: db}
 			mock.ExpectBegin()
-			mock.ExpectExec("LOCK TABLE account_token_guard_v2_accounts, openai_oauth_reauth_configs, openai_oauth_reauth_tasks, openai_excel_oauth_credentials IN SHARE ROW EXCLUSIVE MODE").WillReturnResult(sqlmock.NewResult(0, 0))
+			mock.ExpectExec("LOCK TABLE account_token_guard_v2_accounts, openai_oauth_reauth_configs, openai_oauth_reauth_tasks IN SHARE ROW EXCLUSIVE MODE").WillReturnResult(sqlmock.NewResult(0, 0))
 			mock.ExpectQuery("SELECT EXISTS .*account_token_guard_v2_accounts.*openai_oauth_reauth_tasks.*queued.*running.*callback_processing").WillReturnRows(sqlmock.NewRows([]string{"in_use"}).AddRow(tc.inUse))
 			if tc.inUse {
 				mock.ExpectRollback()

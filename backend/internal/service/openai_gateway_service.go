@@ -448,41 +448,39 @@ var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /r
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
-	excelOAuthReauth       *OpenAIOAuthReauthService
-	excelBPSModelCooldowns excelBPSModelCooldowns
-	astraBorrow            *AstraBorrowService
-	accountRepo            AccountRepository
-	usageLogRepo           UsageLogRepository
-	usageBillingRepo       UsageBillingRepository
-	userRepo               UserRepository
-	userSubRepo            UserSubscriptionRepository
-	cache                  GatewayCache
-	rpmCache               RPMCache
-	cfg                    *config.Config
-	codexDetector          CodexClientRestrictionDetector
-	schedulerSnapshot      *SchedulerSnapshotService
-	concurrencyService     *ConcurrencyService
-	billingService         *BillingService
-	rateLimitService       *RateLimitService
-	billingCacheService    *BillingCacheService
-	userGroupRateResolver  *userGroupRateResolver
-	httpUpstream           HTTPUpstream
-	tlsFPProfileService    *TLSFingerprintProfileService
-	pluginManager          *PluginManager
-	deferredService        *DeferredService
-	openAITokenProvider    *OpenAITokenProvider
-	grokTokenProvider      *GrokTokenProvider
-	toolCorrector          *CodexToolCorrector
-	openaiWSResolver       OpenAIWSProtocolResolver
-	resolver               *ModelPricingResolver
-	channelService         *ChannelService
-	balanceNotifyService   *BalanceNotifyService
-	settingService         *SettingService
-	excelBPSImages         *ExcelBPSImageService
-	codexTimezone          codexTimezoneResolver
-	userPlatformQuotaRepo  UserPlatformQuotaRepository
-	liveAttestation        liveattestation.Provider
-	liveAttestationCipher  SecretEncryptor
+	astraBorrow           *AstraBorrowService
+	accountRepo           AccountRepository
+	usageLogRepo          UsageLogRepository
+	usageBillingRepo      UsageBillingRepository
+	userRepo              UserRepository
+	userSubRepo           UserSubscriptionRepository
+	cache                 GatewayCache
+	rpmCache              RPMCache
+	cfg                   *config.Config
+	codexDetector         CodexClientRestrictionDetector
+	schedulerSnapshot     *SchedulerSnapshotService
+	concurrencyService    *ConcurrencyService
+	billingService        *BillingService
+	rateLimitService      *RateLimitService
+	billingCacheService   *BillingCacheService
+	userGroupRateResolver *userGroupRateResolver
+	httpUpstream          HTTPUpstream
+	tlsFPProfileService   *TLSFingerprintProfileService
+	pluginManager         *PluginManager
+	deferredService       *DeferredService
+	openAITokenProvider   *OpenAITokenProvider
+	grokTokenProvider     *GrokTokenProvider
+	toolCorrector         *CodexToolCorrector
+	openaiWSResolver      OpenAIWSProtocolResolver
+	resolver              *ModelPricingResolver
+	channelService        *ChannelService
+	balanceNotifyService  *BalanceNotifyService
+	settingService        *SettingService
+	excelBPSImages        *ExcelBPSImageService
+	codexTimezone         codexTimezoneResolver
+	userPlatformQuotaRepo UserPlatformQuotaRepository
+	liveAttestation       liveattestation.Provider
+	liveAttestationCipher SecretEncryptor
 
 	openaiWSPoolOnce               sync.Once
 	openaiWSStateStoreOnce         sync.Once
@@ -514,7 +512,6 @@ type OpenAIGatewayService struct {
 	responseHeaderFilter                *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle               *accountWriteThrottle
 	openAIModelsCache                   openAIModelsCache
-	excelBPSModelsCache                 openAIModelsCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
 	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，

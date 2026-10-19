@@ -7183,13 +7183,6 @@
 
 	        <!-- Tab: Features (功能开关) -->
         <div v-show="activeTab === 'features'" class="space-y-6">
-        <div class="card" data-testid="excel-bps-global-settings">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Excel / BPS 协议</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">关闭后停止 BPS 调用及自动授权，逐账号设置保留。</p>
-          </div>
-          <div class="flex items-center justify-between p-6"><span class="text-sm dark:text-gray-200">全局启用</span><Toggle v-model="form.excel_bps_enabled" /></div>
-        </div>
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -9841,7 +9834,6 @@ type SettingsForm = Omit<
 const schedulingThresholdPlatforms = SCHEDULING_THRESHOLD_PLATFORMS;
 
 const form = reactive<SettingsForm>({
-  excel_bps_enabled: true,
   registration_enabled: true,
   email_verify_enabled: false,
   registration_email_suffix_whitelist: [],
@@ -11858,7 +11850,6 @@ async function saveSettings() {
         form.account_quota_notify_emails || []
       ).filter((e) => e.email.trim() !== ""),
       // Channel Monitor feature switch
-      excel_bps_enabled: form.excel_bps_enabled,
       channel_monitor_enabled: form.channel_monitor_enabled,
       channel_monitor_mode: form.channel_monitor_mode === 'v1' ? 'v1' : 'v2',
       channel_monitor_default_interval_seconds:

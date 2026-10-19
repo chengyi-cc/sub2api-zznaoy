@@ -6,18 +6,6 @@
     @close="handleClose"
   >
     <div class="space-y-4">
-      <div v-if="account?.extra?.openai_excel_bps_authorization_pending === true" role="status" class="text-sm text-amber-700 dark:text-amber-300">
-        {{ t('admin.accounts.bpsAuthorizing') }}
-        <a href="/admin/token-guard-v2" target="_blank" rel="noopener noreferrer" class="ml-2 underline">{{ t('admin.accounts.openCredentialOperations') }}</a>
-      </div>
-      <div v-if="modelLoadError" role="alert" class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
-        <p>{{ modelLoadError }}</p>
-        <div class="mt-2 flex gap-4">
-          <button type="button" :disabled="loadingModels" class="underline" @click="loadAvailableModels">{{ t('admin.accounts.retryModels') }}</button>
-          <a v-if="modelAuthError" href="/admin/token-guard-v2" target="_blank" rel="noopener noreferrer" class="underline">{{ t('admin.accounts.openCredentialOperations') }}</a>
-        </div>
-      </div>
-      <AccountTestEvidence v-if="upstreamEvidence" :evidence="upstreamEvidence" />
       <!-- Account Info Card -->
       <div
         v-if="account"
@@ -379,8 +367,6 @@
 </template>
 
 <script setup lang="ts">
-import AccountTestEvidence from '@/components/account/AccountTestEvidence.vue'
-import type { AccountTestUpstreamEvidence } from '@/types/accountTestEvidence'
 import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -419,7 +405,6 @@ const emit = defineEmits<{
 }>()
 
 const terminalRef = ref<HTMLElement | null>(null)
-const upstreamEvidence = ref<AccountTestUpstreamEvidence | null>(null)
 const status = ref<'idle' | 'connecting' | 'success' | 'error'>('idle')
 const outputLines = ref<OutputLine[]>([])
 const streamingContent = ref('')
@@ -428,9 +413,6 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
-const modelLoadError = ref('')
-const modelAuthError = ref(false)
-let modelLoadGeneration = 0
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewMedia[]>([])
 const generatedAudios = ref<PreviewMedia[]>([])
@@ -762,8 +744,8 @@ const pickDefaultModelForMode = () => {
 }
 
 watch(
-  () => [props.show, props.account?.id] as const,
-  async ([newVal]) => {
+  () => props.show,
+  async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
       testMode.value = 'default'
@@ -775,9 +757,6 @@ watch(
         applyDefaultPromptForMode()
       }
     } else {
-      ++modelLoadGeneration
-      modelLoadError.value = ''
-      modelAuthError.value = false
       abortStream()
     }
   }
@@ -794,15 +773,10 @@ watch(grokTestMode, () => {
 const loadAvailableModels = async () => {
   if (!props.account) return
 
-  const generation = ++modelLoadGeneration
   loadingModels.value = true
-  modelLoadError.value = ''
-  modelAuthError.value = false
-  availableModels.value = []
   selectedModelId.value = '' // Reset selection before loading
   try {
     const models = await adminAPI.accounts.getAvailableModels(props.account.id)
-    if (generation !== modelLoadGeneration) return
     availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
       ? sortTestModels(models)
       : models
@@ -817,22 +791,16 @@ const loadAvailableModels = async () => {
       }
     }
   } catch (error) {
-    if (generation !== modelLoadGeneration) return
-    const reason = typeof error === 'object' && error !== null && 'reason' in error ? String(error.reason) : ''
-    modelAuthError.value = reason.startsWith('OPENAI_EXCEL_AUTH_')
-    const key = 'admin.accounts.excelAuthErrors.' + reason
-    const authReasons = ['OPENAI_EXCEL_AUTH_PENDING', 'OPENAI_EXCEL_AUTH_FAILED', 'OPENAI_EXCEL_AUTH_VERIFICATION_REQUIRED', 'OPENAI_EXCEL_AUTH_CONFIG_REQUIRED', 'OPENAI_EXCEL_AUTH_REQUIRED', 'OPENAI_EXCEL_AUTH_UNAVAILABLE']
-    modelLoadError.value = authReasons.includes(reason) ? t(key) : t('admin.accounts.modelsLoadFailed')
+    console.error('Failed to load available models:', error)
     // Fallback to empty list
     availableModels.value = []
     selectedModelId.value = ''
   } finally {
-    if (generation === modelLoadGeneration) loadingModels.value = false
+    loadingModels.value = false
   }
 }
 
 const resetState = () => {
-  upstreamEvidence.value = null
   status.value = 'idle'
   candyResult.value = null
   outputLines.value = []
@@ -971,12 +939,6 @@ const startTest = async () => {
 
 const handleEvent = (event: AccountTestStreamEvent) => {
   switch (event.type) {
-    case 'upstream_response':
-      if (event.upstream_status && event.upstream_status >= 100 && event.upstream_status <= 599) {
-        upstreamEvidence.value = { status: event.upstream_status, model: event.upstream_model, requestId: event.request_id, errorCode: event.upstream_error_code }
-      }
-      break
-
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
       if (event.model) {

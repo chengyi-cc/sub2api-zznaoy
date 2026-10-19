@@ -1024,8 +1024,6 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"openai_passthrough",
 		"openai_oauth_passthrough",
 		"openai_excel_bps",
-		service.ExcelBPSAuthorizationPendingKey,
-		service.ExcelBPSIgnoreEncryptedContentKey,
 		"openai_excel_bps_models",
 		"openai_excel_bps_auto_disable_on_403",
 		"openai_excel_bps_cache_creation_as_input",

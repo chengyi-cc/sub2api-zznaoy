@@ -18,10 +18,3 @@ func TestExcelBPSSchedulerProjectionRetainsSettings(t *testing.T) {
 		require.Equal(t, len(models) > 0, account.UsesExcelBPSForModel("gpt-6-sol"))
 	}
 }
-
-func TestExcelBPSSchedulerProjectionPreservesPreparingRoute(t *testing.T) {
-	a := &service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Extra: filterSchedulerExtra(map[string]any{"openai_excel_bps": true, service.ExcelBPSAuthorizationPendingKey: true})}
-	require.False(t, a.IsExcelBPSEnabled())
-	delete(a.Extra, service.ExcelBPSAuthorizationPendingKey)
-	require.True(t, a.IsExcelBPSEnabled())
-}

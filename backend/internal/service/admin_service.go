@@ -685,7 +685,6 @@ var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_ST
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
-	excelOAuthReauth     *OpenAIOAuthReauthService
 	cfg                  *config.Config
 	userRepo             UserRepository
 	groupRepo            GroupRepository

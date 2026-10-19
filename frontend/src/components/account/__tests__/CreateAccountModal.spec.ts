@@ -94,7 +94,6 @@ const OAuthAuthorizationFlowStub = defineComponent({
     showCodexSessionImportOption: Boolean,
     showAgentIdentityOption: Boolean,
     showCodexPatOption: Boolean,
-    excelOauth: Boolean,
     initialInputMethod: String,
   },
   data: () => ({ inputMethod: 'manual' }),
@@ -226,17 +225,6 @@ describe('CreateAccountModal direct OAuth timezone and Excel settings', () => {
     expect(wrapper.findAll('[data-testid="create-excel-bps-toggle"]')).toHaveLength(1)
     const name = wrapper.get('[data-tour="account-form-name"]').element
     expect(zone.element.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
-  it('selects official Excel authorization and confines its model list', async () => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, 'OpenAI')
-    await wrapper.get('[data-testid="openai-bps-oauth"]').trigger('click')
-    expect(wrapper.find('[data-testid="bps-oauth-models"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="create-excel-bps-card"]').exists()).toBe(false)
-    await wrapper.get('[data-tour="account-form-name"]').setValue('Excel account')
-    await wrapper.get('form#create-account-form').trigger('submit.prevent')
-    expect(wrapper.getComponent(OAuthAuthorizationFlowStub).props('excelOauth')).toBe(true)
   })
 
   it('submits chosen timezone and Excel defaults with OAuth imports', async () => {

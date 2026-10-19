@@ -18,7 +18,7 @@ const credentialDatabaseKey = "openai_reauth_credential_key_v1"
 const credentialStoredSecretsQuery = `SELECT EXISTS (SELECT 1 FROM openai_oauth_reauth_configs
  WHERE COALESCE(length(password_ciphertext), 0) > 0
  OR COALESCE(length(totp_secret_ciphertext), 0) > 0
- OR COALESCE(length(otp_url_ciphertext), 0) > 0) OR EXISTS (SELECT 1 FROM openai_excel_oauth_credentials WHERE credentials_ciphertext <> '')`
+ OR COALESCE(length(otp_url_ciphertext), 0) > 0)`
 
 type credentialKeyReader interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row

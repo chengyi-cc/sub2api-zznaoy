@@ -312,7 +312,6 @@ type SystemSettings struct {
 	AccountQuotaNotifyEmails        []NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Channel Monitor feature switch
-	ExcelBPSEnabled                      bool   `json:"excel_bps_enabled"`
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
@@ -439,7 +438,6 @@ type PublicSettings struct {
 	BalanceLowNotifyThreshold   float64 `json:"balance_low_notify_threshold"`
 	BalanceLowNotifyRechargeURL string  `json:"balance_low_notify_recharge_url"`
 
-	ExcelBPSEnabled                      bool   `json:"excel_bps_enabled"`
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`

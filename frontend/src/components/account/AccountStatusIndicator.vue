@@ -1,7 +1,6 @@
 <template>
   <div class="flex items-center gap-2">
     <ExcelProtocolBadge :extra="account.extra" />
-    <ExcelBPSCredentialStatus :state="account.excel_bps_credential_state" />
     <!-- OpenAI OAuth RPM Display - keep the pause reason explicit -->
     <div v-if="isRPMPaused" class="flex flex-col items-center gap-1">
       <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rpmPaused') }}</span>
@@ -167,7 +166,6 @@
 </template>
 
 <script setup lang="ts">
-import ExcelBPSCredentialStatus from './ExcelBPSCredentialStatus.vue'
 import ExcelProtocolBadge from './ExcelProtocolBadge.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'

@@ -728,7 +728,6 @@ export interface SystemSettings {
   account_quota_notify_emails: NotifyEmailEntry[];
 
   // Channel Monitor feature switch
-  excel_bps_enabled: boolean
   channel_monitor_enabled: boolean;
   channel_monitor_mode?: 'v1' | 'v2';
   channel_monitor_default_interval_seconds: number;
@@ -1047,7 +1046,6 @@ export interface UpdateSettingsRequest {
   account_quota_notify_emails?: NotifyEmailEntry[];
 
   // Channel Monitor feature switch
-  excel_bps_enabled?: boolean
   channel_monitor_enabled?: boolean;
   channel_monitor_mode?: 'v1' | 'v2';
   channel_monitor_default_interval_seconds?: number;

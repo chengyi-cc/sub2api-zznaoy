@@ -169,7 +169,7 @@ func TestCatalogMCPAliasesAreBidirectionalAndExactWins(t *testing.T) {
 		source["tools"] = []any{functionCodeTestTool(declared)}
 		_, bridge := mustPrepare(t, source, "", nil)
 		for _, name := range matrixNames("mcp__node_repl__js") {
-			call, err := bridge.translateCall(matrixNative(t, name, "wrapped", object{"code": "exact", "description": "matrix"}))
+			call, err := bridge.translateCall(matrixNative(t, name, "wrapped", object{"code": "exact"}))
 			if err != nil || call["name"] != declared {
 				t.Fatalf("%s -> %s: %#v %v", name, declared, call, err)
 			}
@@ -179,7 +179,7 @@ func TestCatalogMCPAliasesAreBidirectionalAndExactWins(t *testing.T) {
 	source["tools"] = []any{functionCodeTestTool("mcp__node_repl.js"), functionCodeTestTool("mcp__node_repl__js")}
 	_, bridge := mustPrepare(t, source, "", nil)
 	for _, name := range []string{"mcp__node_repl.js", "mcp__node_repl__js"} {
-		call, err := bridge.translateCall(matrixNative(t, name, "wrapped", object{"code": "exact", "description": "matrix"}))
+		call, err := bridge.translateCall(matrixNative(t, name, "wrapped", object{"code": "exact"}))
 		if err != nil || call["name"] != name {
 			t.Fatal("exact match lost")
 		}
@@ -214,7 +214,7 @@ func TestToolCatalogNamespacedAndDeferredMatrix(t *testing.T) {
 							}
 						}
 						_, bridge := mustPrepare(t, source, "namespaced-matrix", nil)
-						call, err := bridge.translateCall(matrixNative(t, name, mode, object{"code": "literal", "description": "matrix"}))
+						call, err := bridge.translateCall(matrixNative(t, name, mode, object{"code": "literal"}))
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -258,7 +258,7 @@ func TestDirectCatalogCallPreservesSeparateNamespace(t *testing.T) {
 		source := testSource()
 		source["tools"] = []any{object{"type": "namespace", "name": namespace, "tools": []any{functionCodeTestTool("inspect")}}, functionCodeTestTool("inspect")}
 		_, bridge := mustPrepare(t, source, "", nil)
-		native := matrixNative(t, "inspect", "direct", object{"code": "exact", "description": "matrix"})
+		native := matrixNative(t, "inspect", "direct", object{"code": "exact"})
 		native["namespace"] = namespace
 		call, err := bridge.translateCall(native)
 		if err != nil || call["namespace"] != namespace {
@@ -269,7 +269,7 @@ func TestDirectCatalogCallPreservesSeparateNamespace(t *testing.T) {
 	source["tools"] = []any{functionCodeTestTool("inspect")}
 	_, bridge := mustPrepare(t, source, "", nil)
 	for _, namespace := range []any{"other", " ", 42} {
-		native := matrixNative(t, "inspect", "direct", object{"code": "exact", "description": "matrix"})
+		native := matrixNative(t, "inspect", "direct", object{"code": "exact"})
 		native["namespace"] = namespace
 		if _, err := bridge.translateCall(native); err == nil {
 			t.Fatalf("unknown namespace ignored: %v", namespace)
@@ -293,7 +293,7 @@ func TestFullExecCatalogParallelStreamAndReplay(t *testing.T) {
 	_, bridge := mustPrepare(t, source, "parallel-catalog", cache)
 	var output []any
 	for index, spec := range specs {
-		var value any = object{"code": "literal", "description": "matrix"}
+		var value any = object{"code": "literal"}
 		if spec.Kind == "string" {
 			value = "raw patch fixture"
 		}

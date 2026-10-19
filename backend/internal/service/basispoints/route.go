@@ -44,7 +44,7 @@ func NativeFallbackReason(body []byte) string {
 				}
 			}
 		}
-		if choice.String() != "none" && isCatalogItem(item.Get("type").String()) && inspectTools(item.Get("tools")) {
+		if choice.String() != "none" && item.Get("type").String() == "additional_tools" && inspectTools(item.Get("tools")) {
 			return "hosted_tools"
 		}
 		for _, field := range []string{"content", "output"} {

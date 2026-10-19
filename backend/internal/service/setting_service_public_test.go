@@ -309,19 +309,3 @@ func TestSettingService_GetPublicSettings_PaymentBalanceDisabledStrictTrue(t *te
 		})
 	}
 }
-
-func TestExcelBPSGlobalPublicDefaultAndDisable(t *testing.T) {
-	for _, tc := range []struct {
-		setting string
-		enabled bool
-	}{{"", true}, {"false", false}, {"true", true}} {
-		values := map[string]string{}
-		if tc.setting != "" {
-			values[SettingKeyExcelBPSEnabled] = tc.setting
-		}
-		svc := NewSettingService(&settingPublicRepoStub{values: values}, &config.Config{})
-		got, err := svc.GetPublicSettings(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, tc.enabled, got.ExcelBPSEnabled)
-	}
-}

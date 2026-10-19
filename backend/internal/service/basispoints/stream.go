@@ -247,8 +247,7 @@ func (b *Bridge) transformWithRepair(ctx context.Context, reader io.Reader, writ
 				response["reasoning"] = object{"effort": b.Effort}
 			}
 		}
-		terminal = kind == "response.completed" || kind == "response.incomplete" || kind == "response.failed" || kind == "response.cancelled" || kind == "error"
-		payload = normalizeFailureEvent(kind, payload)
+		terminal = kind == "response.completed" || kind == "response.incomplete" || kind == "response.failed" || kind == "error"
 		return emit(kind, payload)
 	}
 	err := readEventsWithLimit(reader, b.sseMaxBytes, func(event string, data []byte) error {

@@ -26,11 +26,11 @@ const maxExtracted = 768 << 20
 
 // The local gateway version differs from the reference project's release tags.
 // Pin the reference worker contract independently of the gateway build version.
-const PinnedVersion = "2.10.5"
+const PinnedVersion = "2.9.8"
 
 var pinnedRuntimeDigests = map[string]string{
-	"amd64": "4252883814b7e32cabb2b800d0c008e9fb9c3b4c8fc481dc460e85f773b7506b",
-	"arm64": "670c5f7d1c59a52f1ecfcd3b37ff3c1ae5cd9cf8f403adfacadda69ac0103542",
+	"amd64": "f6cb2cfbfc3e3f10d2aae3b265b7989444cdcaf3f3c5a502f434d59f2c3decee",
+	"arm64": "7b4f4880401e896c41c479911ed9b55acd920951a5986d147da64267a01aca18",
 }
 
 type Status struct {

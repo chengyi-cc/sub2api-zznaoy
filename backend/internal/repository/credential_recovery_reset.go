@@ -18,11 +18,11 @@ func (r *openAIOAuthReauthRepository) ClearOrphanedCredentialConfigs(ctx context
 	}
 	defer func() { _ = tx.Rollback() }()
 	// Block new monitors/configurations/tasks while deciding whether cleanup is safe.
-	if _, err = tx.ExecContext(ctx, `LOCK TABLE account_token_guard_v2_accounts, openai_oauth_reauth_configs, openai_oauth_reauth_tasks, openai_excel_oauth_credentials IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+	if _, err = tx.ExecContext(ctx, `LOCK TABLE account_token_guard_v2_accounts, openai_oauth_reauth_configs, openai_oauth_reauth_tasks IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 		return err
 	}
 	var inUse bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM account_token_guard_v2_accounts) OR EXISTS (SELECT 1 FROM openai_oauth_reauth_tasks WHERE status IN ('queued','running','callback_processing')) OR EXISTS (SELECT 1 FROM openai_excel_oauth_credentials)`).Scan(&inUse); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM account_token_guard_v2_accounts) OR EXISTS (SELECT 1 FROM openai_oauth_reauth_tasks WHERE status IN ('queued','running','callback_processing'))`).Scan(&inUse); err != nil {
 		return err
 	}
 	if inUse {

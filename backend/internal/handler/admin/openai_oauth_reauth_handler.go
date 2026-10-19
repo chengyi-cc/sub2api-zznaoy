@@ -70,20 +70,7 @@ func (h *OpenAIOAuthReauthHandler) CreateTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	profile := "codex"
-	if c.Request.ContentLength != 0 {
-		var req struct {
-			OAuthProfile string `json:"oauth_profile"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			response.BadRequest(c, "Invalid authorization request")
-			return
-		}
-		if req.OAuthProfile != "" {
-			profile = req.OAuthProfile
-		}
-	}
-	task, err := h.service.CreateTaskForProfile(c.Request.Context(), accountID, profile)
+	task, err := h.service.CreateTask(c.Request.Context(), accountID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

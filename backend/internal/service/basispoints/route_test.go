@@ -23,10 +23,3 @@ func TestNativeCapabilityRouting(t *testing.T) {
 		}
 	}
 }
-
-func TestLoadedHostedToolFallsBackToNative(t *testing.T) {
-	body := []byte(`{"input":[{"type":"tool_search_output","tools":[{"type":"web_search"}]}]}`)
-	if NativeFallbackReason(body) != "hosted_tools" {
-		t.Fatal("loaded hosted tool must not be silently omitted")
-	}
-}

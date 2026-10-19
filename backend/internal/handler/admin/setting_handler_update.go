@@ -335,7 +335,6 @@ type UpdateSettingsRequest struct {
 	PaymentAlipayMobilePrecreateDeepLink *bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// Channel Monitor feature switch
-	ExcelBPSEnabled                      *bool   `json:"excel_bps_enabled"`
 	ChannelMonitorEnabled                *bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   *string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds *int    `json:"channel_monitor_default_interval_seconds"`
@@ -1937,12 +1936,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AccountQuotaNotifyEmails
 		}(),
-		ExcelBPSEnabled: func() bool {
-			if req.ExcelBPSEnabled != nil {
-				return *req.ExcelBPSEnabled
-			}
-			return previousSettings.ExcelBPSEnabled
-		}(),
 		ChannelMonitorEnabled: func() bool {
 			if req.ChannelMonitorEnabled != nil {
 				return *req.ChannelMonitorEnabled
@@ -2471,7 +2464,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentAlipayForceQRCode:                               updatedPaymentCfg.AlipayForceQRCode,
 		PaymentAlipayMobilePrecreateDeepLink:                   updatedPaymentCfg.AlipayMobilePrecreateDeepLink,
 
-		ExcelBPSEnabled:                      updatedSettings.ExcelBPSEnabled,
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorMode:                   updatedSettings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,

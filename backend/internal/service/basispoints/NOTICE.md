@@ -185,13 +185,3 @@ Follow-up adaptation, checked 2026-09-27 UTC (2026-09-26 Los Angeles):
   statistics and existing account usage reports are retained without extra
   lifetime fields or queries; image/catalog fixes above remain included.
 - No release/version override, deployment, extra model retry or image omission.
-
-## 2026-10-11 alignment
-
-Selected behavior adapted from ranxi2001/sub2api v2.10.5 (d977e7a5e):
-- #343, #346, #358, #368, #371, #374, #379: official Excel OAuth, independently encrypted grants, profile isolation, readiness and conditional refresh recovery.
-- #360, #361, #364: dynamic tool catalogs, plaintext assignment integrity, compact schema descriptions.
-- #362, #363, #373, #375, #376: progress timeout, permission catalog, per-model permission cooldown, test evidence, optional Redis state.
-- Catalog-derived examples, argument-schema validation and classified in-band terminal failures were adapted from the same release.
-
-The local bridge retains raw script/name compatibility, parallel-call validation, explicit model selection, image attachments and original-history native fallback. Local main is not replaced by the reference branch. Tool-schema and shared-state regression fixtures are synthetic; no customer conversations or credentials are included.

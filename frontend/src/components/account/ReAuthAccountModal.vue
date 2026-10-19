@@ -119,7 +119,6 @@
       <OAuthAuthorizationFlow
         ref="oauthFlowRef"
         :add-method="addMethod"
-        :excel-oauth="isExcelOAuth"
         :auth-url="currentAuthUrl"
         :session-id="currentSessionId"
         :loading="currentLoading"
@@ -238,7 +237,6 @@ const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('code_as
 
 // Computed - check platform
 const isOpenAI = computed(() => props.account?.platform === 'openai')
-const isExcelOAuth = computed(() => isOpenAI.value && props.account?.credentials?.client_id === 'app_fnr0pYvVwwFDocDumLG3H2Bp')
 const isOpenAILike = computed(() => isOpenAI.value)
 const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
@@ -329,7 +327,7 @@ const handleGenerateUrl = async () => {
   if (!props.account) return
 
   if (isOpenAILike.value) {
-    await openaiOAuth.generateAuthUrl(props.account.proxy_id, undefined, isExcelOAuth.value ? 'excel' : 'codex')
+    await openaiOAuth.generateAuthUrl(props.account.proxy_id)
   } else if (isGemini.value) {
     const creds = (props.account.credentials || {}) as Record<string, unknown>
     const tierId = typeof creds.tier_id === 'string' ? creds.tier_id : undefined

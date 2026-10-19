@@ -1839,8 +1839,6 @@
         </div>
       </div>
 
-      <ExcelBPSCredentialStatus :state="account?.excel_bps_credential_state" />
-
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -3105,7 +3103,6 @@
 </template>
 
 <script setup lang="ts">
-import ExcelBPSCredentialStatus from './ExcelBPSCredentialStatus.vue'
 import { DEFAULT_EXCEL_BPS_MODELS } from '@/utils/excelBPSDefaults'
 
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'

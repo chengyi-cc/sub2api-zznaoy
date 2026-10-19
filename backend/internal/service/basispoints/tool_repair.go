@@ -538,13 +538,10 @@ func ReadToolRepairResponse(reader io.Reader) (map[string]any, error) {
 			pending[text(item["call_id"])+"\x00"+text(item["id"])] = true
 		}
 		switch kind {
-		case "response.completed", "response.failed", "response.incomplete", "response.cancelled", "error":
+		case "response.completed", "response.failed", "response.incomplete", "error":
 			response, _ = payload["response"].(object)
 			if kind != "response.completed" || response == nil {
 				terminalError = fmt.Errorf("basispoints correction did not complete")
-				if failure := classifyUpstreamFailure(kind, payload); failure != nil {
-					terminalError = failure
-				}
 			} else {
 				output, _ := response["output"].([]any)
 				for _, raw := range output {

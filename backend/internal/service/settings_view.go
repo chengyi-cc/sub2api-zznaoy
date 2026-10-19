@@ -200,7 +200,6 @@ type SystemSettings struct {
 	OpsMetricsIntervalSeconds    int
 
 	// Channel Monitor feature
-	ExcelBPSEnabled                      bool   `json:"excel_bps_enabled"`
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
@@ -392,7 +391,6 @@ type PublicSettings struct {
 	BalanceLowNotifyRechargeURL string
 
 	// Channel Monitor feature
-	ExcelBPSEnabled                      bool   `json:"excel_bps_enabled"`
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
