@@ -38,7 +38,11 @@ func encodeBodyLimitFixture(t *testing.T, encoding string, body []byte) []byte {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer w.Close()
+		defer func() {
+			if err := w.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
 		return w.EncodeAll(body, nil)
 	}
 	return b.Bytes()

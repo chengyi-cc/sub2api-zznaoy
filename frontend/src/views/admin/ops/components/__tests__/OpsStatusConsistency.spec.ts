@@ -66,8 +66,14 @@ describe('Ops client/upstream status consistency', () => {
     expect(wrapper.text()).toContain('admin.ops.requestDetails.table.upstreamStatus')
     if (desktop) {
       const rows = wrapper.findAll('tbody tr')
-      expect(rows[0].findAll('td').slice(5, 7).map((cell) => cell.text())).toEqual(['502', '403'])
-      expect(rows[1].findAll('td').slice(5, 7).map((cell) => cell.text())).toEqual(['400', '-'])
+      const headers = wrapper.findAll('thead th').map((header) => header.text())
+      const clientColumn = headers.indexOf('admin.ops.requestDetails.table.clientStatus')
+      const upstreamColumn = headers.indexOf('admin.ops.requestDetails.table.upstreamStatus')
+      expect(clientColumn).toBeGreaterThanOrEqual(0)
+      expect(upstreamColumn).toBeGreaterThanOrEqual(0)
+      const statuses = (row: typeof rows[number]) => [clientColumn, upstreamColumn].map((index) => row.findAll('td')[index].text())
+      expect(statuses(rows[0])).toEqual(['502', '403'])
+      expect(statuses(rows[1])).toEqual(['400', '-'])
     } else {
       expect(wrapper.text()).toContain('admin.ops.requestDetails.table.clientStatus: 502')
       expect(wrapper.text()).toContain('admin.ops.requestDetails.table.upstreamStatus: 403')

@@ -137,7 +137,7 @@ func (s *AccountTestService) observeCandyTestEvent(c *gin.Context, event TestEve
 		if len(event.Text) > maxCandyOutputBytes-state.output.Len() {
 			state.overflow = true
 		} else if !state.overflow {
-			state.output.WriteString(event.Text)
+			_, _ = state.output.WriteString(event.Text)
 		}
 	}
 	if event.Type == "test_complete" || event.Type == "error" {

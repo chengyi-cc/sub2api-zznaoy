@@ -17,7 +17,9 @@ func catalogCacheBody(t *testing.T, tools any, explicit bool, additions ...any) 
 		request["tools"] = tools
 	}
 	if len(additions) > 0 {
-		request["input"] = append(request["input"].([]any), object{"type": "additional_tools", "tools": additions})
+		input, ok := request["input"].([]any)
+		require.True(t, ok)
+		request["input"] = append(input, object{"type": "additional_tools", "tools": additions})
 	}
 	raw, err := json.Marshal(request)
 	require.NoError(t, err)

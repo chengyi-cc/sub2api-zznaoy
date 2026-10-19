@@ -33,7 +33,8 @@ const button = (wrapper: VueWrapper, text: string) =>
 
 describe('ProfileBalanceNotifyCard', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
+    // Only count the component's countdown intervals, not the test runner's reporting timeout.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     vi.resetAllMocks()
     sendNotifyEmailCode.mockResolvedValue({})
     getProfile.mockResolvedValue({ balance_notify_extra_emails: [] })
@@ -42,6 +43,39 @@ describe('ProfileBalanceNotifyCard', () => {
   afterEach(() => {
     vi.clearAllTimers()
     vi.useRealTimers()
+  })
+
+  it.each(['remove', 'unmount'])('does not start a pending email timer after %s', async (action) => {
+    const request = deferred()
+    sendNotifyEmailCode.mockReturnValueOnce(request.promise)
+    const wrapper = mount(ProfileBalanceNotifyCard, {
+      props: { enabled: true, threshold: null, extraEmails: [], systemDefaultThreshold: 5, userEmail: '' }
+    })
+    await wrapper.get('input[type="email"]').setValue('new@example.com')
+    await button(wrapper, 'common.add').trigger('click')
+    await button(wrapper, 'profile.balanceNotify.sendCode').trigger('click')
+    if (action === 'remove') await button(wrapper, 'profile.balanceNotify.removeEmail').trigger('click')
+    else wrapper.unmount()
+
+    request.resolve()
+    await flushPromises()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not start a saved email timer after unmount', async () => {
+    const request = deferred()
+    sendNotifyEmailCode.mockReturnValueOnce(request.promise)
+    const wrapper = mount(ProfileBalanceNotifyCard, {
+      props: {
+        enabled: true, threshold: null, systemDefaultThreshold: 5, userEmail: '',
+        extraEmails: [{ email: 'saved@example.com', disabled: false, verified: false }]
+      }
+    })
+    await button(wrapper, 'profile.balanceNotify.verify').trigger('click')
+    wrapper.unmount()
+    request.resolve()
+    await flushPromises()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it.each([0, 1])('removes only verified emails when request %i finishes first', async (first) => {

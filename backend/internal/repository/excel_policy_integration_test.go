@@ -25,7 +25,7 @@ func TestExcelPolicyPostgres(t *testing.T) {
 	ctx := context.Background()
 	admin, err := sql.Open("postgres", dsn)
 	require.NoError(t, err)
-	defer admin.Close()
+	defer func() { require.NoError(t, admin.Close()) }()
 	name := fmt.Sprintf("excel_policy_%d", time.Now().UnixNano())
 	_, err = admin.ExecContext(ctx, "CREATE DATABASE "+pq.QuoteIdentifier(name))
 	require.NoError(t, err)

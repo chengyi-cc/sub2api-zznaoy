@@ -59,8 +59,14 @@ func TestCWCapturedExecEnvelopeReplaysWithoutModelCorrection(t *testing.T) {
 		}
 		return value
 	}
-	original := decodeDiag(0)["response"].(object)
-	corrected := decodeDiag(1)["response"].(object)
+	original, ok := decodeDiag(0)["response"].(object)
+	if !ok {
+		t.Fatal("original response must be an object")
+	}
+	corrected, ok := decodeDiag(1)["response"].(object)
+	if !ok {
+		t.Fatal("corrected response must be an object")
+	}
 	native := original["output"].([]any)[0].(object)
 	fixed := corrected["output"].([]any)[0].(object)
 	args := transportArguments(native)

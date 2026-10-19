@@ -202,7 +202,7 @@ func (r *candyMonitorRepository) AccountStates(ctx context.Context, ids []int64)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]service.CandyMonitorAccountState, 0)
 	for rows.Next() {
 		var item service.CandyMonitorAccountState
