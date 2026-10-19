@@ -260,6 +260,8 @@ type UpdateSettingsRequest struct {
 	ClaudeCodeClientVersion                *string `json:"claude_code_client_version"`
 	ClaudeCodeVersionAutoSyncEnabled       *bool   `json:"claude_code_version_auto_sync_enabled"`
 
+	OpenAIGPT61SolLongContextExemptionEnabled bool `json:"openai_gpt61_sol_long_context_exemption_enabled"`
+
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
 	MaxCodexVersion                      string `json:"max_codex_version"`
@@ -1823,6 +1825,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ClaudeCodeVersionAutoSyncEnabled
 		}(),
+		OpenAIGPT61SolLongContextExemptionEnabled: req.OpenAIGPT61SolLongContextExemptionEnabled,
 		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
 		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
 		CodexCLIOnlyBlacklist: strings.TrimSpace(req.CodexCLIOnlyBlacklist),
@@ -2394,6 +2397,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,
 		ClaudeCodeClientVersionSynced:                          updatedSettings.ClaudeCodeClientVersionSynced,
 		ClaudeCodeVersionAutoSyncEnabled:                       updatedSettings.ClaudeCodeVersionAutoSyncEnabled,
+		OpenAIGPT61SolLongContextExemptionEnabled:              updatedSettings.OpenAIGPT61SolLongContextExemptionEnabled,
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  updatedSettings.CodexCLIOnlyBlacklist,

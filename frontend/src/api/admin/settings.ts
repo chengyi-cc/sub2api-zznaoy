@@ -648,6 +648,7 @@ export interface SystemSettings {
   claude_code_client_version_synced: string;
   claude_code_version_auto_sync_enabled: boolean;
   // codex_cli_only 加固
+  openai_gpt61_sol_long_context_exemption_enabled: boolean;
   min_codex_version: string;
   max_codex_version: string;
   codex_cli_only_blacklist: string;
@@ -980,6 +981,7 @@ export interface UpdateSettingsRequest {
   claude_code_client_version?: string;
   claude_code_version_auto_sync_enabled?: boolean;
   // codex_cli_only 加固
+  openai_gpt61_sol_long_context_exemption_enabled?: boolean;
   min_codex_version?: string;
   max_codex_version?: string;
   codex_cli_only_blacklist?: string;

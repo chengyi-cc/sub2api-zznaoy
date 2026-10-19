@@ -224,6 +224,9 @@ type SystemSettings struct {
 	ClaudeCodeVersionAutoSyncEnabled       bool   `json:"claude_code_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固
+
+	OpenAIGPT61SolLongContextExemptionEnabled bool `json:"openai_gpt61_sol_long_context_exemption_enabled"`
+
 	MinCodexVersion                      string `json:"min_codex_version"`
 	MaxCodexVersion                      string `json:"max_codex_version"`
 	CodexCLIOnlyBlacklist                string `json:"codex_cli_only_blacklist"`

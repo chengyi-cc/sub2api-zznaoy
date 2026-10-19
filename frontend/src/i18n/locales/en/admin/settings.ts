@@ -1,5 +1,6 @@
 export default {
     settings: {
+      gpt61LongContextExemption: { title: 'Waive GPT-6.1 Sol subscription long-context surcharge', description: 'Off by default: use existing account, group and pricing settings. Enable to waive the model long-context surcharge only for GPT-6.1 Sol login-authorized or subscription-token accounts. API-key accounts, custom price intervals and priority fees are unchanged. Save to apply.' },
       title: 'System Settings',
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {

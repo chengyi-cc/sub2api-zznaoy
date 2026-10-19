@@ -233,6 +233,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyMinClaudeCodeVersion: "",
 		SettingKeyMaxClaudeCodeVersion: "",
 
+		SettingKeyOpenAIGPT61SolLongContextExemptionEnabled: "false",
+
 		// codex_cli_only 加固（默认：版本不检查、名单空、默认种子指纹信号）
 		SettingKeyMinCodexVersion:                      "",
 		SettingKeyMaxCodexVersion:                      "",
@@ -916,6 +918,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.ClaudeCodeVersionAutoSyncEnabled = true
 	}
+	result.OpenAIGPT61SolLongContextExemptionEnabled = settings[SettingKeyOpenAIGPT61SolLongContextExemptionEnabled] == "true"
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]
 	result.MaxCodexVersion = settings[SettingKeyMaxCodexVersion]

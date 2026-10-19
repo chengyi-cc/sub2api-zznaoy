@@ -203,3 +203,27 @@ func TestUpdateSettingsSubscriptionEnabledIsWritableAndKeptWhenOmitted(t *testin
 	require.Equal(t, "false", repo.values[service.SettingKeySubscriptionEnabled],
 		"a payload without subscription_enabled must not flip the stored value back to true")
 }
+
+func TestUpdateSettingsGPT61LongContextExemptionDefaultsAndPersistence(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	rec := doUpdateSettings(t, h, map[string]any{"site_name": "Example"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"openai_gpt61_sol_long_context_exemption_enabled":false`)
+	for _, enabled := range []bool{true, false} {
+		rec = doUpdateSettings(t, h, map[string]any{"openai_gpt61_sol_long_context_exemption_enabled": enabled}, nil)
+		require.Equal(t, http.StatusOK, rec.Code)
+		want := "false"
+		if enabled {
+			want = "true"
+		}
+		require.Equal(t, want, repo.values[service.SettingKeyOpenAIGPT61SolLongContextExemptionEnabled])
+		require.Contains(t, rec.Body.String(), `"openai_gpt61_sol_long_context_exemption_enabled":`+want)
+		rec = doUpdateSettings(t, h, map[string]any{"site_name": "Unrelated"}, nil)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, want, repo.values[service.SettingKeyOpenAIGPT61SolLongContextExemptionEnabled], "omitted setting must retain its value")
+		require.Contains(t, rec.Body.String(), `"openai_gpt61_sol_long_context_exemption_enabled":`+want)
+	}
+	rec = doUpdateSettings(t, h, map[string]any{"openai_gpt61_sol_long_context_exemption_enabled": "true"}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyOpenAIGPT61SolLongContextExemptionEnabled])
+}

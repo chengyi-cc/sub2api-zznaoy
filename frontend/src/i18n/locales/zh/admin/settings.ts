@@ -1,5 +1,6 @@
 export default {
     settings: {
+      gpt61LongContextExemption: { title: 'GPT-6.1 Sol 订阅长上下文免附加费', description: '默认关闭，按现有账号、分组及价格设置计费。开启后，仅 GPT-6.1 Sol 登录授权或订阅访问令牌账号免除模型长上下文附加费；API 密钥账号、自定义区间价格和优先处理费用不变。保存后生效。' },
       title: '系统设置',
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
       tabs: {

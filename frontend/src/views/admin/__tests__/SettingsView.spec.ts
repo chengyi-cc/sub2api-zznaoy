@@ -749,6 +749,20 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it.each([undefined, true, false])("loads and saves the GPT-6.1 long-context exemption (%s)", async (stored) => {
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, openai_gpt61_sol_long_context_exemption_enabled: stored });
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+    const toggle = wrapper.get<HTMLInputElement>('[data-testid="gpt61-long-context-exemption-toggle"]');
+    expect(toggle.element.checked).toBe(stored ?? false);
+    await toggle.setValue(!(stored ?? false));
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ openai_gpt61_sol_long_context_exemption_enabled: !(stored ?? false) }));
+    wrapper.unmount();
+  });
+
   it("submits the compact home page toggle", async () => {
     const wrapper = mountView();
     await flushPromises();

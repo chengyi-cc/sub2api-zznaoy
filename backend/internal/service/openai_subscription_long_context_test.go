@@ -52,6 +52,7 @@ func TestOpenAIGatewayServiceRecordUsage_GPT61SolSubscriptionLongContext(t *test
 							usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 							userRepo := &openAIRecordUsageUserRepoStub{}
 							svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+							svc.settingService = NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyOpenAIGPT61SolLongContextExemptionEnabled: "true"}}, nil)
 							if catalog {
 								svc.billingService = NewBillingService(svc.cfg, newStubPricingServiceFromJSON(t, `{
 									"gpt-6.1-sol": {"litellm_provider": "openai", "mode": "chat",
@@ -132,6 +133,7 @@ func TestOpenAIGatewayServiceRecordUsage_GPT61SolUsesCredentialAndUpstreamModel(
 		t.Run(tt.name, func(t *testing.T) {
 			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 			svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+			svc.settingService = NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyOpenAIGPT61SolLongContextExemptionEnabled: "true"}}, nil)
 			parentID := int64(4)
 			svc.accountRepo = &openAIRecordUsageAccountRepoStub{account: &Account{
 				ID: parentID, Platform: PlatformOpenAI, Type: tt.parentType,
@@ -182,6 +184,7 @@ func TestOpenAIGatewayServiceRecordUsage_GPT61SolLongContextBoundary(t *testing.
 			t.Run(fmt.Sprintf("%s/%d", accountType, totalInput), func(t *testing.T) {
 				usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 				svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+				svc.settingService = NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyOpenAIGPT61SolLongContextExemptionEnabled: "true"}}, nil)
 				err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 					Result: &OpenAIForwardResult{RequestID: "boundary", Model: "gpt-6.1-sol", Duration: time.Second,
 						Usage: OpenAIUsage{InputTokens: totalInput, OutputTokens: 1000}},
@@ -208,6 +211,7 @@ func TestOpenAIGatewayServiceRecordUsage_GPT61SolExemptionSurvivesRepricing(t *t
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.settingService = NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyOpenAIGPT61SolLongContextExemptionEnabled: "true"}}, nil)
 	apiKey := openAIRecordUsageAPIKeyWithGroup(svc, 1, true)
 	apiKey.GroupID = i64p(1)
 	apiKey.Group.Platform = PlatformOpenAI

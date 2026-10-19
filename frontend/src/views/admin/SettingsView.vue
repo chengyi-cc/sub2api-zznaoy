@@ -4492,6 +4492,25 @@
             </div>
           </div>
 
+          <div class="card p-6">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <label id="gpt61-long-context-exemption-label" for="gpt61-long-context-exemption" class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t("admin.settings.gpt61LongContextExemption.title") }}
+                </label>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gpt61LongContextExemption.description") }}
+                </p>
+              </div>
+              <Toggle
+                id="gpt61-long-context-exemption"
+                aria-labelledby="gpt61-long-context-exemption-label"
+                v-model="form.openai_gpt61_sol_long_context_exemption_enabled"
+                data-testid="gpt61-long-context-exemption-toggle"
+              />
+            </div>
+          </div>
+
           <!-- Codex Settings -->
           <div class="card">
             <div
@@ -10103,6 +10122,7 @@ const form = reactive<SettingsForm>({
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   claude_code_client_version_synced: "",
   claude_code_version_auto_sync_enabled: true,
+  openai_gpt61_sol_long_context_exemption_enabled: false,
   // codex_cli_only 加固
   min_codex_version: "",
   max_codex_version: "",
@@ -11759,6 +11779,7 @@ async function saveSettings() {
       claude_code_client_version: form.claude_code_client_version?.trim() || "",
       claude_code_version_auto_sync_enabled:
         form.claude_code_version_auto_sync_enabled,
+      openai_gpt61_sol_long_context_exemption_enabled: form.openai_gpt61_sol_long_context_exemption_enabled,
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:
