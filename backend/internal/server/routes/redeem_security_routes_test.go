@@ -8,10 +8,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	adminhandler "github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -96,4 +98,59 @@ func TestRedeemRoutesRequireRealAdminAuthorization(t *testing.T) {
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+}
+
+type mergedScopedKeyRepo struct {
+	service.ScopedAdminKeyRepository
+	key *service.ScopedAdminKey
+}
+
+func (r *mergedScopedKeyRepo) InsertScopedAdminKey(_ context.Context, key *service.ScopedAdminKey) error {
+	r.key = key
+	return nil
+}
+func (r *mergedScopedKeyRepo) GetScopedAdminKey(context.Context, string) (*service.ScopedAdminKey, error) {
+	return r.key, nil
+}
+func (r *mergedScopedKeyRepo) TouchScopedAdminKey(context.Context, string, string, time.Time, string, time.Time) error {
+	return nil
+}
+
+// Upstream scoped keys must not implicitly gain access to this fork's financial
+// or credential-management endpoints, even when every catalog permission is on.
+func TestMergedScopedAdminKeysCannotAccessCustomSensitiveRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	policy := adminaccess.Policy{}
+	for _, permission := range adminaccess.PermissionCatalog() {
+		if permission.Scope == "global" {
+			policy.GlobalPermissions = append(policy.GlobalPermissions, permission.ID)
+		} else {
+			policy.Rules = append(policy.Rules, adminaccess.Rule{Permissions: []string{permission.ID}, AllGroups: true, IncludeUngrouped: true, AccountTypes: []string{"oauth", "apikey"}})
+		}
+	}
+	settings := service.NewSettingService(nil, nil)
+	settings.SetScopedAdminKeyRepository(&mergedScopedKeyRepo{})
+	key, _, err := settings.CreateScopedAdminKey(context.Background(), service.ScopedAdminKeyInput{Name: "merge-regression", Enabled: true, Policy: policy}, 9)
+	require.NoError(t, err)
+	users := service.NewUserService(&redeemRouteUserRepo{users: map[int64]*service.User{9: {ID: 9, Role: service.RoleAdmin, Status: service.StatusActive}}}, nil, nil, nil)
+	router := gin.New()
+	handlers := &handler.Handlers{Admin: &handler.AdminHandlers{
+		Account: &adminhandler.AccountHandler{}, OpenAIOAuth: &adminhandler.OpenAIOAuthHandler{}, Redeem: &adminhandler.RedeemHandler{},
+	}}
+	RegisterAdminRoutes(router.Group("/api/v1"), handlers, middleware.NewAdminAuthMiddleware(nil, users, settings, nil),
+		middleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() }),
+		middleware.StepUpAuthMiddleware(func(c *gin.Context) { c.Next() }), settings, nil)
+	for _, endpoint := range []struct{ method, path string }{
+		{"POST", "/redeem-codes/generate"}, {"POST", "/redeem-codes/create-and-redeem"},
+		{"POST", "/redeem-codes/batch-update"}, {"GET", "/redeem-codes/export"},
+		{"GET", "/invoice/requests"}, {"POST", "/invoice/requests/1/issue"},
+		{"PUT", "/settings/openai-account-template"},
+		{"PUT", "/astra-borrow"}, {"POST", "/prism-runtime/restart"},
+	} {
+		req := httptest.NewRequest(endpoint.method, "/api/v1/admin"+endpoint.path, nil)
+		req.Header.Set("x-api-key", key)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusForbidden, rec.Code, endpoint.path+": "+rec.Body.String())
+	}
 }

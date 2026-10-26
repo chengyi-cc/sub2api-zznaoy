@@ -1,3 +1,4 @@
+import adminAccessKeys from './adminAccessKeys'
 import landing from './landing'
 import common from './common'
 import dashboard from './dashboard'
@@ -8,6 +9,7 @@ import misc from './misc'
 import tokenGuardV2 from './tokenGuardV2'
 
 export default {
+  adminAccessKeys,
   ...landing,
   ...common,
   ...dashboard,

@@ -36,8 +36,11 @@ func applyAstraBorrowProbeIdentity(h http.Header) {
 	enforceCodexIdentityHeaders(h)
 	if CompareVersions(h.Get("version"), "0.153.4") < 0 {
 		h.Set("version", "0.153.4")
-		h.Set("user-agent", buildCodexCLIUserAgent("0.153.4"))
-		h.Set("originator", openai.CodexDefaultOriginator)
+		// This independent probe's reference fallback is TUI, not the global
+		// gateway default. Upstream changing the latter must not change this
+		// already validated Astra-specific version-floor contract.
+		h.Set("user-agent", openai.CodexTUIOriginator+"/0.153.4"+codexCLIUserAgentSuffix+" ("+openai.CodexTUIOriginator+"; 0.153.4)")
+		h.Set("originator", openai.CodexTUIOriginator)
 	}
 }
 

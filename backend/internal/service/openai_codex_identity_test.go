@@ -174,8 +174,8 @@ func TestEnforceCodexIdentityHeadersWithAccountOverrideUA(t *testing.T) {
 
 		enforceCodexIdentityHeadersWithUA(h, "codex-tui/0.125.0 (Mac OS X 14.0; arm64) iTerm")
 
-		require.Equal(t, "codex-tui", h.Get("originator"))
-		require.Equal(t, "codex-tui/0.200.1 (Mac OS X 14.0; arm64) iTerm", h.Get("user-agent"))
+		require.Equal(t, openai.CodexCLIOriginator, h.Get("originator"))
+		require.Equal(t, "codex_cli_rs/0.200.1 (Mac OS X 14.0; arm64) iTerm", h.Get("user-agent"))
 		require.Equal(t, "0.200.1", h.Get("version"))
 	})
 }
@@ -317,7 +317,7 @@ func TestNormalizeCodexClientVersion(t *testing.T) {
 }
 
 func TestBuildCodexCLIUserAgent(t *testing.T) {
-	require.Equal(t, "codex-tui/0.200.1 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.200.1)", buildCodexCLIUserAgent("0.200.1"))
+	require.Equal(t, "codex_cli_rs/0.200.1 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10", buildCodexCLIUserAgent("0.200.1"))
 	require.Equal(t, codexCLIUserAgent, buildCodexCLIUserAgent("0.153.4"))
 	// 非法版本号必须回退到内置 UA，不能拼出畸形身份。
 	require.Equal(t, codexCLIUserAgent, buildCodexCLIUserAgent("bogus version"))
@@ -344,13 +344,13 @@ func TestCodexCanonicalUserAgentFollowsResolver(t *testing.T) {
 func TestCodexCanonicalUserAgentFallsBackWithoutResolver(t *testing.T) {
 	SetCodexCanonicalUserAgentResolver(nil)
 
-	require.Equal(t, "codex-tui/0.153.4 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.153.4)", CodexCanonicalUserAgent())
+	require.Equal(t, "codex_cli_rs/0.153.4 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10", CodexCanonicalUserAgent())
 	require.Equal(t, "0.153.4", CodexCanonicalClientVersion())
 	header := make(http.Header)
 	ensureCodexIdentityHeaders(header)
 	enforceCodexIdentityHeaders(header)
 	require.Equal(t, CodexCanonicalUserAgent(), header.Get("User-Agent"))
-	require.Equal(t, "codex-tui", header.Get("originator"))
+	require.Equal(t, openai.CodexCLIOriginator, header.Get("originator"))
 	require.Equal(t, "0.153.4", header.Get("version"))
 	ids := &codexFingerprintIDs{mode: codexFingerprintMachine}
 	stampCodexMachineSandboxTag(ids, "")

@@ -145,6 +145,7 @@ docs/*
 !docs/ASTRA_GATEWAY_BORROW.md
 !docs/PRISM_MIGRATION.md
 !docs/ACCOUNT_2FA_RECOVERY.md
+!docs/admin-api-keys.md
 !docs/PAYMENT.md
 !docs/REDEEM_GIFT_SECURITY_REVIEW.md
 !docs/PAYMENT_CN.md
@@ -156,6 +157,7 @@ docs/*
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/UPSTREAM_SYNC_V0.2.3_REVIEW.md
 !docs/UPSTREAM_SYNC_V0.2.8_REVIEW.md
+!docs/UPSTREAM_SYNC_20261026_REVIEW.md
 !docs/codex-credits.md
 !docs/legal/
 !docs/legal/*.md
