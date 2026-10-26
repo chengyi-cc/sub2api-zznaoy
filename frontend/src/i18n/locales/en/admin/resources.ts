@@ -240,6 +240,12 @@ export default {
 
     // Redeem Codes
     redeem: {
+      includeGift: 'Generate an extra 1% gift code',
+      giftHint: 'Each paid balance code gets a separate gift code. Gifts cannot be invoiced or earn referral rebates. Redeem the two codes separately.',
+      giftPreview: 'Per pair: paid {paid} + gift {gift}; {count} pairs. Both codes share the same expiry.',
+      giftCodeLine: 'Gift balance {amount}: {code} (not eligible for invoicing)',
+      paidCodeLine: 'Paid balance {amount}: {code}',
+      giftBadge: 'Gift balance (no invoice)',
       title: 'Redeem Code Management',
       description: 'Generate and manage redeem codes',
       generateCodes: 'Generate Codes',

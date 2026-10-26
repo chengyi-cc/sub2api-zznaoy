@@ -70,6 +70,16 @@ func Value(v float64) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldEQ(FieldValue, v))
 }
 
+// IsGift applies equality check predicate on the "is_gift" field. It's identical to IsGiftEQ.
+func IsGift(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldIsGift, v))
+}
+
+// GiftPairID applies equality check predicate on the "gift_pair_id" field. It's identical to GiftPairIDEQ.
+func GiftPairID(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldGiftPairID, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldEQ(FieldStatus, v))
@@ -278,6 +288,91 @@ func ValueLT(v float64) predicate.RedeemCode {
 // ValueLTE applies the LTE predicate on the "value" field.
 func ValueLTE(v float64) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.FieldLTE(FieldValue, v))
+}
+
+// IsGiftEQ applies the EQ predicate on the "is_gift" field.
+func IsGiftEQ(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldIsGift, v))
+}
+
+// IsGiftNEQ applies the NEQ predicate on the "is_gift" field.
+func IsGiftNEQ(v bool) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldIsGift, v))
+}
+
+// GiftPairIDEQ applies the EQ predicate on the "gift_pair_id" field.
+func GiftPairIDEQ(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEQ(FieldGiftPairID, v))
+}
+
+// GiftPairIDNEQ applies the NEQ predicate on the "gift_pair_id" field.
+func GiftPairIDNEQ(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNEQ(FieldGiftPairID, v))
+}
+
+// GiftPairIDIn applies the In predicate on the "gift_pair_id" field.
+func GiftPairIDIn(vs ...string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIn(FieldGiftPairID, vs...))
+}
+
+// GiftPairIDNotIn applies the NotIn predicate on the "gift_pair_id" field.
+func GiftPairIDNotIn(vs ...string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotIn(FieldGiftPairID, vs...))
+}
+
+// GiftPairIDGT applies the GT predicate on the "gift_pair_id" field.
+func GiftPairIDGT(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGT(FieldGiftPairID, v))
+}
+
+// GiftPairIDGTE applies the GTE predicate on the "gift_pair_id" field.
+func GiftPairIDGTE(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldGTE(FieldGiftPairID, v))
+}
+
+// GiftPairIDLT applies the LT predicate on the "gift_pair_id" field.
+func GiftPairIDLT(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLT(FieldGiftPairID, v))
+}
+
+// GiftPairIDLTE applies the LTE predicate on the "gift_pair_id" field.
+func GiftPairIDLTE(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldLTE(FieldGiftPairID, v))
+}
+
+// GiftPairIDContains applies the Contains predicate on the "gift_pair_id" field.
+func GiftPairIDContains(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldContains(FieldGiftPairID, v))
+}
+
+// GiftPairIDHasPrefix applies the HasPrefix predicate on the "gift_pair_id" field.
+func GiftPairIDHasPrefix(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldHasPrefix(FieldGiftPairID, v))
+}
+
+// GiftPairIDHasSuffix applies the HasSuffix predicate on the "gift_pair_id" field.
+func GiftPairIDHasSuffix(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldHasSuffix(FieldGiftPairID, v))
+}
+
+// GiftPairIDIsNil applies the IsNil predicate on the "gift_pair_id" field.
+func GiftPairIDIsNil() predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldIsNull(FieldGiftPairID))
+}
+
+// GiftPairIDNotNil applies the NotNil predicate on the "gift_pair_id" field.
+func GiftPairIDNotNil() predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldNotNull(FieldGiftPairID))
+}
+
+// GiftPairIDEqualFold applies the EqualFold predicate on the "gift_pair_id" field.
+func GiftPairIDEqualFold(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldEqualFold(FieldGiftPairID, v))
+}
+
+// GiftPairIDContainsFold applies the ContainsFold predicate on the "gift_pair_id" field.
+func GiftPairIDContainsFold(v string) predicate.RedeemCode {
+	return predicate.RedeemCode(sql.FieldContainsFold(FieldGiftPairID, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

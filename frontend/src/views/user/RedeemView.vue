@@ -99,7 +99,7 @@
                   <p>{{ redeemResult.message }}</p>
                   <div class="mt-3 space-y-1">
                     <p v-if="redeemResult.type === 'balance'" class="font-medium">
-                      {{ t('redeem.added') }}: ${{ redeemResult.value.toFixed(2) }}
+                      {{ t('redeem.added') }}: ${{ formatRedeemAmount(redeemResult.value) }}
                     </p>
                     <p v-else-if="redeemResult.type === 'concurrency'" class="font-medium">
                       {{ t('redeem.added') }}: {{ redeemResult.value }}
@@ -375,6 +375,7 @@ import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
+import { formatRedeemAmount } from '@/utils/redeemCodes'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -421,7 +422,7 @@ const isAdminAdjustment = (type: string) => {
 
 const getHistoryItemTitle = (item: RedeemHistoryItem) => {
   if (item.type === 'balance') {
-    return t('redeem.balanceAddedRedeem')
+    return item.is_gift ? t('redeem.giftBalanceAdded') : t('redeem.balanceAddedRedeem')
   } else if (item.type === 'admin_balance') {
     return item.value >= 0 ? t('redeem.balanceAddedAdmin') : t('redeem.balanceDeductedAdmin')
   } else if (item.type === 'concurrency') {
@@ -437,7 +438,7 @@ const getHistoryItemTitle = (item: RedeemHistoryItem) => {
 const formatHistoryValue = (item: RedeemHistoryItem) => {
   if (isBalanceType(item.type)) {
     const sign = item.value >= 0 ? '+' : ''
-    return `${sign}$${item.value.toFixed(2)}`
+    return `${sign}$${formatRedeemAmount(item.value)}`
   } else if (isSubscriptionType(item.type)) {
     // 订阅类型显示有效天数和分组名称
     const days = item.validity_days || Math.round(item.value)

@@ -58,6 +58,34 @@ func (_c *RedeemCodeCreate) SetNillableValue(v *float64) *RedeemCodeCreate {
 	return _c
 }
 
+// SetIsGift sets the "is_gift" field.
+func (_c *RedeemCodeCreate) SetIsGift(v bool) *RedeemCodeCreate {
+	_c.mutation.SetIsGift(v)
+	return _c
+}
+
+// SetNillableIsGift sets the "is_gift" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableIsGift(v *bool) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetIsGift(*v)
+	}
+	return _c
+}
+
+// SetGiftPairID sets the "gift_pair_id" field.
+func (_c *RedeemCodeCreate) SetGiftPairID(v string) *RedeemCodeCreate {
+	_c.mutation.SetGiftPairID(v)
+	return _c
+}
+
+// SetNillableGiftPairID sets the "gift_pair_id" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableGiftPairID(v *string) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetGiftPairID(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *RedeemCodeCreate) SetStatus(v string) *RedeemCodeCreate {
 	_c.mutation.SetStatus(v)
@@ -237,6 +265,10 @@ func (_c *RedeemCodeCreate) defaults() {
 		v := redeemcode.DefaultValue
 		_c.mutation.SetValue(v)
 	}
+	if _, ok := _c.mutation.IsGift(); !ok {
+		v := redeemcode.DefaultIsGift
+		_c.mutation.SetIsGift(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := redeemcode.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -271,6 +303,14 @@ func (_c *RedeemCodeCreate) check() error {
 	}
 	if _, ok := _c.mutation.Value(); !ok {
 		return &ValidationError{Name: "value", err: errors.New(`ent: missing required field "RedeemCode.value"`)}
+	}
+	if _, ok := _c.mutation.IsGift(); !ok {
+		return &ValidationError{Name: "is_gift", err: errors.New(`ent: missing required field "RedeemCode.is_gift"`)}
+	}
+	if v, ok := _c.mutation.GiftPairID(); ok {
+		if err := redeemcode.GiftPairIDValidator(v); err != nil {
+			return &ValidationError{Name: "gift_pair_id", err: fmt.Errorf(`ent: validator failed for field "RedeemCode.gift_pair_id": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "RedeemCode.status"`)}
@@ -324,6 +364,14 @@ func (_c *RedeemCodeCreate) createSpec() (*RedeemCode, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Value(); ok {
 		_spec.SetField(redeemcode.FieldValue, field.TypeFloat64, value)
 		_node.Value = value
+	}
+	if value, ok := _c.mutation.IsGift(); ok {
+		_spec.SetField(redeemcode.FieldIsGift, field.TypeBool, value)
+		_node.IsGift = value
+	}
+	if value, ok := _c.mutation.GiftPairID(); ok {
+		_spec.SetField(redeemcode.FieldGiftPairID, field.TypeString, value)
+		_node.GiftPairID = &value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(redeemcode.FieldStatus, field.TypeString, value)
@@ -608,6 +656,12 @@ func (u *RedeemCodeUpsert) AddValidityDays(v int) *RedeemCodeUpsert {
 func (u *RedeemCodeUpsertOne) UpdateNewValues() *RedeemCodeUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.IsGift(); exists {
+			s.SetIgnore(redeemcode.FieldIsGift)
+		}
+		if _, exists := u.create.mutation.GiftPairID(); exists {
+			s.SetIgnore(redeemcode.FieldGiftPairID)
+		}
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(redeemcode.FieldCreatedAt)
 		}
@@ -1007,6 +1061,12 @@ func (u *RedeemCodeUpsertBulk) UpdateNewValues() *RedeemCodeUpsertBulk {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		for _, b := range u.create.builders {
+			if _, exists := b.mutation.IsGift(); exists {
+				s.SetIgnore(redeemcode.FieldIsGift)
+			}
+			if _, exists := b.mutation.GiftPairID(); exists {
+				s.SetIgnore(redeemcode.FieldGiftPairID)
+			}
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(redeemcode.FieldCreatedAt)
 			}

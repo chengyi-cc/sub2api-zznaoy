@@ -7,16 +7,18 @@ import (
 )
 
 type RedeemCode struct {
-	ID        int64
-	Code      string
-	Type      string
-	Value     float64
-	Status    string
-	UsedBy    *int64
-	UsedAt    *time.Time
-	Notes     string
-	CreatedAt time.Time
-	ExpiresAt *time.Time
+	ID         int64
+	Code       string
+	Type       string
+	IsGift     bool
+	GiftPairID *string
+	Value      float64
+	Status     string
+	UsedBy     *int64
+	UsedAt     *time.Time
+	Notes      string
+	CreatedAt  time.Time
+	ExpiresAt  *time.Time
 
 	GroupID      *int64
 	ValidityDays int
@@ -44,7 +46,7 @@ func (r *RedeemCode) IsExpiredAt(now time.Time) bool {
 }
 
 func (r *RedeemCode) CanUse() bool {
-	return r.Status == StatusUnused && !r.IsExpired()
+	return r != nil && r.Status == StatusUnused && r.UsedAt == nil && r.UsedBy == nil && !r.IsExpired()
 }
 
 func GenerateRedeemCode() (string, error) {

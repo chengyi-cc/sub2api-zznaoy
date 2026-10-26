@@ -57,3 +57,44 @@ func TestAdminFulfillmentBypassesLimitAndKeepsRedeemAffiliate(t *testing.T) {
 	require.InDelta(t, 2, affiliateRepo.accrueCalls[0].amount, 1e-8)
 	require.Nil(t, affiliateRepo.accrueCalls[0].sourceOrderID)
 }
+
+type giftCreditUserRepo struct {
+	*mockUserRepo
+	giftCalls int
+	gifted    float64
+}
+
+func (r *giftCreditUserRepo) CreditGiftBalance(_ context.Context, _ int64, amount float64) error {
+	r.giftCalls++
+	r.gifted += amount
+	return nil
+}
+
+func TestGiftRedeemCreditsBalanceWithoutPaidRechargeOrRebate(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	pairID := "0123456789abcdef0123456789abcdef"
+	code := &RedeemCode{ID: 104, Code: "GIFT-SUCCESS", Type: RedeemTypeBalance, Value: 0.1, IsGift: true, GiftPairID: &pairID, Status: StatusUnused}
+	repo := &paymentFulfillmentRedeemRepo{paymentOrderLifecycleRedeemRepo: paymentOrderLifecycleRedeemRepo{codesByCode: map[string]*RedeemCode{code.Code: code}}}
+	userRepo := &giftCreditUserRepo{mockUserRepo: &mockUserRepo{getByIDUser: &User{ID: 42}}}
+	// No paid UpdateBalance is permitted for a gift.
+	userRepo.updateBalanceFn = func(context.Context, int64, float64) error { t.Fatal("gift counted as paid recharge"); return nil }
+	inviterID := int64(9001)
+	affiliateRepo := &paymentFulfillmentAffiliateRepoStub{
+		inviteeSummary: &AffiliateSummary{UserID: 42, InviterID: &inviterID, CreatedAt: time.Now().Add(-time.Hour)},
+		inviterSummary: &AffiliateSummary{UserID: inviterID, CreatedAt: time.Now().Add(-time.Hour)},
+	}
+	settings := NewSettingService(&paymentFulfillmentSettingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled: "true", SettingKeyAffiliateRebateRate: "10", SettingKeyAffiliateRebateFreezeHours: "0",
+	}}, nil)
+	svc := NewRedeemService(repo, userRepo, nil, nil, nil, client, nil, NewAffiliateService(affiliateRepo, settings, nil, nil))
+	result, err := svc.Redeem(ctx, 42, code.Code)
+	require.NoError(t, err)
+	require.True(t, result.IsGift)
+	require.Equal(t, 1, userRepo.giftCalls)
+	require.Equal(t, 0.1, userRepo.gifted)
+	require.Empty(t, affiliateRepo.accrueCalls)
+	_, err = svc.Redeem(ctx, 42, code.Code)
+	require.ErrorIs(t, err, ErrRedeemCodeUsed)
+	require.Equal(t, 1, userRepo.giftCalls)
+}

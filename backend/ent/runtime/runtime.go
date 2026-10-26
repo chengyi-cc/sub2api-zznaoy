@@ -1835,18 +1835,26 @@ func init() {
 	redeemcodeDescValue := redeemcodeFields[2].Descriptor()
 	// redeemcode.DefaultValue holds the default value on creation for the value field.
 	redeemcode.DefaultValue = redeemcodeDescValue.Default.(float64)
+	// redeemcodeDescIsGift is the schema descriptor for is_gift field.
+	redeemcodeDescIsGift := redeemcodeFields[3].Descriptor()
+	// redeemcode.DefaultIsGift holds the default value on creation for the is_gift field.
+	redeemcode.DefaultIsGift = redeemcodeDescIsGift.Default.(bool)
+	// redeemcodeDescGiftPairID is the schema descriptor for gift_pair_id field.
+	redeemcodeDescGiftPairID := redeemcodeFields[4].Descriptor()
+	// redeemcode.GiftPairIDValidator is a validator for the "gift_pair_id" field. It is called by the builders before save.
+	redeemcode.GiftPairIDValidator = redeemcodeDescGiftPairID.Validators[0].(func(string) error)
 	// redeemcodeDescStatus is the schema descriptor for status field.
-	redeemcodeDescStatus := redeemcodeFields[3].Descriptor()
+	redeemcodeDescStatus := redeemcodeFields[5].Descriptor()
 	// redeemcode.DefaultStatus holds the default value on creation for the status field.
 	redeemcode.DefaultStatus = redeemcodeDescStatus.Default.(string)
 	// redeemcode.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	redeemcode.StatusValidator = redeemcodeDescStatus.Validators[0].(func(string) error)
 	// redeemcodeDescCreatedAt is the schema descriptor for created_at field.
-	redeemcodeDescCreatedAt := redeemcodeFields[7].Descriptor()
+	redeemcodeDescCreatedAt := redeemcodeFields[9].Descriptor()
 	// redeemcode.DefaultCreatedAt holds the default value on creation for the created_at field.
 	redeemcode.DefaultCreatedAt = redeemcodeDescCreatedAt.Default.(func() time.Time)
 	// redeemcodeDescValidityDays is the schema descriptor for validity_days field.
-	redeemcodeDescValidityDays := redeemcodeFields[10].Descriptor()
+	redeemcodeDescValidityDays := redeemcodeFields[12].Descriptor()
 	// redeemcode.DefaultValidityDays holds the default value on creation for the validity_days field.
 	redeemcode.DefaultValidityDays = redeemcodeDescValidityDays.Default.(int)
 	securitysecretMixin := schema.SecuritySecret{}.Mixin()

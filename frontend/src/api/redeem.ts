@@ -7,6 +7,7 @@ import { apiClient } from './client'
 import type { PaginatedResponse, RedeemCodeRequest } from '@/types'
 
 export interface RedeemHistoryItem {
+  is_gift?: boolean
   id: number
   code: string
   type: string

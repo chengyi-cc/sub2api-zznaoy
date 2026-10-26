@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client'
+import { createRedeemGenerationKey } from '@/utils/redeemCodes'
 import type {
   RedeemCode,
   GenerateRedeemCodesRequest,
@@ -70,13 +71,17 @@ export async function generate(
   value: number,
   groupId?: number | null,
   validityDays?: number,
-  expiresInDays?: number | null
+  expiresInDays?: number | null,
+  includeGift = false,
+  idempotencyKey?: string
 ): Promise<RedeemCode[]> {
   const payload: GenerateRedeemCodesRequest = {
     count,
     type,
     value
   }
+
+  if (includeGift && type === 'balance') payload.include_gift = true
 
   // 订阅类型专用字段
   if (type === 'subscription') {
@@ -89,7 +94,9 @@ export async function generate(
     payload.expires_in_days = expiresInDays
   }
 
-  const { data } = await apiClient.post<RedeemCode[]>('/admin/redeem-codes/generate', payload)
+  const { data } = await apiClient.post<RedeemCode[]>('/admin/redeem-codes/generate', payload, {
+    headers: { 'Idempotency-Key': idempotencyKey ?? createRedeemGenerationKey() }
+  })
   return data
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -34,6 +35,7 @@ func NewRedeemHandler(adminService service.AdminService, redeemService *service.
 
 // GenerateRedeemCodesRequest represents generate redeem codes request
 type GenerateRedeemCodesRequest struct {
+	IncludeGift   bool       `json:"include_gift"`
 	Count         int        `json:"count" binding:"required,min=1,max=500"`
 	Type          string     `json:"type" binding:"required,oneof=balance concurrency subscription invitation"`
 	Value         float64    `json:"value"`
@@ -130,6 +132,7 @@ func (h *RedeemHandler) GetByID(c *gin.Context) {
 // Generate handles generating new redeem codes
 // POST /api/v1/admin/redeem-codes/generate
 func (h *RedeemHandler) Generate(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	var req GenerateRedeemCodesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -142,8 +145,33 @@ func (h *RedeemHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	executeAdminIdempotentJSON(c, "admin.redeem_codes.generate", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+	// Gift generation must never silently bypass duplicate-request protection.
+	if req.IncludeGift {
+		key, keyErr := service.NormalizeIdempotencyKey(c.GetHeader("Idempotency-Key"))
+		if keyErr != nil {
+			response.ErrorFrom(c, keyErr)
+			return
+		}
+		if key == "" {
+			response.ErrorFrom(c, service.ErrIdempotencyKeyRequired)
+			return
+		}
+		if service.DefaultIdempotencyCoordinator() == nil {
+			response.ErrorFrom(c, service.ErrIdempotencyStoreUnavail)
+			return
+		}
+	}
+
+	// Keep the response cache small even for 1000 codes, and never persist
+	// redeemable secrets in it. The first response can use the fresh records.
+	var generated []dto.AdminRedeemCode
+	type codeReference struct {
+		ID int64 `json:"id"`
+	}
+	result, err := executeAdminIdempotent(c, "admin.redeem_codes.generate", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		codes, execErr := h.adminService.GenerateRedeemCodes(ctx, &service.GenerateRedeemCodesInput{
+			IncludeGift:  req.IncludeGift,
+			OperationKey: service.HashIdempotencyKey("admin.redeem_codes.generate:" + adminActorScope(c) + ":" + strings.TrimSpace(c.GetHeader("Idempotency-Key"))),
 			Count:        req.Count,
 			Type:         req.Type,
 			Value:        req.Value,
@@ -155,12 +183,56 @@ func (h *RedeemHandler) Generate(c *gin.Context) {
 			return nil, execErr
 		}
 
-		out := make([]dto.AdminRedeemCode, 0, len(codes))
+		generated = make([]dto.AdminRedeemCode, 0, len(codes))
+		refs := make([]codeReference, 0, len(codes))
 		for i := range codes {
-			out = append(out, *dto.RedeemCodeFromServiceAdmin(&codes[i]))
+			generated = append(generated, *dto.RedeemCodeFromServiceAdmin(&codes[i]))
+			refs = append(refs, codeReference{ID: codes[i].ID})
 		}
-		return out, nil
+		return refs, nil
 	})
+	if err != nil {
+		if retryAfter := service.RetryAfterSecondsFromError(err); retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result.Replayed {
+		// Cached responses deliberately redact secrets. Re-read by ID under
+		// this authenticated admin route instead of storing plaintext secrets.
+		data, marshalErr := json.Marshal(result.Data)
+		if marshalErr != nil {
+			response.ErrorFrom(c, service.ErrIdempotencyStoreUnavail)
+			return
+		}
+		var cached []codeReference
+		expectedCount := req.Count
+		if req.IncludeGift {
+			expectedCount *= 2
+		}
+		if json.Unmarshal(data, &cached) != nil || len(cached) != expectedCount {
+			response.ErrorFrom(c, service.ErrIdempotencyStoreUnavail)
+			return
+		}
+		out := make([]dto.AdminRedeemCode, 0, len(cached))
+		for _, item := range cached {
+			if item.ID <= 0 {
+				response.ErrorFrom(c, service.ErrIdempotencyStoreUnavail)
+				return
+			}
+			code, readErr := h.adminService.GetRedeemCode(c.Request.Context(), item.ID)
+			if readErr != nil {
+				response.ErrorFrom(c, readErr)
+				return
+			}
+			out = append(out, *dto.RedeemCodeFromServiceAdmin(code))
+		}
+		c.Header("X-Idempotency-Replayed", "true")
+		response.Success(c, out)
+		return
+	}
+	response.Success(c, generated)
 }
 
 // CreateAndRedeem creates a fixed redeem code and redeems it for a target user in one step.
@@ -412,7 +484,7 @@ func (h *RedeemHandler) Export(c *gin.Context) {
 	writer := csv.NewWriter(&buf)
 
 	// Write header
-	if err := writer.Write([]string{"id", "code", "type", "value", "status", "used_by", "used_by_email", "used_at", "expires_at", "created_at"}); err != nil {
+	if err := writer.Write([]string{"id", "code", "type", "value", "status", "used_by", "used_by_email", "used_at", "expires_at", "created_at", "is_gift", "gift_pair_id"}); err != nil {
 		response.InternalError(c, "Failed to export redeem codes: "+err.Error())
 		return
 	}
@@ -439,13 +511,15 @@ func (h *RedeemHandler) Export(c *gin.Context) {
 			fmt.Sprintf("%d", code.ID),
 			code.Code,
 			code.Type,
-			fmt.Sprintf("%.2f", code.Value),
+			strconv.FormatFloat(code.Value, 'f', -1, 64),
 			code.Status,
 			usedBy,
 			usedByEmail,
 			usedAt,
 			expiresAt,
 			code.CreatedAt.Format("2006-01-02 15:04:05"),
+			strconv.FormatBool(code.IsGift),
+			redeemGiftPairID(code.GiftPairID),
 		}); err != nil {
 			response.InternalError(c, "Failed to export redeem codes: "+err.Error())
 			return
@@ -461,4 +535,11 @@ func (h *RedeemHandler) Export(c *gin.Context) {
 	c.Header("Content-Type", "text/csv")
 	c.Header("Content-Disposition", "attachment; filename=redeem_codes.csv")
 	c.Data(200, "text/csv", buf.Bytes())
+}
+
+func redeemGiftPairID(pairID *string) string {
+	if pairID == nil {
+		return ""
+	}
+	return *pairID
 }

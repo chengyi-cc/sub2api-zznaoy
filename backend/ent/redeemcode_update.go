@@ -326,6 +326,9 @@ func (_u *RedeemCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	if value, ok := _u.mutation.AddedValue(); ok {
 		_spec.AddField(redeemcode.FieldValue, field.TypeFloat64, value)
 	}
+	if _u.mutation.GiftPairIDCleared() {
+		_spec.ClearField(redeemcode.FieldGiftPairID, field.TypeString)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(redeemcode.FieldStatus, field.TypeString, value)
 	}
@@ -756,6 +759,9 @@ func (_u *RedeemCodeUpdateOne) sqlSave(ctx context.Context) (_node *RedeemCode, 
 	}
 	if value, ok := _u.mutation.AddedValue(); ok {
 		_spec.AddField(redeemcode.FieldValue, field.TypeFloat64, value)
+	}
+	if _u.mutation.GiftPairIDCleared() {
+		_spec.ClearField(redeemcode.FieldGiftPairID, field.TypeString)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(redeemcode.FieldStatus, field.TypeString, value)

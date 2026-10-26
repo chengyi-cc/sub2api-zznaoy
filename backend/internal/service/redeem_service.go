@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -451,6 +452,10 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 	}
 
 	// 验证兑换码类型的前置条件。邀请码属于注册流程，不能通过普通兑换接口使用。
+	if redeemCode.IsGift && (redeemCode.Type != RedeemTypeBalance || redeemCode.Value <= 0 || math.IsNaN(redeemCode.Value) || math.IsInf(redeemCode.Value, 0) || redeemCode.GiftPairID == nil || len(*redeemCode.GiftPairID) != 32) {
+		return nil, infraerrors.BadRequest("REDEEM_CODE_INVALID", "invalid gift redeem code")
+	}
+
 	switch redeemCode.Type {
 	case RedeemTypeBalance, RedeemTypeConcurrency:
 	case RedeemTypeSubscription:
@@ -490,7 +495,15 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 	switch redeemCode.Type {
 	case RedeemTypeBalance:
 		amount := redeemCode.Value
-		if amount < 0 {
+		if redeemCode.IsGift {
+			giftRepo, ok := s.userRepo.(GiftBalanceRepository)
+			if !ok {
+				return nil, errors.New("user repository does not support gift balance credits")
+			}
+			if err := giftRepo.CreditGiftBalance(txCtx, userID, amount); err != nil {
+				return nil, fmt.Errorf("credit gift balance: %w", err)
+			}
+		} else if amount < 0 {
 			if s.redeemUserRepo == nil {
 				return nil, errors.New("user repository does not support atomic redeem balance adjustments")
 			}
@@ -550,7 +563,7 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 	s.invalidateRedeemCaches(ctx, userID, redeemCode)
 
 	// 余额类正数兑换码触发邀请返利（best-effort，失败不影响兑换结果）
-	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 {
+	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 && !redeemCode.IsGift {
 		s.tryAccrueAffiliateRebateForRedeem(ctx, userID, redeemCode.Value)
 	}
 

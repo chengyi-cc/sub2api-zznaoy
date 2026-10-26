@@ -1898,6 +1898,8 @@ export interface UsageCleanupTask {
 }
 
 export interface RedeemCode {
+  is_gift?: boolean
+  gift_pair_id?: string | null
   id: number
   code: string
   type: RedeemCodeType
@@ -1916,6 +1918,7 @@ export interface RedeemCode {
 }
 
 export interface GenerateRedeemCodesRequest {
+  include_gift?: boolean
   count: number
   type: RedeemCodeType
   value: number

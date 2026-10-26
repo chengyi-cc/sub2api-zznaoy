@@ -787,6 +787,7 @@ export default {
     codeRule4: '余额和并发数即时更新',
     recentActivity: '最近活动',
     historyWillAppear: '您的兑换历史将显示在这里',
+    giftBalanceAdded: '赠送余额到账（不可开票）',
     balanceAddedRedeem: '余额充值（兑换）',
     balanceAddedAffiliate: '余额充值（返利转入）',
     balanceAddedAdmin: '余额充值（管理员）',

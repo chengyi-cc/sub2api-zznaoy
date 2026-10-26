@@ -189,6 +189,12 @@ type RegistrationEmailDomainRepository interface {
 	CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string) error
 }
 
+// GiftBalanceRepository credits spendable balance without counting it as paid
+// recharge. Implementations must participate in the redemption transaction.
+type GiftBalanceRepository interface {
+	CreditGiftBalance(ctx context.Context, id int64, amount float64) error
+}
+
 // RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates
 // used by negative-value redeem codes. It is intentionally narrower than
 // UserRepository because normal usage billing is allowed to overdraw.

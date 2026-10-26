@@ -756,3 +756,43 @@ func TestInvoiceService_CreateRequest_ZeroMinAmount_NotEnforced(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1.0, req.Amount)
 }
+
+func TestInvoiceService_GiftCannotBeSelectedSubmittedOrIssued(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
+	ctx := context.Background()
+	gift, err := client.RedeemCode.Create().SetCode("GIFT-INVOICE").SetType(RedeemTypeBalance).
+		SetIsGift(true).SetGiftPairID("0123456789abcdef0123456789abcdef").SetValue(0.1).
+		SetStatus(StatusUsed).SetUsedBy(user.ID).SetUsedAt(time.Now()).SetNotes("ordinary recharge").Save(ctx)
+	require.NoError(t, err)
+	paidID := seedUsedBalanceRedeemCode(t, client, user.ID, "PAID-INVOICE", 10)
+	sources, err := svc.ListEligibleSources(ctx, user.ID)
+	require.NoError(t, err)
+	require.Len(t, sources.RedeemCodes, 1)
+	require.Equal(t, paidID, sources.RedeemCodes[0].RedeemCodeID)
+	for _, ids := range [][]int64{{gift.ID}, {paidID, gift.ID}} {
+		_, err := svc.CreateRequest(ctx, CreateInvoiceRequestInput{
+			UserID: user.ID, RedeemCodeIDs: ids, InvoiceType: domain.InvoiceTypePersonal, Title: "Gift bypass attempt",
+		})
+		require.ErrorIs(t, err, ErrInvoiceRedeemNotEligible)
+	}
+	require.Zero(t, client.InvoiceRequest.Query().CountX(ctx))
+	// Legacy/forged requests are rejected again during detail and final issuance.
+	request, err := client.InvoiceRequest.Create().SetUserID(user.ID).SetPaymentOrderIds([]int64{}).SetRedeemCodeIds([]int64{gift.ID}).
+		SetAmount(0.1).SetInvoiceType(domain.InvoiceTypePersonal).SetTitle("Legacy gift").SetStatus(domain.InvoiceStatusApproved).Save(ctx)
+	require.NoError(t, err)
+	svc.userRepo = &mockUserRepo{getByIDUser: &User{ID: user.ID}}
+	detail, err := svc.AdminGetDetail(ctx, request.ID)
+	require.NoError(t, err)
+	require.False(t, detail.AllEligible)
+	require.False(t, detail.RedeemCodes[0].Eligible)
+	pdf := []byte("%PDF-1.7\ntest\n")
+	_, err = svc.AdminIssue(ctx, request.ID, 999, "GIFT-BYPASS", bytes.NewReader(pdf), int64(len(pdf)))
+	require.Error(t, err)
+	require.Equal(t, domain.InvoiceStatusApproved, client.InvoiceRequest.GetX(ctx, request.ID).Status)
+	paidRequest, err := svc.CreateRequest(ctx, CreateInvoiceRequestInput{
+		UserID: user.ID, RedeemCodeIDs: []int64{paidID}, InvoiceType: domain.InvoiceTypePersonal, Title: "Paid code",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 10.0, paidRequest.Amount)
+}

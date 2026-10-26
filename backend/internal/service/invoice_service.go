@@ -87,7 +87,7 @@ var (
 	ErrInvoiceOrderNotEligible     = infraerrors.BadRequest("INVOICE_ORDER_NOT_ELIGIBLE", "payment order is not eligible for invoice")
 	ErrInvoiceOrderAlreadyClaimed  = infraerrors.Conflict("INVOICE_ORDER_ALREADY_CLAIMED", "payment order already has an active invoice request")
 	ErrInvoiceRedeemInvalid        = infraerrors.BadRequest("INVOICE_REDEEM_INVALID", "one or more redeem codes are invalid or not yours")
-	ErrInvoiceRedeemNotEligible    = infraerrors.BadRequest("INVOICE_REDEEM_NOT_ELIGIBLE", "redeem code is not eligible for invoice (only used balance codes can be invoiced)")
+	ErrInvoiceRedeemNotEligible    = infraerrors.BadRequest("INVOICE_REDEEM_NOT_ELIGIBLE", "redeem code is not eligible for invoice (only used, non-gift balance codes can be invoiced)")
 	ErrInvoiceRedeemAlreadyClaimed = infraerrors.Conflict("INVOICE_REDEEM_ALREADY_CLAIMED", "redeem code already has an active invoice request")
 	ErrInvoiceTaxNoRequired        = infraerrors.BadRequest("INVOICE_TAX_NO_REQUIRED", "tax_no is required for company invoice")
 	ErrInvoiceTitleRequired        = infraerrors.BadRequest("INVOICE_TITLE_REQUIRED", "title is required")
@@ -251,7 +251,7 @@ func (s *InvoiceService) ListEligibleOrders(ctx context.Context, userID int64) (
 
 // ListEligibleSources 列出当前用户所有可开票来源（订单 + 余额兑换码）。
 // 兑换码筛选规则：type=balance、status=used、used_by=当前用户、未被占用。
-// 兑换码的 Value 必须 > 0（防止赠送/退款扣减码混入）。
+// 兑换码必须非赠送且 Value > 0；赠送身份独立于可修改的备注。
 func (s *InvoiceService) ListEligibleSources(ctx context.Context, userID int64) (*EligibleSources, error) {
 	orders, err := s.entClient.PaymentOrder.Query().
 		Where(
@@ -269,6 +269,7 @@ func (s *InvoiceService) ListEligibleSources(ctx context.Context, userID int64) 
 			redeemcode.UsedByEQ(userID),
 			redeemcode.StatusEQ(StatusUsed),
 			redeemcode.TypeEQ(RedeemTypeBalance),
+			redeemcode.IsGiftEQ(false),
 		).
 		Order(dbent.Desc(redeemcode.FieldUsedAt)).
 		All(ctx)
@@ -405,7 +406,7 @@ func (s *InvoiceService) CreateRequest(ctx context.Context, input CreateInvoiceR
 			if c.UsedBy == nil || *c.UsedBy != input.UserID {
 				return nil, ErrInvoiceRedeemInvalid
 			}
-			if c.Status != StatusUsed || c.Type != RedeemTypeBalance {
+			if c.Status != StatusUsed || c.Type != RedeemTypeBalance || c.IsGift {
 				return nil, ErrInvoiceRedeemNotEligible
 			}
 			if c.Value <= 0 {
@@ -949,6 +950,7 @@ func (s *InvoiceService) AdminGetDetail(ctx context.Context, requestID int64) (*
 			}
 			eligible := c.Status == StatusUsed &&
 				c.Type == RedeemTypeBalance &&
+				!c.IsGift &&
 				usedBy == r.UserID &&
 				c.Value > 0
 			if !eligible {
@@ -1161,7 +1163,7 @@ func (s *InvoiceService) AdminIssue(
 			)
 		}
 		for _, c := range codes {
-			if c.Status != StatusUsed || c.Type != RedeemTypeBalance {
+			if c.Status != StatusUsed || c.Type != RedeemTypeBalance || c.IsGift {
 				return nil, infraerrors.Conflict(
 					"INVOICE_REDEEM_STATE_CHANGED",
 					"one or more referenced redeem codes are no longer eligible",

@@ -20,6 +20,10 @@ const (
 	FieldType = "type"
 	// FieldValue holds the string denoting the value field in the database.
 	FieldValue = "value"
+	// FieldIsGift holds the string denoting the is_gift field in the database.
+	FieldIsGift = "is_gift"
+	// FieldGiftPairID holds the string denoting the gift_pair_id field in the database.
+	FieldGiftPairID = "gift_pair_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldUsedBy holds the string denoting the used_by field in the database.
@@ -64,6 +68,8 @@ var Columns = []string{
 	FieldCode,
 	FieldType,
 	FieldValue,
+	FieldIsGift,
+	FieldGiftPairID,
 	FieldStatus,
 	FieldUsedBy,
 	FieldUsedAt,
@@ -93,6 +99,10 @@ var (
 	TypeValidator func(string) error
 	// DefaultValue holds the default value on creation for the "value" field.
 	DefaultValue float64
+	// DefaultIsGift holds the default value on creation for the "is_gift" field.
+	DefaultIsGift bool
+	// GiftPairIDValidator is a validator for the "gift_pair_id" field. It is called by the builders before save.
+	GiftPairIDValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -124,6 +134,16 @@ func ByType(opts ...sql.OrderTermOption) OrderOption {
 // ByValue orders the results by the value field.
 func ByValue(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldValue, opts...).ToFunc()
+}
+
+// ByIsGift orders the results by the is_gift field.
+func ByIsGift(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsGift, opts...).ToFunc()
+}
+
+// ByGiftPairID orders the results by the gift_pair_id field.
+func ByGiftPairID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGiftPairID, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

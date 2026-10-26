@@ -40434,6 +40434,8 @@ type RedeemCodeMutation struct {
 	_type            *string
 	value            *float64
 	addvalue         *float64
+	is_gift          *bool
+	gift_pair_id     *string
 	status           *string
 	used_at          *time.Time
 	notes            *string
@@ -40675,6 +40677,91 @@ func (m *RedeemCodeMutation) AddedValue() (r float64, exists bool) {
 func (m *RedeemCodeMutation) ResetValue() {
 	m.value = nil
 	m.addvalue = nil
+}
+
+// SetIsGift sets the "is_gift" field.
+func (m *RedeemCodeMutation) SetIsGift(b bool) {
+	m.is_gift = &b
+}
+
+// IsGift returns the value of the "is_gift" field in the mutation.
+func (m *RedeemCodeMutation) IsGift() (r bool, exists bool) {
+	v := m.is_gift
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsGift returns the old "is_gift" field's value of the RedeemCode entity.
+// If the RedeemCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeMutation) OldIsGift(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsGift is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsGift requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsGift: %w", err)
+	}
+	return oldValue.IsGift, nil
+}
+
+// ResetIsGift resets all changes to the "is_gift" field.
+func (m *RedeemCodeMutation) ResetIsGift() {
+	m.is_gift = nil
+}
+
+// SetGiftPairID sets the "gift_pair_id" field.
+func (m *RedeemCodeMutation) SetGiftPairID(s string) {
+	m.gift_pair_id = &s
+}
+
+// GiftPairID returns the value of the "gift_pair_id" field in the mutation.
+func (m *RedeemCodeMutation) GiftPairID() (r string, exists bool) {
+	v := m.gift_pair_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGiftPairID returns the old "gift_pair_id" field's value of the RedeemCode entity.
+// If the RedeemCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeMutation) OldGiftPairID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGiftPairID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGiftPairID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGiftPairID: %w", err)
+	}
+	return oldValue.GiftPairID, nil
+}
+
+// ClearGiftPairID clears the value of the "gift_pair_id" field.
+func (m *RedeemCodeMutation) ClearGiftPairID() {
+	m.gift_pair_id = nil
+	m.clearedFields[redeemcode.FieldGiftPairID] = struct{}{}
+}
+
+// GiftPairIDCleared returns if the "gift_pair_id" field was cleared in this mutation.
+func (m *RedeemCodeMutation) GiftPairIDCleared() bool {
+	_, ok := m.clearedFields[redeemcode.FieldGiftPairID]
+	return ok
+}
+
+// ResetGiftPairID resets all changes to the "gift_pair_id" field.
+func (m *RedeemCodeMutation) ResetGiftPairID() {
+	m.gift_pair_id = nil
+	delete(m.clearedFields, redeemcode.FieldGiftPairID)
 }
 
 // SetStatus sets the "status" field.
@@ -41151,7 +41238,7 @@ func (m *RedeemCodeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RedeemCodeMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 13)
 	if m.code != nil {
 		fields = append(fields, redeemcode.FieldCode)
 	}
@@ -41160,6 +41247,12 @@ func (m *RedeemCodeMutation) Fields() []string {
 	}
 	if m.value != nil {
 		fields = append(fields, redeemcode.FieldValue)
+	}
+	if m.is_gift != nil {
+		fields = append(fields, redeemcode.FieldIsGift)
+	}
+	if m.gift_pair_id != nil {
+		fields = append(fields, redeemcode.FieldGiftPairID)
 	}
 	if m.status != nil {
 		fields = append(fields, redeemcode.FieldStatus)
@@ -41199,6 +41292,10 @@ func (m *RedeemCodeMutation) Field(name string) (ent.Value, bool) {
 		return m.GetType()
 	case redeemcode.FieldValue:
 		return m.Value()
+	case redeemcode.FieldIsGift:
+		return m.IsGift()
+	case redeemcode.FieldGiftPairID:
+		return m.GiftPairID()
 	case redeemcode.FieldStatus:
 		return m.Status()
 	case redeemcode.FieldUsedBy:
@@ -41230,6 +41327,10 @@ func (m *RedeemCodeMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldType(ctx)
 	case redeemcode.FieldValue:
 		return m.OldValue(ctx)
+	case redeemcode.FieldIsGift:
+		return m.OldIsGift(ctx)
+	case redeemcode.FieldGiftPairID:
+		return m.OldGiftPairID(ctx)
 	case redeemcode.FieldStatus:
 		return m.OldStatus(ctx)
 	case redeemcode.FieldUsedBy:
@@ -41275,6 +41376,20 @@ func (m *RedeemCodeMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetValue(v)
+		return nil
+	case redeemcode.FieldIsGift:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsGift(v)
+		return nil
+	case redeemcode.FieldGiftPairID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGiftPairID(v)
 		return nil
 	case redeemcode.FieldStatus:
 		v, ok := value.(string)
@@ -41389,6 +41504,9 @@ func (m *RedeemCodeMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *RedeemCodeMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(redeemcode.FieldGiftPairID) {
+		fields = append(fields, redeemcode.FieldGiftPairID)
+	}
 	if m.FieldCleared(redeemcode.FieldUsedBy) {
 		fields = append(fields, redeemcode.FieldUsedBy)
 	}
@@ -41418,6 +41536,9 @@ func (m *RedeemCodeMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *RedeemCodeMutation) ClearField(name string) error {
 	switch name {
+	case redeemcode.FieldGiftPairID:
+		m.ClearGiftPairID()
+		return nil
 	case redeemcode.FieldUsedBy:
 		m.ClearUsedBy()
 		return nil
@@ -41449,6 +41570,12 @@ func (m *RedeemCodeMutation) ResetField(name string) error {
 		return nil
 	case redeemcode.FieldValue:
 		m.ResetValue()
+		return nil
+	case redeemcode.FieldIsGift:
+		m.ResetIsGift()
+		return nil
+	case redeemcode.FieldGiftPairID:
+		m.ResetGiftPairID()
 		return nil
 	case redeemcode.FieldStatus:
 		m.ResetStatus()

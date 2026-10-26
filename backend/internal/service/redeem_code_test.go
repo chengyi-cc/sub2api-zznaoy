@@ -57,3 +57,17 @@ func TestRedeemCodeExpiry(t *testing.T) {
 		})
 	}
 }
+
+func TestRedeemCodeCannotReuseConsumedMetadata(t *testing.T) {
+	userID := int64(42)
+	usedAt := time.Now()
+	for _, code := range []RedeemCode{
+		{Status: StatusUnused, UsedAt: &usedAt},
+		{Status: StatusUnused, UsedBy: &userID},
+		{Status: StatusUnused, UsedAt: &usedAt, UsedBy: &userID},
+	} {
+		require.False(t, code.CanUse())
+	}
+	var nilCode *RedeemCode
+	require.False(t, nilCode.CanUse())
+}

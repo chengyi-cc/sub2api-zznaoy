@@ -23,9 +23,11 @@ func NewRedeemCodeRepository(client *dbent.Client) service.RedeemCodeRepository 
 }
 
 func (r *redeemCodeRepository) Create(ctx context.Context, code *service.RedeemCode) error {
-	created, err := r.client.RedeemCode.Create().
+	created, err := clientFromContext(ctx, r.client).RedeemCode.Create().
 		SetCode(code.Code).
 		SetType(code.Type).
+		SetIsGift(code.IsGift).
+		SetNillableGiftPairID(code.GiftPairID).
 		SetValue(code.Value).
 		SetStatus(code.Status).
 		SetNotes(code.Notes).
@@ -47,12 +49,25 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 		return nil
 	}
 
+	client := clientFromContext(ctx, r.client)
+	var tx *dbent.Tx
+	if dbent.TxFromContext(ctx) == nil {
+		var err error
+		tx, err = client.Tx(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		client = tx.Client()
+	}
 	builders := make([]*dbent.RedeemCodeCreate, 0, len(codes))
 	for i := range codes {
 		c := &codes[i]
-		b := r.client.RedeemCode.Create().
+		b := client.RedeemCode.Create().
 			SetCode(c.Code).
 			SetType(c.Type).
+			SetIsGift(c.IsGift).
+			SetNillableGiftPairID(c.GiftPairID).
 			SetValue(c.Value).
 			SetStatus(c.Status).
 			SetNotes(c.Notes).
@@ -64,7 +79,20 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 		builders = append(builders, b)
 	}
 
-	return r.client.RedeemCode.CreateBulk(builders...).Exec(ctx)
+	created, err := client.RedeemCode.CreateBulk(builders...).Save(ctx)
+	if err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	for i := range created {
+		codes[i].ID = created[i].ID
+		codes[i].CreatedAt = created[i].CreatedAt
+	}
+	return nil
 }
 
 func (r *redeemCodeRepository) GetByID(ctx context.Context, id int64) (*service.RedeemCode, error) {
@@ -283,13 +311,19 @@ func (r *redeemCodeRepository) batchUpdate(ctx context.Context, client *dbent.Cl
 	}
 	if fields.TouchesUsedSensitiveFields() {
 		for _, code := range existing {
-			if code.Status == service.StatusUsed {
+			if code.Status == service.StatusUsed || code.UsedAt != nil || code.UsedBy != nil {
 				return 0, service.ErrRedeemCodeUsed
 			}
 		}
 	}
 
 	up := client.RedeemCode.Update().Where(redeemcode.IDIn(ids...))
+	// Recheck at the write, not just in the earlier snapshot: a redemption can
+	// commit between the read above and this update. A partial update is rolled
+	// back by BatchUpdate, so no selected row changes if one was consumed.
+	if fields.TouchesUsedSensitiveFields() {
+		up.Where(redeemcode.StatusNEQ(service.StatusUsed), redeemcode.UsedAtIsNil(), redeemcode.UsedByIsNil())
+	}
 	if fields.Status != nil {
 		up.SetStatus(*fields.Status)
 	}
@@ -316,6 +350,9 @@ func (r *redeemCodeRepository) batchUpdate(ctx context.Context, client *dbent.Cl
 		return 0, err
 	}
 	if affected != len(ids) {
+		if fields.TouchesUsedSensitiveFields() {
+			return 0, service.ErrRedeemCodeUsed
+		}
 		return 0, service.ErrRedeemCodeNotFound
 	}
 	return int64(affected), nil
@@ -325,7 +362,9 @@ func (r *redeemCodeRepository) Use(ctx context.Context, id, userID int64) error 
 	now := time.Now()
 	client := clientFromContext(ctx, r.client)
 	affected, err := client.RedeemCode.Update().
-		Where(redeemcode.IDEQ(id), redeemcode.StatusEQ(service.StatusUnused)).
+		Where(redeemcode.IDEQ(id), redeemcode.StatusEQ(service.StatusUnused),
+			redeemcode.UsedAtIsNil(), redeemcode.UsedByIsNil(),
+			redeemcode.Or(redeemcode.ExpiresAtIsNil(), redeemcode.ExpiresAtGT(now))).
 		SetStatus(service.StatusUsed).
 		SetUsedBy(userID).
 		SetUsedAt(now).
@@ -395,6 +434,7 @@ func (r *redeemCodeRepository) SumPositiveBalanceByUser(ctx context.Context, use
 		Where(
 			redeemcode.UsedByEQ(userID),
 			redeemcode.ValueGT(0),
+			redeemcode.IsGiftEQ(false),
 			redeemcode.TypeIn("balance", "admin_balance"),
 		).
 		Aggregate(dbent.As(dbent.Sum(redeemcode.FieldValue), "sum")).
@@ -417,6 +457,8 @@ func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
 		Code:         m.Code,
 		Type:         m.Type,
 		Value:        m.Value,
+		IsGift:       m.IsGift,
+		GiftPairID:   m.GiftPairID,
 		Status:       m.Status,
 		UsedBy:       m.UsedBy,
 		UsedAt:       m.UsedAt,
@@ -443,4 +485,15 @@ func redeemCodeEntitiesToService(models []*dbent.RedeemCode) []service.RedeemCod
 		}
 	}
 	return out
+}
+
+func (r *redeemCodeRepository) FindGiftPairs(ctx context.Context, pairIDs []string) ([]service.RedeemCode, error) {
+	if len(pairIDs) == 0 {
+		return nil, nil
+	}
+	models, err := clientFromContext(ctx, r.client).RedeemCode.Query().Where(redeemcode.GiftPairIDIn(pairIDs...)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return redeemCodeEntitiesToService(models), nil
 }

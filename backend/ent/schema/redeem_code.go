@@ -45,6 +45,9 @@ func (RedeemCode) Fields() []ent.Field {
 		field.Float("value").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
+		// Gift identity is creation-only; notes and batch edits cannot change it.
+		field.Bool("is_gift").Default(false).Immutable(),
+		field.String("gift_pair_id").MaxLen(32).Optional().Nillable().Immutable(),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusUnused),
@@ -91,6 +94,7 @@ func (RedeemCode) Edges() []ent.Edge {
 func (RedeemCode) Indexes() []ent.Index {
 	return []ent.Index{
 		// code 字段已在 Fields() 中声明 Unique()，无需重复索引
+		index.Fields("gift_pair_id", "is_gift").Unique(),
 		index.Fields("status"),
 		index.Fields("used_by"),
 		index.Fields("group_id"),

@@ -508,6 +508,7 @@ type ProxyAccountSummary struct {
 }
 
 type RedeemCode struct {
+	IsGift    bool       `json:"is_gift"`
 	ID        int64      `json:"id"`
 	Code      string     `json:"code"`
 	Type      string     `json:"type"`
@@ -533,6 +534,7 @@ type RedeemCode struct {
 // 注意：普通用户接口不得返回 notes 等内部信息。
 type AdminRedeemCode struct {
 	RedeemCode
+	GiftPairID *string `json:"gift_pair_id,omitempty"`
 
 	Notes string `json:"notes"`
 }

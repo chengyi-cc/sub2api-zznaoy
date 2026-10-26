@@ -557,6 +557,9 @@ type UpdateProxyInput struct {
 }
 
 type GenerateRedeemCodesInput struct {
+	// OperationKey is set by the authenticated handler, never by JSON input.
+	OperationKey string
+	IncludeGift  bool
 	Count        int
 	Type         string
 	Value        float64

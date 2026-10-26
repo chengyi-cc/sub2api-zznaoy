@@ -48,7 +48,7 @@
               <Icon name="edit" size="md" class="mr-2" />
               {{ t('admin.redeem.batchUpdate') }}
             </button>
-            <button @click="showGenerateDialog = true" class="btn btn-primary">
+            <button data-test="generate-open" @click="showGenerateDialog = true" class="btn btn-primary">
               {{ t('admin.redeem.generateCodes') }}
             </button>
           </div>
@@ -113,7 +113,7 @@
             </div>
           </template>
 
-          <template #cell-type="{ value }">
+          <template #cell-type="{ value, row }">
             <span
               :class="[
                 'badge',
@@ -124,13 +124,13 @@
                     : 'badge-primary'
               ]"
             >
-              {{ t('admin.redeem.types.' + value) }}
+              {{ row.is_gift ? t('admin.redeem.giftBadge') : t('admin.redeem.types.' + value) }}
             </span>
           </template>
 
           <template #cell-value="{ value, row }">
             <span class="text-sm font-medium text-gray-900 dark:text-white">
-              <template v-if="row.type === 'balance'">${{ value.toFixed(2) }}</template>
+              <template v-if="row.type === 'balance'">${{ formatRedeemAmount(value) }}</template>
               <template v-else-if="row.type === 'subscription'">
                 {{ row.validity_days || 30 }} {{ t('admin.redeem.days') }}
                 <span v-if="row.group" class="ml-1 text-xs text-gray-500 dark:text-gray-400"
@@ -282,10 +282,10 @@
           <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('admin.redeem.generateCodesTitle') }}
           </h2>
-          <form @submit.prevent="handleGenerateCodes" class="space-y-4">
+          <form data-test="generate-form" @submit.prevent="handleGenerateCodes" class="space-y-4">
             <div>
               <label class="input-label">{{ t('admin.redeem.codeType') }}</label>
-              <Select v-model="generateForm.type" :options="typeOptions" />
+              <Select data-test="generate-type" v-model="generateForm.type" :options="typeOptions" />
             </div>
             <!-- 余额/并发类型：显示数值输入 -->
             <div v-if="generateForm.type !== 'subscription' && generateForm.type !== 'invitation'">
@@ -297,6 +297,7 @@
                 }}
               </label>
               <input
+                data-test="generate-value"
                 v-model.number="generateForm.value"
                 type="number"
                 :step="generateForm.type === 'balance' ? '0.01' : '1'"
@@ -304,6 +305,18 @@
                 required
                 class="input"
               />
+            </div>
+            <div v-if="generateForm.type === 'balance'" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+              <label class="flex items-center gap-2 text-sm font-medium">
+                <input data-test="generate-include-gift" v-model="generateForm.include_gift" type="checkbox" class="h-4 w-4" />
+                {{ t('admin.redeem.includeGift') }}
+              </label>
+              <p class="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                {{ t('admin.redeem.giftHint') }}
+              </p>
+              <p v-if="generateForm.include_gift" data-test="gift-preview" class="mt-2 text-sm">
+                {{ t('admin.redeem.giftPreview', { paid: formatRedeemAmount(generateForm.value || 0), gift: formatRedeemAmount((generateForm.value || 0) / 100), count: generateForm.count }) }}
+              </p>
             </div>
             <!-- 邀请码类型：显示提示信息 -->
             <div v-if="generateForm.type === 'invitation'" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
@@ -388,6 +401,7 @@
             <div>
               <label class="input-label">{{ t('admin.redeem.count') }}</label>
               <input
+                data-test="generate-count"
                 v-model.number="generateForm.count"
                 type="number"
                 min="1"
@@ -582,6 +596,7 @@
             class="flex justify-end gap-2 rounded-b-xl border-t border-gray-200 bg-gray-50 px-5 py-4 dark:border-dark-600 dark:bg-dark-700/50"
           >
             <button
+              data-test="copy-generated"
               @click="copyGeneratedCodes"
               :class="[
                 'btn flex items-center gap-2 transition-all',
@@ -618,6 +633,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { adminAPI } from '@/api/admin'
+import { createRedeemGenerationKey, formatGeneratedRedeemCodes, formatRedeemAmount } from '@/utils/redeemCodes'
 import {
   formatDateTime,
   getBrowserTimeZone,
@@ -681,11 +697,15 @@ const batchGroupOptions = computed(() => [
 ])
 
 const generatedCodesText = computed(() => {
-  return generatedCodes.value.map((code) => code.code).join('\n')
+  return formatGeneratedRedeemCodes(generatedCodes.value, (code) =>
+    t(code.is_gift ? 'admin.redeem.giftCodeLine' : 'admin.redeem.paidCodeLine', {
+      amount: formatRedeemAmount(code.value), code: code.code
+    })
+  )
 })
 
 const textareaHeight = computed(() => {
-  const lineCount = generatedCodes.value.length
+  const lineCount = generatedCodesText.value.split('\n').length
   const lineHeight = 24 // approximate line height in px
   const padding = 24 // top + bottom padding
   const minHeight = 60
@@ -837,6 +857,7 @@ const redeemCodeExpiryOptions = computed<{ value: RedeemCodeExpiryOption; label:
 
 const generateForm = reactive({
   type: 'balance' as RedeemCodeType,
+  include_gift: false,
   value: 10,
   count: 1,
   group_id: null as number | null,
@@ -849,6 +870,7 @@ const generateForm = reactive({
 watch(
   () => generateForm.type,
   (newType) => {
+    if (newType !== 'balance') generateForm.include_gift = false
     if (newType === 'invitation') {
       generateForm.value = 0
     } else if (generateForm.value === 0) {
@@ -1025,7 +1047,12 @@ const buildBatchUpdateFields = (): BatchUpdateRedeemCodeFields | null => {
   return Object.keys(fields).length > 0 ? fields : null
 }
 
+// Keep the operation key after uncertain failures so a retry replays the
+// original result. A changed form represents a new operation.
+let pendingGeneration: { fingerprint: string; key: string } | null = null
+
 const handleGenerateCodes = async () => {
+  if (generating.value) return
   // 订阅类型必须选择分组
   if (generateForm.type === 'subscription' && !generateForm.group_id) {
     appStore.showError(t('admin.redeem.groupRequired'))
@@ -1038,6 +1065,11 @@ const handleGenerateCodes = async () => {
     return
   }
 
+  const includeGift = generateForm.type === 'balance' && generateForm.include_gift
+  const fingerprint = JSON.stringify({ ...generateForm, include_gift: includeGift, expiresInDays })
+  if (!pendingGeneration || pendingGeneration.fingerprint !== fingerprint) {
+    pendingGeneration = { fingerprint, key: createRedeemGenerationKey() }
+  }
   generating.value = true
   try {
     const result = await adminAPI.redeem.generate(
@@ -1046,19 +1078,23 @@ const handleGenerateCodes = async () => {
       generateForm.value,
       generateForm.type === 'subscription' ? generateForm.group_id : undefined,
       generateForm.type === 'subscription' ? generateForm.validity_days : undefined,
-      expiresInDays
+      expiresInDays,
+      includeGift,
+      pendingGeneration.key
     )
+    pendingGeneration = null
     showGenerateDialog.value = false
     generatedCodes.value = result
     showResultDialog.value = true
     // 重置表单
+    generateForm.include_gift = false
     generateForm.group_id = null
     generateForm.validity_days = 30
     generateForm.expiry_option = 'never'
     generateForm.custom_expiry_days = 7
     loadCodes()
   } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToGenerate'))
+    appStore.showError(error.response?.data?.detail || error.message || t('admin.redeem.failedToGenerate'))
     console.error('Error generating codes:', error)
   } finally {
     generating.value = false

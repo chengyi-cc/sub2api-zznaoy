@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -33,6 +34,7 @@ type userRepository struct {
 }
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
+var _ service.GiftBalanceRepository = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -825,6 +827,21 @@ func (r *userRepository) filterUsersByAttributes(ctx context.Context, attrs map[
 		return nil, err
 	}
 	return result, nil
+}
+
+// CreditGiftBalance deliberately leaves total_recharged unchanged.
+func (r *userRepository) CreditGiftBalance(ctx context.Context, id int64, amount float64) error {
+	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return errors.New("gift amount must be finite and positive")
+	}
+	n, err := clientFromContext(ctx, r.client).User.Update().Where(dbuser.IDEQ(id)).AddBalance(amount).Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if n == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
 }
 
 func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount float64) error {

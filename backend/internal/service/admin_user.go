@@ -1252,55 +1252,6 @@ func (s *adminServiceImpl) GetRedeemCode(ctx context.Context, id int64) (*Redeem
 	return s.redeemCodeRepo.GetByID(ctx, id)
 }
 
-func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *GenerateRedeemCodesInput) ([]RedeemCode, error) {
-	if input.ExpiresAt != nil && !input.ExpiresAt.After(time.Now()) {
-		return nil, ErrRedeemCodeExpired
-	}
-
-	// 如果是订阅类型，验证必须有 GroupID
-	if input.Type == RedeemTypeSubscription {
-		if input.GroupID == nil {
-			return nil, errors.New("group_id is required for subscription type")
-		}
-		// 验证分组存在且为订阅类型
-		group, err := s.groupRepo.GetByID(ctx, *input.GroupID)
-		if err != nil {
-			return nil, fmt.Errorf("group not found: %w", err)
-		}
-		if !group.IsSubscriptionType() {
-			return nil, errors.New("group must be subscription type")
-		}
-	}
-
-	codes := make([]RedeemCode, 0, input.Count)
-	for i := 0; i < input.Count; i++ {
-		codeValue, err := GenerateRedeemCode()
-		if err != nil {
-			return nil, err
-		}
-		code := RedeemCode{
-			Code:      codeValue,
-			Type:      input.Type,
-			Value:     input.Value,
-			Status:    StatusUnused,
-			ExpiresAt: input.ExpiresAt,
-		}
-		// 订阅类型专用字段
-		if input.Type == RedeemTypeSubscription {
-			code.GroupID = input.GroupID
-			code.ValidityDays = input.ValidityDays
-			if code.ValidityDays <= 0 {
-				code.ValidityDays = 30 // 默认30天
-			}
-		}
-		if err := s.redeemCodeRepo.Create(ctx, &code); err != nil {
-			return nil, err
-		}
-		codes = append(codes, code)
-	}
-	return codes, nil
-}
-
 func (s *adminServiceImpl) DeleteRedeemCode(ctx context.Context, id int64) error {
 	return s.redeemCodeRepo.Delete(ctx, id)
 }
@@ -1316,13 +1267,11 @@ func (s *adminServiceImpl) BatchDeleteRedeemCodes(ctx context.Context, ids []int
 }
 
 func (s *adminServiceImpl) ExpireRedeemCode(ctx context.Context, id int64) (*RedeemCode, error) {
-	code, err := s.redeemCodeRepo.GetByID(ctx, id)
-	if err != nil {
+	// Only mutate status, under the same atomic consumed-code guard as batch
+	// edits. Saving a stale full entity could erase a concurrent redemption.
+	status := StatusExpired
+	if _, err := s.redeemCodeRepo.BatchUpdate(ctx, []int64{id}, RedeemCodeBatchUpdateFields{Status: &status}); err != nil {
 		return nil, err
 	}
-	code.Status = StatusExpired
-	if err := s.redeemCodeRepo.Update(ctx, code); err != nil {
-		return nil, err
-	}
-	return code, nil
+	return s.redeemCodeRepo.GetByID(ctx, id)
 }
