@@ -875,6 +875,10 @@ func registerInvoiceAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		invoice.POST("/requests/:id/reject", h.Admin.Invoice.Reject)
 		invoice.POST("/requests/:id/issue", h.Admin.Invoice.Issue)
 		invoice.GET("/requests/:id/download", h.Admin.Invoice.Download)
+		// 用户固定开票资料：管理员查询 / 修改 / 一键重置
+		invoice.GET("/profiles", h.Admin.Invoice.ListProfiles)
+		invoice.PUT("/profiles/:user_id", h.Admin.Invoice.UpsertProfile)
+		invoice.DELETE("/profiles/:user_id", h.Admin.Invoice.ResetProfile)
 	}
 }
 

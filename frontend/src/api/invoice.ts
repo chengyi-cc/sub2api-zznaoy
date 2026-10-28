@@ -51,14 +51,22 @@ export interface InvoiceRequest {
   user_email?: string
 }
 
+// 抬头/税号由后端取自已绑定的开票资料（仅企业），不再随申请提交
 export interface CreateInvoiceRequestPayload {
   payment_order_ids?: number[]
   redeem_code_ids?: number[]
-  invoice_type: InvoiceType
-  title: string
-  tax_no?: string
   recipient_email?: string
   remark?: string
+}
+
+// 用户固定开票资料：绑定一次后锁定，仅管理员可修改或重置
+export interface InvoiceProfile {
+  title: string
+  tax_no: string
+  locked: boolean
+  admin_modified: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface PaginatedInvoiceRequests {
@@ -79,6 +87,19 @@ export async function listEligibleOrders(): Promise<EligibleOrder[]> {
 export async function listEligibleSources(): Promise<EligibleSources> {
   const { data } = await apiClient.get<EligibleSources>(`${BASE}/eligible-sources`)
   return data
+}
+
+export async function getInvoiceProfile(): Promise<InvoiceProfile | null> {
+  const { data } = await apiClient.get<{ profile: InvoiceProfile | null }>(`${BASE}/profile`)
+  return data.profile ?? null
+}
+
+export async function bindInvoiceProfile(payload: {
+  title: string
+  tax_no: string
+}): Promise<InvoiceProfile> {
+  const { data } = await apiClient.post<{ profile: InvoiceProfile }>(`${BASE}/profile`, payload)
+  return data.profile
 }
 
 export async function createInvoiceRequest(
@@ -129,6 +150,8 @@ export async function downloadInvoice(id: number, filename = 'invoice.pdf'): Pro
 export const invoiceAPI = {
   listEligibleOrders,
   listEligibleSources,
+  getInvoiceProfile,
+  bindInvoiceProfile,
   createInvoiceRequest,
   listInvoiceRequests,
   getInvoiceRequest,

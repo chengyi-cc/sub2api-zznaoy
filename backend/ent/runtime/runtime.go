@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/invoiceprofile"
 	"github.com/Wei-Shaw/sub2api/ent/invoicerequest"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
@@ -1308,6 +1309,57 @@ func init() {
 	identityadoptiondecisionDescDecidedAt := identityadoptiondecisionFields[4].Descriptor()
 	// identityadoptiondecision.DefaultDecidedAt holds the default value on creation for the decided_at field.
 	identityadoptiondecision.DefaultDecidedAt = identityadoptiondecisionDescDecidedAt.Default.(func() time.Time)
+	invoiceprofileMixin := schema.InvoiceProfile{}.Mixin()
+	invoiceprofileMixinFields0 := invoiceprofileMixin[0].Fields()
+	_ = invoiceprofileMixinFields0
+	invoiceprofileFields := schema.InvoiceProfile{}.Fields()
+	_ = invoiceprofileFields
+	// invoiceprofileDescCreatedAt is the schema descriptor for created_at field.
+	invoiceprofileDescCreatedAt := invoiceprofileMixinFields0[0].Descriptor()
+	// invoiceprofile.DefaultCreatedAt holds the default value on creation for the created_at field.
+	invoiceprofile.DefaultCreatedAt = invoiceprofileDescCreatedAt.Default.(func() time.Time)
+	// invoiceprofileDescUpdatedAt is the schema descriptor for updated_at field.
+	invoiceprofileDescUpdatedAt := invoiceprofileMixinFields0[1].Descriptor()
+	// invoiceprofile.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	invoiceprofile.DefaultUpdatedAt = invoiceprofileDescUpdatedAt.Default.(func() time.Time)
+	// invoiceprofile.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	invoiceprofile.UpdateDefaultUpdatedAt = invoiceprofileDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// invoiceprofileDescTitle is the schema descriptor for title field.
+	invoiceprofileDescTitle := invoiceprofileFields[1].Descriptor()
+	// invoiceprofile.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	invoiceprofile.TitleValidator = func() func(string) error {
+		validators := invoiceprofileDescTitle.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(title string) error {
+			for _, fn := range fns {
+				if err := fn(title); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// invoiceprofileDescTaxNo is the schema descriptor for tax_no field.
+	invoiceprofileDescTaxNo := invoiceprofileFields[2].Descriptor()
+	// invoiceprofile.TaxNoValidator is a validator for the "tax_no" field. It is called by the builders before save.
+	invoiceprofile.TaxNoValidator = func() func(string) error {
+		validators := invoiceprofileDescTaxNo.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(tax_no string) error {
+			for _, fn := range fns {
+				if err := fn(tax_no); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	invoicerequestMixin := schema.InvoiceRequest{}.Mixin()
 	invoicerequestMixinFields0 := invoicerequestMixin[0].Fields()
 	_ = invoicerequestMixinFields0

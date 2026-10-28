@@ -113,7 +113,78 @@ func (h *InvoiceHandler) Detail(c *gin.Context) {
 		"amount_match":  d.AmountMatch,
 		"all_eligible":  d.AllEligible,
 		"user_overview": d.UserOverview,
+
+		"tax_no_shared_user_count": d.TaxNoSharedUserCount,
+		"current_profile":          dto.AdminInvoiceProfileFromEnt(d.CurrentProfile),
 	})
+}
+
+// ListProfiles GET /api/v1/admin/invoice/profiles?q=
+// 分页列出用户已绑定的开票资料（含用户邮箱与同税号其他账号数）。
+func (h *InvoiceHandler) ListProfiles(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	rows, total, err := h.invoiceService.AdminListInvoiceProfiles(c.Request.Context(), service.AdminListInvoiceProfileParams{
+		Keyword:  c.Query("q"),
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	items := make([]*dto.AdminInvoiceProfile, 0, len(rows))
+	for _, r := range rows {
+		d := dto.AdminInvoiceProfileFromEnt(r.Profile)
+		d.UserEmail = r.UserEmail
+		d.SharedUserCount = r.SharedUserCount
+		items = append(items, d)
+	}
+	response.Paginated(c, items, int64(total), page, pageSize)
+}
+
+type adminInvoiceProfilePayload struct {
+	Title string `json:"title" binding:"required"`
+	TaxNo string `json:"tax_no" binding:"required"`
+}
+
+// UpsertProfile PUT /api/v1/admin/invoice/profiles/:user_id
+// 管理员直接设置/修改用户的开票资料（不存在则创建）。
+func (h *InvoiceHandler) UpsertProfile(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user_id")
+		return
+	}
+	adminID, ok := h.getAdminID(c)
+	if !ok {
+		return
+	}
+	var body adminInvoiceProfilePayload
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	p, err := h.invoiceService.AdminUpsertInvoiceProfile(c.Request.Context(), userID, adminID, body.Title, body.TaxNo)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.AdminInvoiceProfileFromEnt(p))
+}
+
+// ResetProfile DELETE /api/v1/admin/invoice/profiles/:user_id
+// 一键重置：删除用户的开票资料，用户可重新绑定一次。
+func (h *InvoiceHandler) ResetProfile(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user_id")
+		return
+	}
+	if err := h.invoiceService.AdminResetInvoiceProfile(c.Request.Context(), userID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"user_id": userID})
 }
 
 // Approve POST /api/v1/admin/invoice/requests/:id/approve

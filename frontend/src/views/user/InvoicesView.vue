@@ -284,43 +284,30 @@
           </div>
         </div>
 
-        <!-- Type -->
+        <!-- 抬头/税号：取自已绑定的开票信息（仅企业，只读） -->
         <div>
-          <label class="input-label">{{ t('invoice.invoiceType') }}</label>
-          <div class="mt-2 flex gap-4">
-            <label class="flex items-center gap-2 text-sm">
-              <input type="radio" v-model="form.invoice_type" value="personal" />
-              {{ t('invoice.type.personal') }}
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-              <input type="radio" v-model="form.invoice_type" value="company" />
-              {{ t('invoice.type.company') }}
-            </label>
+          <label class="input-label">{{ t('invoice.profile.cardTitle') }}</label>
+          <div
+            v-if="profile"
+            data-testid="invoice-create-profile"
+            class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm dark:border-dark-700 dark:bg-dark-800/40"
+          >
+            <div class="font-medium text-gray-900 dark:text-white">{{ profile.title }}</div>
+            <div class="mt-0.5 font-mono text-xs text-gray-600 dark:text-gray-300">
+              {{ t('invoice.taxNo') }}: {{ profile.tax_no }}
+            </div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.profile.companyOnlyHint') }}</p>
           </div>
-        </div>
-
-        <!-- Title -->
-        <div>
-          <label class="input-label">{{ t('invoice.titleField') }}</label>
-          <input
-            v-model="form.title"
-            type="text"
-            class="input mt-1 w-full"
-            :placeholder="t('invoice.titlePlaceholder')"
-            maxlength="200"
-          />
-        </div>
-
-        <!-- Tax No (company only) -->
-        <div v-if="form.invoice_type === 'company'">
-          <label class="input-label">{{ t('invoice.taxNo') }}</label>
-          <input
-            v-model="form.tax_no"
-            type="text"
-            class="input mt-1 w-full"
-            :placeholder="t('invoice.taxNoPlaceholder')"
-            maxlength="50"
-          />
+          <div
+            v-else-if="!loadingEligible"
+            data-testid="invoice-create-profile-missing"
+            class="mt-1 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+          >
+            {{ t('invoice.profile.notBoundHint') }}
+            <router-link to="/profile" class="ml-1 font-medium underline">
+              {{ t('invoice.profile.goBind') }}
+            </router-link>
+          </div>
         </div>
 
         <!-- Recipient Email -->
@@ -375,9 +362,10 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { formatDateTime } from '@/utils/format'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import {
   invoiceAPI,
+  type InvoiceProfile,
   type InvoiceRequest,
   type InvoiceStatus,
   type EligibleOrder,
@@ -407,12 +395,10 @@ const submitError = ref('')
 const eligibleOrders = ref<EligibleOrder[]>([])
 const eligibleRedeemCodes = ref<EligibleRedeemCode[]>([])
 const loadingEligible = ref(false)
+const profile = ref<InvoiceProfile | null>(null)
 const form = reactive({
   payment_order_ids: [] as number[],
   redeem_code_ids: [] as number[],
-  invoice_type: 'personal' as 'personal' | 'company',
-  title: '',
-  tax_no: '',
   recipient_email: '',
   remark: ''
 })
@@ -430,9 +416,8 @@ const totalAmount = computed(() => {
 })
 
 const canSubmit = computed(() => {
+  if (!profile.value) return false
   if (form.payment_order_ids.length + form.redeem_code_ids.length === 0) return false
-  if (!form.title.trim()) return false
-  if (form.invoice_type === 'company' && !form.tax_no.trim()) return false
   if (minAmount.value > 0 && totalAmount.value < minAmount.value) return false
   return true
 })
@@ -504,20 +489,22 @@ async function openCreateModal() {
   submitError.value = ''
   form.payment_order_ids = []
   form.redeem_code_ids = []
-  form.invoice_type = 'personal'
-  form.title = ''
-  form.tax_no = ''
   form.recipient_email = ''
   form.remark = ''
   loadingEligible.value = true
   try {
-    const sources = await invoiceAPI.listEligibleSources()
+    const [sources, boundProfile] = await Promise.all([
+      invoiceAPI.listEligibleSources(),
+      invoiceAPI.getInvoiceProfile()
+    ])
     eligibleOrders.value = sources.orders || []
     eligibleRedeemCodes.value = sources.redeem_codes || []
+    profile.value = boundProfile
   } catch (e: any) {
     eligibleOrders.value = []
     eligibleRedeemCodes.value = []
-    submitError.value = e?.message || String(e)
+    profile.value = null
+    submitError.value = extractI18nErrorMessage(e, t, 'invoice.errors', t('common.error'))
   } finally {
     loadingEligible.value = false
   }
@@ -534,9 +521,6 @@ async function handleSubmit() {
     await invoiceAPI.createInvoiceRequest({
       payment_order_ids: form.payment_order_ids.length > 0 ? form.payment_order_ids : undefined,
       redeem_code_ids: form.redeem_code_ids.length > 0 ? form.redeem_code_ids : undefined,
-      invoice_type: form.invoice_type,
-      title: form.title.trim(),
-      tax_no: form.invoice_type === 'company' ? form.tax_no.trim() : undefined,
       recipient_email: form.recipient_email.trim() || undefined,
       remark: form.remark.trim() || undefined
     })
@@ -544,7 +528,7 @@ async function handleSubmit() {
     pagination.page = 1
     await reload()
   } catch (e: any) {
-    submitError.value = e?.message || String(e)
+    submitError.value = extractI18nErrorMessage(e, t, 'invoice.errors', t('common.error'))
   } finally {
     submitting.value = false
   }

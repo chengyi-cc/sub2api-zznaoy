@@ -83,6 +83,52 @@ export interface InvoiceRequestDetail {
   amount_match: boolean
   all_eligible: boolean
   user_overview: InvoiceUserOverview
+  // 申请税号还被多少个其他账号绑定（同一公司多账号提示）
+  tax_no_shared_user_count: number
+  // 申请人当前绑定的开票资料；null = 未绑定或已被重置
+  current_profile: AdminInvoiceProfile | null
+}
+
+export interface AdminInvoiceProfile {
+  user_id: number
+  user_email?: string
+  title: string
+  tax_no: string
+  updated_by?: number
+  shared_user_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PaginatedInvoiceProfiles {
+  items: AdminInvoiceProfile[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
+export async function adminListInvoiceProfiles(params: {
+  q?: string
+  page?: number
+  page_size?: number
+}): Promise<PaginatedInvoiceProfiles> {
+  const { data } = await apiClient.get<PaginatedInvoiceProfiles>(`${BASE}/profiles`, { params })
+  return data
+}
+
+// 管理员直接设置/修改用户开票资料（不存在则创建）
+export async function adminUpsertInvoiceProfile(
+  userId: number,
+  payload: { title: string; tax_no: string }
+): Promise<AdminInvoiceProfile> {
+  const { data } = await apiClient.put<AdminInvoiceProfile>(`${BASE}/profiles/${userId}`, payload)
+  return data
+}
+
+// 一键重置：删除用户开票资料，用户可重新绑定一次
+export async function adminResetInvoiceProfile(userId: number): Promise<void> {
+  await apiClient.delete(`${BASE}/profiles/${userId}`)
 }
 
 export async function adminGetInvoiceDetail(id: number): Promise<InvoiceRequestDetail> {
@@ -154,7 +200,10 @@ export const adminInvoiceAPI = {
   batchApprove: adminBatchApproveInvoices,
   reject: adminRejectInvoiceRequest,
   issue: adminIssueInvoiceRequest,
-  download: adminDownloadInvoice
+  download: adminDownloadInvoice,
+  listProfiles: adminListInvoiceProfiles,
+  upsertProfile: adminUpsertInvoiceProfile,
+  resetProfile: adminResetInvoiceProfile
 }
 
 export default adminInvoiceAPI

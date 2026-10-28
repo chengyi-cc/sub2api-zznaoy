@@ -43,6 +43,8 @@
         :user-email="user.email"
       />
 
+      <ProfileInvoiceCard v-if="invoiceEnabled" />
+
       <ProfileTotpCard />
       <ProfilePasskeyCard :enabled="passkeyEnabled" />
     </div>
@@ -56,6 +58,7 @@ import { Icon } from '@/components/icons'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ProfileBalanceNotifyCard from '@/components/user/profile/ProfileBalanceNotifyCard.vue'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
+import ProfileInvoiceCard from '@/components/user/profile/ProfileInvoiceCard.vue'
 import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
 import ProfileTotpCard from '@/components/user/profile/ProfileTotpCard.vue'
 import ProfilePasskeyCard from '@/components/user/profile/ProfilePasskeyCard.vue'
@@ -79,6 +82,7 @@ const wechatOAuthMPEnabled = ref<boolean | undefined>(undefined)
 const oidcOAuthEnabled = ref(false)
 const oidcOAuthProviderName = ref('OIDC')
 const passkeyEnabled = ref(false)
+const invoiceEnabled = ref(false)
 
 onMounted(async () => {
   const profileRefresh = authStore.refreshUser().catch((error) => {
@@ -105,6 +109,7 @@ onMounted(async () => {
       oidcOAuthEnabled.value = settings.oidc_oauth_enabled ?? false
       oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
       passkeyEnabled.value = settings.passkey_enabled === true
+      invoiceEnabled.value = settings.invoice_enabled === true
     })
     .catch((error) => {
       console.error('Failed to load settings:', error)

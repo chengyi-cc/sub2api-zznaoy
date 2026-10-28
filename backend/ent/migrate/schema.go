@@ -1099,6 +1099,29 @@ var (
 			},
 		},
 	}
+	// UserInvoiceProfilesColumns holds the columns for the "user_invoice_profiles" table.
+	UserInvoiceProfilesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64, Unique: true},
+		{Name: "title", Type: field.TypeString, Size: 200},
+		{Name: "tax_no", Type: field.TypeString, Size: 50},
+		{Name: "updated_by", Type: field.TypeInt64, Nullable: true},
+	}
+	// UserInvoiceProfilesTable holds the schema information for the "user_invoice_profiles" table.
+	UserInvoiceProfilesTable = &schema.Table{
+		Name:       "user_invoice_profiles",
+		Columns:    UserInvoiceProfilesColumns,
+		PrimaryKey: []*schema.Column{UserInvoiceProfilesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "invoiceprofile_tax_no",
+				Unique:  false,
+				Columns: []*schema.Column{UserInvoiceProfilesColumns[5]},
+			},
+		},
+	}
 	// InvoiceRequestsColumns holds the columns for the "invoice_requests" table.
 	InvoiceRequestsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2174,6 +2197,7 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		UserInvoiceProfilesTable,
 		InvoiceRequestsTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
@@ -2271,6 +2295,9 @@ func init() {
 	IdentityAdoptionDecisionsTable.ForeignKeys[1].RefTable = PendingAuthSessionsTable
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
+	}
+	UserInvoiceProfilesTable.Annotation = &entsql.Annotation{
+		Table: "user_invoice_profiles",
 	}
 	InvoiceRequestsTable.ForeignKeys[0].RefTable = UsersTable
 	InvoiceRequestsTable.Annotation = &entsql.Annotation{

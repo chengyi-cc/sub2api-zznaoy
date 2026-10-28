@@ -1,6 +1,25 @@
 <template>
   <AppLayout>
     <div class="space-y-4">
+      <!-- Tabs: 开票申请 / 开票资料 -->
+      <div class="flex gap-2 border-b border-gray-200 dark:border-dark-700">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          type="button"
+          class="-mb-px border-b-2 px-4 py-2 text-sm font-medium"
+          :class="activeTab === tab.key
+            ? 'border-primary-600 text-primary-600 dark:border-primary-400 dark:text-primary-400'
+            : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+          @click="activeTab = tab.key"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+
+      <InvoiceProfilesPanel v-if="activeTab === 'profiles'" />
+
+      <template v-else>
       <!-- Filters -->
       <div class="card p-4">
         <div class="flex flex-wrap items-center gap-3">
@@ -237,6 +256,7 @@
           {{ t('common.next') }}
         </button>
       </div>
+      </template>
     </div>
 
     <!-- Detail Dialog -->
@@ -326,6 +346,24 @@
               <span class="text-red-600 dark:text-red-400">{{ detail.request.reject_reason }}</span>
             </div>
           </div>
+        </div>
+
+        <!-- 开票资料核对：同税号多账号 / 提交后资料被修改或重置 -->
+        <div
+          v-if="detail.tax_no_shared_user_count > 0"
+          class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+        >
+          ⚠ {{ t('invoice.profile.detailSharedWarning', { n: detail.tax_no_shared_user_count }) }}
+        </div>
+        <div
+          v-if="detail.request.invoice_type === 'company' && profileDiffersFromRequest"
+          class="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+        >
+          {{ t('invoice.profile.detailProfileChanged') }}
+          <span v-if="detail.current_profile" class="font-medium">
+            {{ detail.current_profile.title }} / {{ detail.current_profile.tax_no }}
+          </span>
+          <span v-else class="font-medium">{{ t('invoice.profile.detailProfileNone') }}</span>
         </div>
 
         <!-- User reconciliation overview -->
@@ -689,6 +727,7 @@ import { formatDateTime } from '@/utils/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 import { adminInvoiceAPI, type InvoiceRequestDetail } from '@/api/admin/invoices'
+import InvoiceProfilesPanel from '@/components/admin/invoice/InvoiceProfilesPanel.vue'
 import type { InvoiceRequest, InvoiceStatus } from '@/api/invoice'
 
 const { t } = useI18n()
@@ -729,8 +768,22 @@ const batchUploadInput = ref<HTMLInputElement | null>(null)
 const batchUploadSummary = ref('')
 
 // Detail dialog state
+const activeTab = ref<'requests' | 'profiles'>('requests')
+const tabs = computed(() => [
+  { key: 'requests' as const, label: t('invoice.profile.requestsTab') },
+  { key: 'profiles' as const, label: t('invoice.profile.adminTab') }
+])
+
 const detailTarget = ref<InvoiceRequest | null>(null)
 const detail = ref<InvoiceRequestDetail | null>(null)
+// 申请保存的是提交时快照；当前绑定资料不同（或已被重置）时提示管理员
+const profileDiffersFromRequest = computed(() => {
+  const d = detail.value
+  if (!d) return false
+  const current = d.current_profile
+  if (!current) return true
+  return current.title !== d.request.title || current.tax_no !== (d.request.tax_no || '')
+})
 const detailLoading = ref(false)
 const detailError = ref('')
 

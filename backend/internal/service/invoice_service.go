@@ -2,6 +2,7 @@
 //
 // 一期范围：
 //   - 用户基于已完成（COMPLETED）订单提交开票申请，支持多单合并
+//   - 仅开企业发票；抬头/税号取自用户绑定后锁定的开票资料（见 invoice_profile.go）
 //   - 管理员审核：通过/驳回
 //   - 通过后管理员开票：上传 PDF + 填发票号
 //   - 邮件通知用户：审核结果 + 开具完成
@@ -25,6 +26,7 @@ import (
 	"entgo.io/ent/dialect"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/invoiceprofile"
 	"github.com/Wei-Shaw/sub2api/ent/invoicerequest"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
@@ -91,7 +93,6 @@ var (
 	ErrInvoiceRedeemAlreadyClaimed = infraerrors.Conflict("INVOICE_REDEEM_ALREADY_CLAIMED", "redeem code already has an active invoice request")
 	ErrInvoiceTaxNoRequired        = infraerrors.BadRequest("INVOICE_TAX_NO_REQUIRED", "tax_no is required for company invoice")
 	ErrInvoiceTitleRequired        = infraerrors.BadRequest("INVOICE_TITLE_REQUIRED", "title is required")
-	ErrInvoiceTypeInvalid          = infraerrors.BadRequest("INVOICE_TYPE_INVALID", "invoice_type must be personal or company")
 	ErrInvoiceEmailInvalid         = infraerrors.BadRequest("INVOICE_EMAIL_INVALID", "recipient_email is invalid")
 	ErrInvoiceInvalidStatus        = infraerrors.Conflict("INVOICE_INVALID_STATUS", "invoice request status does not allow this operation")
 	ErrInvoiceFileNotFound         = infraerrors.NotFound("INVOICE_FILE_NOT_FOUND", "invoice file not found")
@@ -102,21 +103,18 @@ var (
 
 const (
 	invoiceMaxTitleLen     = 200
-	invoiceMaxTaxNoLen     = 50
 	invoiceMaxRemarkLen    = 1000
 	invoiceMaxFileBytes    = 10 * 1024 * 1024 // 10 MB
 	invoiceMaxOrdersPerReq = 50               // 单次最多合并开票订单数
 	invoicePDFContentType  = "application/pdf"
 )
 
-// CreateInvoiceRequestInput 用户提交开票申请的入参
+// CreateInvoiceRequestInput 用户提交开票申请的入参。
+// 抬头/税号/类型不在入参中：一律取自用户已绑定的开票资料（企业），防止每次随意填写。
 type CreateInvoiceRequestInput struct {
 	UserID          int64
 	PaymentOrderIDs []int64
 	RedeemCodeIDs   []int64 // 仅 type=balance 的已使用兑换码 ID
-	InvoiceType     string  // personal / company
-	Title           string  // 抬头
-	TaxNo           string  // 税号（企业必填）
 	RecipientEmail  string  // 接收邮箱（可选）
 	Remark          string  // 备注
 }
@@ -371,6 +369,18 @@ func (s *InvoiceService) CreateRequest(ctx context.Context, input CreateInvoiceR
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// 抬头/税号以用户已绑定的开票资料为准，写入申请作为提交时快照；
+	// 之后管理员修改或重置资料不会改动已提交的申请。
+	profile, err := tx.InvoiceProfile.Query().
+		Where(invoiceprofile.UserIDEQ(input.UserID)).
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, ErrInvoiceProfileRequired
+		}
+		return nil, fmt.Errorf("load invoice profile: %w", err)
+	}
+
 	var totalAmount float64
 
 	// 锁定订单行 + 校验
@@ -452,13 +462,11 @@ func (s *InvoiceService) CreateRequest(ctx context.Context, input CreateInvoiceR
 		SetPaymentOrderIds(input.PaymentOrderIDs).
 		SetRedeemCodeIds(input.RedeemCodeIDs).
 		SetAmount(totalAmount).
-		SetInvoiceType(input.InvoiceType).
-		SetTitle(input.Title).
+		SetInvoiceType(domain.InvoiceTypeCompany).
+		SetTitle(profile.Title).
+		SetTaxNo(profile.TaxNo).
 		SetStatus(domain.InvoiceStatusPending)
 
-	if input.InvoiceType == domain.InvoiceTypeCompany {
-		builder = builder.SetTaxNo(input.TaxNo)
-	}
 	if v := strings.TrimSpace(input.RecipientEmail); v != "" {
 		builder = builder.SetRecipientEmail(v)
 	}
@@ -505,29 +513,9 @@ func (s *InvoiceService) claimedSourceIDsForUserInTx(ctx context.Context, tx *db
 }
 
 func (s *InvoiceService) validateCreateInput(input *CreateInvoiceRequestInput) error {
-	input.Title = strings.TrimSpace(input.Title)
-	input.TaxNo = strings.TrimSpace(input.TaxNo)
 	input.RecipientEmail = strings.TrimSpace(input.RecipientEmail)
 	input.Remark = strings.TrimSpace(input.Remark)
-	input.InvoiceType = strings.TrimSpace(input.InvoiceType)
 
-	if input.InvoiceType != domain.InvoiceTypePersonal && input.InvoiceType != domain.InvoiceTypeCompany {
-		return ErrInvoiceTypeInvalid
-	}
-	if input.Title == "" {
-		return ErrInvoiceTitleRequired
-	}
-	if len(input.Title) > invoiceMaxTitleLen {
-		return ErrInvoiceTitleRequired
-	}
-	if input.InvoiceType == domain.InvoiceTypeCompany {
-		if input.TaxNo == "" {
-			return ErrInvoiceTaxNoRequired
-		}
-		if len(input.TaxNo) > invoiceMaxTaxNoLen {
-			return ErrInvoiceTaxNoRequired
-		}
-	}
 	if len(input.Remark) > invoiceMaxRemarkLen {
 		return infraerrors.BadRequest("INVOICE_REMARK_TOO_LONG", "remark too long")
 	}
@@ -790,6 +778,12 @@ type InvoiceRequestDetail struct {
 
 	// 申请人对账概览（反欺诈核心数据）
 	UserOverview InvoiceUserOverview `json:"user_overview"`
+
+	// TaxNoSharedUserCount 申请税号当前还被多少个「其他」账号绑定（同一公司多账号时提示管理员）
+	TaxNoSharedUserCount int `json:"tax_no_shared_user_count"`
+	// CurrentProfile 申请人当前绑定的开票资料（nil = 未绑定或已被重置）。
+	// 申请保存的是提交时快照，管理员可据此发现提交后资料被改动的情况。
+	CurrentProfile *dbent.InvoiceProfile `json:"-"`
 }
 
 // InvoiceUserOverview 申请人发票相关的累计金额视图。
@@ -969,6 +963,19 @@ func (s *InvoiceService) AdminGetDetail(ctx context.Context, requestID int64) (*
 			})
 		}
 	}
+
+	if r.TaxNo != nil {
+		shared, err := s.countOtherUsersWithTaxNo(ctx, *r.TaxNo, r.UserID)
+		if err != nil {
+			return nil, err
+		}
+		detail.TaxNoSharedUserCount = shared
+	}
+	profile, err := s.GetInvoiceProfile(ctx, r.UserID)
+	if err != nil {
+		return nil, err
+	}
+	detail.CurrentProfile = profile
 
 	detail.ComputedSum = computedSum
 	// 浮点容差对比：1 分以内视为相等（PG decimal(20,2) 在 Go 端是 float64，可能有微小误差）

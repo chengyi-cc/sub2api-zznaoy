@@ -75,6 +75,62 @@ func InvoiceRequestFromEnt(r *dbent.InvoiceRequest) *InvoiceRequest {
 	return d
 }
 
+// InvoiceProfile 用户端开票资料视图。绑定后即锁定，用户只读。
+type InvoiceProfile struct {
+	Title     string    `json:"title"`
+	TaxNo     string    `json:"tax_no"`
+	Locked    bool      `json:"locked"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	// AdminModified 资料是否由管理员设置/修改过（不暴露管理员 ID）
+	AdminModified bool `json:"admin_modified"`
+}
+
+// InvoiceProfileFromEnt 转换为用户端视图；nil 表示未绑定。
+func InvoiceProfileFromEnt(p *dbent.InvoiceProfile) *InvoiceProfile {
+	if p == nil {
+		return nil
+	}
+	return &InvoiceProfile{
+		Title:         p.Title,
+		TaxNo:         p.TaxNo,
+		Locked:        true,
+		CreatedAt:     p.CreatedAt,
+		UpdatedAt:     p.UpdatedAt,
+		AdminModified: p.UpdatedBy != nil,
+	}
+}
+
+// AdminInvoiceProfile 管理端开票资料视图。
+type AdminInvoiceProfile struct {
+	UserID          int64     `json:"user_id"`
+	UserEmail       string    `json:"user_email,omitempty"`
+	Title           string    `json:"title"`
+	TaxNo           string    `json:"tax_no"`
+	UpdatedBy       int64     `json:"updated_by,omitempty"`
+	SharedUserCount int       `json:"shared_user_count"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// AdminInvoiceProfileFromEnt 转换为管理端视图；nil 表示未绑定。
+func AdminInvoiceProfileFromEnt(p *dbent.InvoiceProfile) *AdminInvoiceProfile {
+	if p == nil {
+		return nil
+	}
+	d := &AdminInvoiceProfile{
+		UserID:    p.UserID,
+		Title:     p.Title,
+		TaxNo:     p.TaxNo,
+		CreatedAt: p.CreatedAt,
+		UpdatedAt: p.UpdatedAt,
+	}
+	if p.UpdatedBy != nil {
+		d.UpdatedBy = *p.UpdatedBy
+	}
+	return d
+}
+
 // InvoiceRequestListFromEnt 批量转换
 func InvoiceRequestListFromEnt(rs []*dbent.InvoiceRequest) []*InvoiceRequest {
 	out := make([]*InvoiceRequest, 0, len(rs))

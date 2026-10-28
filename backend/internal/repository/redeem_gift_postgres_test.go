@@ -23,7 +23,6 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -247,13 +246,15 @@ func TestRedeemGiftPostgres(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Pricing.DataDir = t.TempDir()
 	invoices := service.NewInvoiceService(client, users, nil, nil, cfg)
+	_, err = invoices.BindInvoiceProfile(ctx, user.ID, "Gift Test Co.", "91350100M000100Y43")
+	require.NoError(t, err)
 	sources, err := invoices.ListEligibleSources(ctx, user.ID)
 	require.NoError(t, err)
 	require.Len(t, sources.RedeemCodes, 1)
 	require.Equal(t, paid.ID, sources.RedeemCodes[0].RedeemCodeID)
-	_, err = invoices.CreateRequest(ctx, service.CreateInvoiceRequestInput{UserID: user.ID, RedeemCodeIDs: []int64{paid.ID, gift.ID}, InvoiceType: domain.InvoiceTypePersonal, Title: "Forged gift request"})
+	_, err = invoices.CreateRequest(ctx, service.CreateInvoiceRequestInput{UserID: user.ID, RedeemCodeIDs: []int64{paid.ID, gift.ID}})
 	require.ErrorIs(t, err, service.ErrInvoiceRedeemNotEligible)
-	request, err := invoices.CreateRequest(ctx, service.CreateInvoiceRequestInput{UserID: user.ID, RedeemCodeIDs: []int64{paid.ID}, InvoiceType: domain.InvoiceTypePersonal, Title: "Paid code"})
+	request, err := invoices.CreateRequest(ctx, service.CreateInvoiceRequestInput{UserID: user.ID, RedeemCodeIDs: []int64{paid.ID}})
 	require.NoError(t, err)
 	require.Equal(t, 10.0, request.Amount)
 	_, err = invoices.AdminApprove(ctx, request.ID, 999)

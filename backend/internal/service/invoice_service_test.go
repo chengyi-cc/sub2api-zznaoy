@@ -45,7 +45,12 @@ func newInvoiceServiceTestClient(t *testing.T) (*InvoiceService, *dbent.Client) 
 	return svc, client
 }
 
-// seedUserAndCompletedOrders 创建用户 + N 个 COMPLETED 订单，返回 user 和订单 ID 列表。
+const (
+	testInvoiceProfileTitle = "Acme Inc."
+	testInvoiceProfileTaxNo = "91350100M000100Y43"
+)
+
+// seedUserAndCompletedOrders 创建用户（已绑定开票资料）+ N 个 COMPLETED 订单，返回 user 和订单 ID 列表。
 func seedUserAndCompletedOrders(t *testing.T, client *dbent.Client, count int, amountEach float64) (*dbent.User, []int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -55,6 +60,12 @@ func seedUserAndCompletedOrders(t *testing.T, client *dbent.Client, count int, a
 		SetPasswordHash("hash").
 		SetRole(RoleUser).
 		SetStatus(StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = client.InvoiceProfile.Create().
+		SetUserID(user.ID).
+		SetTitle(testInvoiceProfileTitle).
+		SetTaxNo(testInvoiceProfileTaxNo).
 		Save(ctx)
 	require.NoError(t, err)
 
@@ -82,18 +93,18 @@ func seedUserAndCompletedOrders(t *testing.T, client *dbent.Client, count int, a
 
 // ---- CreateRequest validation tests ----
 
-func TestInvoiceService_CreateRequest_RejectsCompanyWithoutTaxNo(t *testing.T) {
+func TestInvoiceService_CreateRequest_RejectsWithoutProfile(t *testing.T) {
 	svc, client := newInvoiceServiceTestClient(t)
 	user, orderIDs := seedUserAndCompletedOrders(t, client, 1, 100)
+	_, err := client.InvoiceProfile.Delete().Exec(context.Background())
+	require.NoError(t, err)
 
-	_, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypeCompany,
-		Title:           "Acme Inc.",
-		// TaxNo intentionally empty
 	})
-	require.ErrorIs(t, err, ErrInvoiceTaxNoRequired)
+	require.ErrorIs(t, err, ErrInvoiceProfileRequired)
+	require.Zero(t, client.InvoiceRequest.Query().CountX(context.Background()))
 }
 
 func TestInvoiceService_CreateRequest_RejectsInvalidEmail(t *testing.T) {
@@ -103,8 +114,6 @@ func TestInvoiceService_CreateRequest_RejectsInvalidEmail(t *testing.T) {
 	_, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John Doe",
 		RecipientEmail:  "not-an-email",
 	})
 	require.ErrorIs(t, err, ErrInvoiceEmailInvalid)
@@ -142,8 +151,6 @@ func TestInvoiceService_CreateRequest_RejectsForeignOrder(t *testing.T) {
 	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID, // 用 user.ID 试图占用 otherOrder.ID
 		PaymentOrderIDs: []int64{otherOrder.ID},
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 	})
 	require.ErrorIs(t, err, ErrInvoiceOrdersInvalid)
 }
@@ -171,8 +178,6 @@ func TestInvoiceService_CreateRequest_RejectsNonCompletedOrder(t *testing.T) {
 	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: []int64{pendingOrder.ID},
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 	})
 	require.ErrorIs(t, err, ErrInvoiceOrderNotEligible)
 }
@@ -187,16 +192,12 @@ func TestInvoiceService_CreateRequest_RejectsAlreadyClaimedOrder(t *testing.T) {
 	_, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "First Request",
 	})
 	require.NoError(t, err)
 
 	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs, // 同一订单
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "Second Request",
 	})
 	require.ErrorIs(t, err, ErrInvoiceOrderAlreadyClaimed)
 }
@@ -208,9 +209,6 @@ func TestInvoiceService_CreateRequest_AllowsMultiOrderMerge(t *testing.T) {
 	req, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypeCompany,
-		Title:           "Acme Inc.",
-		TaxNo:           "91110000000000000X",
 		RecipientEmail:  "billing@acme.example",
 		Remark:          "Q1 invoices",
 	})
@@ -218,6 +216,10 @@ func TestInvoiceService_CreateRequest_AllowsMultiOrderMerge(t *testing.T) {
 	require.Equal(t, 150.0, req.Amount)
 	require.Equal(t, domain.InvoiceStatusPending, req.Status)
 	require.Len(t, req.PaymentOrderIds, 3)
+	require.Equal(t, domain.InvoiceTypeCompany, req.InvoiceType)
+	require.Equal(t, testInvoiceProfileTitle, req.Title)
+	require.NotNil(t, req.TaxNo)
+	require.Equal(t, testInvoiceProfileTaxNo, *req.TaxNo)
 }
 
 // ---- State machine ----
@@ -229,8 +231,6 @@ func TestInvoiceService_AdminReject_RequiresPendingStatus(t *testing.T) {
 	created, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 	})
 	require.NoError(t, err)
 
@@ -250,8 +250,6 @@ func TestInvoiceService_AdminIssue_RequiresApprovedStatus(t *testing.T) {
 	created, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 	})
 	require.NoError(t, err)
 
@@ -272,8 +270,6 @@ func TestInvoiceService_AdminIssue_BlocksOnRefundedOrder(t *testing.T) {
 	created, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 	})
 	require.NoError(t, err)
 
@@ -308,8 +304,6 @@ func TestInvoiceService_AdminIssue_RejectsNonPDFContent(t *testing.T) {
 	created, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 	})
 	require.NoError(t, err)
 
@@ -337,8 +331,6 @@ func TestInvoiceService_AdminIssue_AcceptsValidPDFHeader(t *testing.T) {
 	created, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 	})
 	require.NoError(t, err)
 
@@ -367,8 +359,6 @@ func TestInvoiceService_AdminIssue_EmailsPDFAttachment(t *testing.T) {
 	created, err := svc.CreateRequest(ctx, CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 		RecipientEmail:  "billing@example.com",
 	})
 	require.NoError(t, err)
@@ -464,8 +454,6 @@ func TestInvoiceService_CreateRequest_AcceptsBalanceRedeemCode(t *testing.T) {
 	req, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:        user.ID,
 		RedeemCodeIDs: []int64{codeID},
-		InvoiceType:   domain.InvoiceTypePersonal,
-		Title:         "John",
 	})
 	require.NoError(t, err)
 	require.Equal(t, 80.0, req.Amount)
@@ -482,9 +470,6 @@ func TestInvoiceService_CreateRequest_MixedOrderAndRedeemCode_MergesAmounts(t *t
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
 		RedeemCodeIDs:   []int64{codeID},
-		InvoiceType:     domain.InvoiceTypeCompany,
-		Title:           "Acme Inc.",
-		TaxNo:           "91110000000000000X",
 	})
 	require.NoError(t, err)
 	require.Equal(t, 150.0, req.Amount)
@@ -508,8 +493,6 @@ func TestInvoiceService_CreateRequest_RejectsNonBalanceRedeemCode(t *testing.T) 
 	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:        user.ID,
 		RedeemCodeIDs: []int64{rc.ID},
-		InvoiceType:   domain.InvoiceTypePersonal,
-		Title:         "John",
 	})
 	require.ErrorIs(t, err, ErrInvoiceRedeemNotEligible)
 }
@@ -531,8 +514,6 @@ func TestInvoiceService_CreateRequest_RejectsForeignRedeemCode(t *testing.T) {
 	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:        user.ID,
 		RedeemCodeIDs: []int64{otherCodeID},
-		InvoiceType:   domain.InvoiceTypePersonal,
-		Title:         "John",
 	})
 	require.ErrorIs(t, err, ErrInvoiceRedeemInvalid)
 }
@@ -545,16 +526,12 @@ func TestInvoiceService_CreateRequest_RejectsAlreadyClaimedRedeemCode(t *testing
 	_, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:        user.ID,
 		RedeemCodeIDs: []int64{codeID},
-		InvoiceType:   domain.InvoiceTypePersonal,
-		Title:         "First",
 	})
 	require.NoError(t, err)
 
 	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:        user.ID,
 		RedeemCodeIDs: []int64{codeID},
-		InvoiceType:   domain.InvoiceTypePersonal,
-		Title:         "Second",
 	})
 	require.ErrorIs(t, err, ErrInvoiceRedeemAlreadyClaimed)
 }
@@ -564,9 +541,7 @@ func TestInvoiceService_CreateRequest_RejectsEmptySources(t *testing.T) {
 	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
 
 	_, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
-		UserID:      user.ID,
-		InvoiceType: domain.InvoiceTypePersonal,
-		Title:       "No sources",
+		UserID: user.ID,
 	})
 	require.ErrorIs(t, err, ErrInvoiceSourcesEmpty)
 }
@@ -581,8 +556,6 @@ func TestInvoiceService_AdminIssue_BlocksOnRedeemCodeOwnershipChange(t *testing.
 	created, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:        user.ID,
 		RedeemCodeIDs: []int64{codeID},
-		InvoiceType:   domain.InvoiceTypePersonal,
-		Title:         "John",
 	})
 	require.NoError(t, err)
 
@@ -624,8 +597,6 @@ func TestInvoiceService_AdminIssue_BlocksOnRedeemCodeValueZeroed(t *testing.T) {
 	created, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:        user.ID,
 		RedeemCodeIDs: []int64{codeID},
-		InvoiceType:   domain.InvoiceTypePersonal,
-		Title:         "John",
 	})
 	require.NoError(t, err)
 
@@ -720,8 +691,6 @@ func TestInvoiceService_CreateRequest_BlocksWhenBelowMinAmount(t *testing.T) {
 	_, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "INVOICE_AMOUNT_BELOW_MIN")
@@ -735,8 +704,6 @@ func TestInvoiceService_CreateRequest_AllowsAtOrAboveMinAmount(t *testing.T) {
 	req, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 	})
 	require.NoError(t, err)
 	require.Equal(t, 200.0, req.Amount)
@@ -750,8 +717,6 @@ func TestInvoiceService_CreateRequest_ZeroMinAmount_NotEnforced(t *testing.T) {
 	req, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
 		UserID:          user.ID,
 		PaymentOrderIDs: orderIDs,
-		InvoiceType:     domain.InvoiceTypePersonal,
-		Title:           "John",
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1.0, req.Amount)
@@ -772,7 +737,7 @@ func TestInvoiceService_GiftCannotBeSelectedSubmittedOrIssued(t *testing.T) {
 	require.Equal(t, paidID, sources.RedeemCodes[0].RedeemCodeID)
 	for _, ids := range [][]int64{{gift.ID}, {paidID, gift.ID}} {
 		_, err := svc.CreateRequest(ctx, CreateInvoiceRequestInput{
-			UserID: user.ID, RedeemCodeIDs: ids, InvoiceType: domain.InvoiceTypePersonal, Title: "Gift bypass attempt",
+			UserID: user.ID, RedeemCodeIDs: ids,
 		})
 		require.ErrorIs(t, err, ErrInvoiceRedeemNotEligible)
 	}
@@ -791,7 +756,7 @@ func TestInvoiceService_GiftCannotBeSelectedSubmittedOrIssued(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, domain.InvoiceStatusApproved, client.InvoiceRequest.GetX(ctx, request.ID).Status)
 	paidRequest, err := svc.CreateRequest(ctx, CreateInvoiceRequestInput{
-		UserID: user.ID, RedeemCodeIDs: []int64{paidID}, InvoiceType: domain.InvoiceTypePersonal, Title: "Paid code",
+		UserID: user.ID, RedeemCodeIDs: []int64{paidID},
 	})
 	require.NoError(t, err)
 	require.Equal(t, 10.0, paidRequest.Amount)

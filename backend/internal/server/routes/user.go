@@ -150,6 +150,8 @@ func RegisterUserRoutes(
 		{
 			invoice.GET("/eligible-orders", h.Invoice.ListEligibleOrders)   //nolint:staticcheck // Deprecated（保留以兼容旧前端缓存）
 			invoice.GET("/eligible-sources", h.Invoice.ListEligibleSources) // 新增：含订单+兑换码
+			invoice.GET("/profile", h.Invoice.GetProfile)                   // 固定开票资料（绑定后锁定）
+			invoice.POST("/profile", h.Invoice.BindProfile)                 // 仅可绑定一次，之后只能由管理员修改/重置
 			invoice.POST("/requests", h.Invoice.Create)
 			invoice.GET("/requests", h.Invoice.List)
 			invoice.GET("/requests/:id", h.Invoice.Get)

@@ -144,6 +144,7 @@ func TestMergedScopedAdminKeysCannotAccessCustomSensitiveRoutes(t *testing.T) {
 		{"POST", "/redeem-codes/generate"}, {"POST", "/redeem-codes/create-and-redeem"},
 		{"POST", "/redeem-codes/batch-update"}, {"GET", "/redeem-codes/export"},
 		{"GET", "/invoice/requests"}, {"POST", "/invoice/requests/1/issue"},
+		{"GET", "/invoice/profiles"}, {"PUT", "/invoice/profiles/1"}, {"DELETE", "/invoice/profiles/1"},
 		{"PUT", "/settings/openai-account-template"},
 		{"PUT", "/astra-borrow"}, {"POST", "/prism-runtime/restart"},
 	} {

@@ -23,15 +23,19 @@ func NewInvoiceHandler(invoiceService *service.InvoiceService) *InvoiceHandler {
 	return &InvoiceHandler{invoiceService: invoiceService}
 }
 
-// createInvoiceRequestPayload 用户提交发票申请的请求体
+// createInvoiceRequestPayload 用户提交发票申请的请求体。
+// 抬头/税号由后端取自已绑定的开票资料；旧前端多传的 invoice_type/title/tax_no 会被忽略。
 type createInvoiceRequestPayload struct {
 	PaymentOrderIDs []int64 `json:"payment_order_ids"`
 	RedeemCodeIDs   []int64 `json:"redeem_code_ids"`
-	InvoiceType     string  `json:"invoice_type" binding:"required"`
-	Title           string  `json:"title" binding:"required"`
-	TaxNo           string  `json:"tax_no"`
 	RecipientEmail  string  `json:"recipient_email"`
 	Remark          string  `json:"remark"`
+}
+
+// bindInvoiceProfilePayload 用户绑定开票资料的请求体
+type bindInvoiceProfilePayload struct {
+	Title string `json:"title" binding:"required"`
+	TaxNo string `json:"tax_no" binding:"required"`
 }
 
 // ListEligibleOrders GET /api/v1/invoice/eligible-orders
@@ -83,9 +87,6 @@ func (h *InvoiceHandler) Create(c *gin.Context) {
 		UserID:          subject.UserID,
 		PaymentOrderIDs: body.PaymentOrderIDs,
 		RedeemCodeIDs:   body.RedeemCodeIDs,
-		InvoiceType:     body.InvoiceType,
-		Title:           body.Title,
-		TaxNo:           body.TaxNo,
 		RecipientEmail:  body.RecipientEmail,
 		Remark:          body.Remark,
 	})
@@ -94,6 +95,43 @@ func (h *InvoiceHandler) Create(c *gin.Context) {
 		return
 	}
 	response.Created(c, dto.InvoiceRequestFromEnt(created))
+}
+
+// GetProfile GET /api/v1/invoice/profile
+// 返回 {"profile": null} 表示尚未绑定。
+func (h *InvoiceHandler) GetProfile(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	p, err := h.invoiceService.GetInvoiceProfile(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"profile": dto.InvoiceProfileFromEnt(p)})
+}
+
+// BindProfile POST /api/v1/invoice/profile
+// 仅允许绑定一次；已绑定返回 409 INVOICE_PROFILE_LOCKED。
+func (h *InvoiceHandler) BindProfile(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var body bindInvoiceProfilePayload
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	p, err := h.invoiceService.BindInvoiceProfile(c.Request.Context(), subject.UserID, body.Title, body.TaxNo)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Created(c, gin.H{"profile": dto.InvoiceProfileFromEnt(p)})
 }
 
 // List GET /api/v1/invoice/requests
