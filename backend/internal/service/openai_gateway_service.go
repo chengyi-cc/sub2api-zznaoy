@@ -305,6 +305,10 @@ type OpenAIForwardResult struct {
 	streamReadIncomplete         bool
 	wsReplayInputExists          bool
 	wsAccountFailoverReplayInput []json.RawMessage
+
+	// ViolationFee > 0 marks a Grok usage-guidelines violation fee row: billed
+	// as this fixed amount per request, bypassing token pricing and multipliers.
+	ViolationFee float64
 }
 
 // SucceededForScheduling reports whether this result is an upstream success

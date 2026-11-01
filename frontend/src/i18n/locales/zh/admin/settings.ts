@@ -1,5 +1,6 @@
 export default {
     settings: {
+      grokViolationFee: { title: 'Grok 违规扣费', description: '默认关闭。开启后，Grok 请求被 xAI 安全检查拒绝时（如返回 "Failed check: SAFETY_CHECK_TYPE"），按次向用户收取固定金额，对应 xAI 官方的使用准则违规费。拒绝原文照常返回给用户，不换号重试；浏览器校验、封禁、额度等账号问题不扣费。', amount: '违规扣费金额（每次）', amountHint: '固定金额，不乘分组倍率，不按 token 计算。用量记录中显示为「安全策略」、按次、token 为 0。' },
       gpt61LongContextExemption: { title: 'GPT-6.1 Sol 订阅长上下文免附加费', description: '默认关闭，按现有账号、分组及价格设置计费。开启后，仅 GPT-6.1 Sol 登录授权或订阅访问令牌账号免除模型长上下文附加费；API 密钥账号、自定义区间价格和优先处理费用不变。保存后生效。' },
       title: '系统设置',
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',

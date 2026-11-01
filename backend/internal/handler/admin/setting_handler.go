@@ -308,6 +308,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ClaudeCodeClientVersionSynced:                          settings.ClaudeCodeClientVersionSynced,
 		ClaudeCodeVersionAutoSyncEnabled:                       settings.ClaudeCodeVersionAutoSyncEnabled,
 		OpenAIGPT61SolLongContextExemptionEnabled:              settings.OpenAIGPT61SolLongContextExemptionEnabled,
+		GrokViolationFeeEnabled:                                settings.GrokViolationFeeEnabled,
+		GrokViolationFeeAmount:                                 settings.GrokViolationFeeAmount,
 		MinCodexVersion:                                        settings.MinCodexVersion,
 		MaxCodexVersion:                                        settings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  settings.CodexCLIOnlyBlacklist,

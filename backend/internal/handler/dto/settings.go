@@ -227,6 +227,9 @@ type SystemSettings struct {
 
 	OpenAIGPT61SolLongContextExemptionEnabled bool `json:"openai_gpt61_sol_long_context_exemption_enabled"`
 
+	GrokViolationFeeEnabled bool    `json:"grok_violation_fee_enabled"`
+	GrokViolationFeeAmount  float64 `json:"grok_violation_fee_amount"`
+
 	MinCodexVersion                      string `json:"min_codex_version"`
 	MaxCodexVersion                      string `json:"max_codex_version"`
 	CodexCLIOnlyBlacklist                string `json:"codex_cli_only_blacklist"`

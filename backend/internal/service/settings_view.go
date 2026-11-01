@@ -259,6 +259,9 @@ type SystemSettings struct {
 
 	OpenAIGPT61SolLongContextExemptionEnabled bool // Opt-in GPT-6.1 Sol subscription long-context exemption.
 
+	GrokViolationFeeEnabled bool    // xAI 安全检查拒绝的 Grok 请求是否按次收取违规扣费
+	GrokViolationFeeAmount  float64 // 违规扣费金额（USD/次，固定金额，不乘倍率）
+
 	MinCodexVersion                      string // codex_cli_only 最低 Codex 引擎版本；空=不检查
 	MaxCodexVersion                      string // codex_cli_only 最高 Codex 引擎版本；空=不检查
 	CodexCLIOnlyBlacklist                string // codex_cli_only 全局黑名单 JSON（[]AllowedClientEntry，OR deny）

@@ -262,6 +262,10 @@ type UpdateSettingsRequest struct {
 
 	OpenAIGPT61SolLongContextExemptionEnabled bool `json:"openai_gpt61_sol_long_context_exemption_enabled"`
 
+	// Grok 违规扣费（省略时保留原值）
+	GrokViolationFeeEnabled *bool    `json:"grok_violation_fee_enabled"`
+	GrokViolationFeeAmount  *float64 `json:"grok_violation_fee_amount"`
+
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
 	MaxCodexVersion                      string `json:"max_codex_version"`
@@ -1826,6 +1830,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return previousSettings.ClaudeCodeVersionAutoSyncEnabled
 		}(),
 		OpenAIGPT61SolLongContextExemptionEnabled: req.OpenAIGPT61SolLongContextExemptionEnabled,
+		GrokViolationFeeEnabled: func() bool {
+			if req.GrokViolationFeeEnabled != nil {
+				return *req.GrokViolationFeeEnabled
+			}
+			return previousSettings.GrokViolationFeeEnabled
+		}(),
+		GrokViolationFeeAmount: func() float64 {
+			if req.GrokViolationFeeAmount != nil {
+				return max(*req.GrokViolationFeeAmount, 0)
+			}
+			return previousSettings.GrokViolationFeeAmount
+		}(),
 		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
 		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
 		CodexCLIOnlyBlacklist: strings.TrimSpace(req.CodexCLIOnlyBlacklist),
@@ -2398,6 +2414,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ClaudeCodeClientVersionSynced:                          updatedSettings.ClaudeCodeClientVersionSynced,
 		ClaudeCodeVersionAutoSyncEnabled:                       updatedSettings.ClaudeCodeVersionAutoSyncEnabled,
 		OpenAIGPT61SolLongContextExemptionEnabled:              updatedSettings.OpenAIGPT61SolLongContextExemptionEnabled,
+		GrokViolationFeeEnabled:                                updatedSettings.GrokViolationFeeEnabled,
+		GrokViolationFeeAmount:                                 updatedSettings.GrokViolationFeeAmount,
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  updatedSettings.CodexCLIOnlyBlacklist,

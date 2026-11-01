@@ -606,6 +606,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.InvoiceMinAmount != after.InvoiceMinAmount {
 		changed = append(changed, "invoice_min_amount")
 	}
+	if before.GrokViolationFeeEnabled != after.GrokViolationFeeEnabled {
+		changed = append(changed, "grok_violation_fee_enabled")
+	}
+	if before.GrokViolationFeeAmount != after.GrokViolationFeeAmount {
+		changed = append(changed, "grok_violation_fee_amount")
+	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")
 	}

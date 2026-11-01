@@ -1,5 +1,6 @@
 export default {
     settings: {
+      grokViolationFee: { title: 'Grok violation fee', description: 'Off by default. When enabled, each Grok request rejected by the xAI safety check (e.g. "Failed check: SAFETY_CHECK_TYPE") is charged a fixed per-request fee, mirroring the xAI Usage Guidelines Violation Fee. The original refusal is still returned and the request is not retried on another account; account problems (browser checks, suspension, quota) are never charged.', amount: 'Violation fee per request', amountHint: 'Fixed amount: not multiplied by group rate and not token-based. Shown in usage logs as a security-policy, per-request row with 0 tokens.' },
       gpt61LongContextExemption: { title: 'Waive GPT-6.1 Sol subscription long-context surcharge', description: 'Off by default: use existing account, group and pricing settings. Enable to waive the model long-context surcharge only for GPT-6.1 Sol login-authorized or subscription-token accounts. API-key accounts, custom price intervals and priority fees are unchanged. Save to apply.' },
       title: 'System Settings',
       description: 'Manage registration, email verification, default values, and SMTP settings',

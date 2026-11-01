@@ -90,6 +90,12 @@ func TestIsGrokContentPolicyRejection(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "permission-denied safety check refusal is request scoped",
+			status: http.StatusForbidden,
+			body:   `{"code":"permission-denied","error":"I'm sorry, I can't help with that request. Failed check: SAFETY_CHECK_TYPE_CSAM"}`,
+			want:   true,
+		},
+		{
 			name:   "permission-denied entitlement stays on the account path",
 			status: http.StatusForbidden,
 			body:   `{"code":"permission-denied","error":"Access to the chat endpoint is denied"}`,

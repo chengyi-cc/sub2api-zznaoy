@@ -4471,6 +4471,45 @@
             </div>
           </div>
 
+          <div class="card p-6 space-y-4">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <label id="grok-violation-fee-label" for="grok-violation-fee" class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t("admin.settings.grokViolationFee.title") }}
+                </label>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.grokViolationFee.description") }}
+                </p>
+              </div>
+              <Toggle
+                id="grok-violation-fee"
+                aria-labelledby="grok-violation-fee-label"
+                v-model="form.grok_violation_fee_enabled"
+                data-testid="grok-violation-fee-toggle"
+              />
+            </div>
+            <div v-if="form.grok_violation_fee_enabled">
+              <label class="input-label">
+                {{ t("admin.settings.grokViolationFee.amount") }}
+              </label>
+              <div class="relative max-w-xs">
+                <input
+                  v-model.number="form.grok_violation_fee_amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input pr-8"
+                  placeholder="0.12"
+                  data-testid="grok-violation-fee-amount"
+                />
+                <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+              </div>
+              <p class="mt-1 text-xs text-gray-400">
+                {{ t("admin.settings.grokViolationFee.amountHint") }}
+              </p>
+            </div>
+          </div>
+
           <!-- Codex Settings -->
           <div class="card">
             <div
@@ -10084,6 +10123,8 @@ const form = reactive<SettingsForm>({
   claude_code_client_version_synced: "",
   claude_code_version_auto_sync_enabled: true,
   openai_gpt61_sol_long_context_exemption_enabled: false,
+  grok_violation_fee_enabled: false,
+  grok_violation_fee_amount: 0.12,
   // codex_cli_only 加固
   min_codex_version: "",
   max_codex_version: "",
@@ -11741,6 +11782,8 @@ async function saveSettings() {
       claude_code_version_auto_sync_enabled:
         form.claude_code_version_auto_sync_enabled,
       openai_gpt61_sol_long_context_exemption_enabled: form.openai_gpt61_sol_long_context_exemption_enabled,
+      grok_violation_fee_enabled: form.grok_violation_fee_enabled,
+      grok_violation_fee_amount: Math.max(Number(form.grok_violation_fee_amount) || 0, 0),
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:

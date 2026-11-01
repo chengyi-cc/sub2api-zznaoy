@@ -623,6 +623,10 @@ const (
 	SettingKeyMinClaudeCodeVersion = "min_claude_code_version"
 	// SettingKeyOpenAIGPT61SolLongContextExemptionEnabled enables the opt-in subscription surcharge waiver.
 	SettingKeyOpenAIGPT61SolLongContextExemptionEnabled = "openai_gpt61_sol_long_context_exemption_enabled"
+	// SettingKeyGrokViolationFeeEnabled 是否对 xAI 安全检查拒绝的 Grok 请求按次收取违规扣费（默认关闭）
+	SettingKeyGrokViolationFeeEnabled = "grok_violation_fee_enabled"
+	// SettingKeyGrokViolationFeeAmount 违规扣费金额（USD/次，固定金额，不乘倍率）
+	SettingKeyGrokViolationFeeAmount = "grok_violation_fee_amount"
 
 	// SettingKeyMinCodexVersion 最低 Codex 引擎版本要求 (semver, 如 "0.141.0"，空值=不检查)
 	SettingKeyMinCodexVersion = "min_codex_version"

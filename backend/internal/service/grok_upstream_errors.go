@@ -175,6 +175,9 @@ func grokContentPolicyMessage(value string) bool {
 		"input violates content policy",
 		"input violates policy",
 		"violates usage guidelines",
+		// xAI safety-check refusal, e.g. "I'm sorry, I can't help with that
+		// request. Failed check: SAFETY_CHECK_TYPE_...".
+		"failed check: safety_check_type",
 	} {
 		if strings.Contains(lower, phrase) {
 			return true
