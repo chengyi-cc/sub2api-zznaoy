@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/errorarchive"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -36,7 +37,7 @@ func beginOpsErrorArchive(c *gin.Context, ops *service.OpsService) func(int, []b
 	if !enabled {
 		return nil
 	}
-	encoding := requestContentEncodingCategory(c.GetHeader("Content-Encoding"))
+	encoding := pkghttputil.RequestContentEncodingCategory(c.GetHeader("Content-Encoding"))
 	length := c.Request.ContentLength
 	var trace *errorarchive.Trace
 	if capture != nil {

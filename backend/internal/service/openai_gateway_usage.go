@@ -575,7 +575,7 @@ func openAILongContextBillingGate(account *Account) *bool {
 }
 
 // openAISubscriptionLongContextExempt 按实际凭据和最终发送模型判断订阅豁免。
-// 仅判断 GPT-6.1 Sol 订阅请求是否符合豁免条件；调用处还须检查全局开关。
+// 仅判断 GPT-6.1 Sol / Terra 订阅请求是否符合豁免条件；调用处还须检查全局开关。
 // 使用发送模型，避免客户别名、渠道计费模型或响应模型计费切换改变上游订阅规则。
 func openAISubscriptionLongContextExempt(account *Account, result *OpenAIForwardResult) bool {
 	if !account.IsOpenAIOAuthLike() || result == nil {
@@ -585,7 +585,7 @@ func openAISubscriptionLongContextExempt(account *Account, result *OpenAIForward
 	if model == "" {
 		model = result.Model
 	}
-	return openai.IsGPT61SolModelSpelling(model)
+	return openai.IsGPT61SolModelSpelling(model) || openai.IsGPT61TerraModelSpelling(model)
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(

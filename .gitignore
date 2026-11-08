@@ -145,7 +145,10 @@ docs/*
 !docs/ASTRA_GATEWAY_BORROW.md
 !docs/PRISM_MIGRATION.md
 !docs/ACCOUNT_2FA_RECOVERY.md
+!docs/agent-resource-safety.md
+!docs/moego-json-batching.md
 !docs/admin-api-keys.md
+!docs/mcp.md
 !docs/PAYMENT.md
 !docs/REDEEM_GIFT_SECURITY_REVIEW.md
 !docs/PAYMENT_CN.md

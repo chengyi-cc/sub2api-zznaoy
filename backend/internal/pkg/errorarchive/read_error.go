@@ -49,7 +49,13 @@ func ReadErrorKind(err error) string {
 
 // Fixed public messages never echo error strings, paths, or request content.
 func ReadErrorMessage(err error) string {
-	switch ReadErrorKind(err) {
+	return ReadErrorMessageForKind(ReadErrorKind(err))
+}
+
+// ReadErrorMessageForKind shares the public wording with callers that already
+// classified the failure (httputil.DescribeRequestBodyReadFailure uses the same labels).
+func ReadErrorMessageForKind(kind string) string {
+	switch kind {
 	case "truncated_body":
 		return "Request body upload was incomplete; resend the complete request"
 	case "client_disconnect":
