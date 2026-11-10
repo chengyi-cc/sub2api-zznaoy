@@ -97,6 +97,7 @@
     :site-logo="siteLogo"
     :site-subtitle="appStore.cachedPublicSettings?.site_subtitle || ''"
     :doc-url="docUrl"
+    :api-base-url="appStore.cachedPublicSettings?.api_base_url || ''"
     :is-authenticated="isAuthenticated"
     :dashboard-path="dashboardPath"
     :show-model-plaza-entry="showModelPlazaEntry"
@@ -117,6 +118,8 @@ import DesignedHome from '@/components/home/DesignedHome.vue'
 import { useSiteTheme } from '@/composables/useSiteTheme'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
+// 自定义首页 HTML 可用 data-hc-artwork="random" 嵌入雕塑，样式在这里统一引入
+import '@/assets/home-artwork.css'
 
 const { t } = useI18n()
 

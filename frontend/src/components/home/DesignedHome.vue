@@ -1,112 +1,174 @@
 <template>
   <div
     id="dh-top"
-    class="designed-home hf-site"
-    :class="isDark ? 'hf-silver' : 'hf-command'"
-    :data-home-design="isDark ? '15-silver' : '12-command'"
+    class="designed-home"
+    :class="{ 'dh-dark': isDark }"
+    :data-home-theme="isDark ? 'dark' : 'light'"
   >
     <a class="dh-skip" href="#dh-main">{{ t('home.designed.skip') }}</a>
-    <header class="dh-header dh-wrap">
+
+    <header class="dh-bar">
       <a class="dh-brand" href="#dh-top" :title="siteName">
-        <img :src="siteLogo || '/logo.svg'" alt="" width="34" height="34" />
+        <img :src="logo" alt="" width="32" height="32" />
         <span>{{ siteName }}</span>
       </a>
-      <div class="dh-header-actions">
-        <div class="dh-preferences">
-          <a v-if="docUrl" class="dh-docs" :href="docUrl" target="_blank" rel="noopener noreferrer" data-testid="home-header-docs">
-            <Icon name="book" size="sm" />
-            <span>{{ t('home.docs') }}</span>
-          </a>
-          <div class="dh-locale"><slot name="locale" /></div>
-          <button
-            type="button"
-            class="dh-theme"
-            data-testid="home-theme-toggle"
-            :title="themeLabel"
-            :aria-label="themeLabel"
-            @click="emit('toggleTheme')"
-          >
-            <Icon :name="isDark ? 'sun' : 'moon'" size="md" />
-          </button>
-        </div>
-        <div class="dh-account-actions">
-          <RouterLink :to="destination" class="dh-login" :class="{ 'dh-account-primary': isAuthenticated || !registrationEnabled }" data-testid="home-header-login">
-            {{ isAuthenticated ? t('home.goToDashboard') : t('home.login') }}
-            <Icon name="arrowRight" size="sm" />
-          </RouterLink>
-          <RouterLink v-if="!isAuthenticated && registrationEnabled" to="/register" class="dh-login dh-account-primary" data-testid="home-header-register">
-            {{ t('home.designed.register') }}
-          </RouterLink>
-        </div>
+      <nav class="dh-nav" :aria-label="t('home.designed.navigation')">
+        <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" data-testid="home-header-docs">{{ t('home.docs') }}</a>
+        <RouterLink to="/key-usage">{{ t('home.designed.usage') }}</RouterLink>
+        <RouterLink v-if="showModelPlazaEntry" to="/model-plaza">{{ t('home.designed.modelPlaza') }}</RouterLink>
+      </nav>
+      <div class="dh-bar-end">
+        <div class="dh-locale"><slot name="locale" /></div>
+        <button
+          type="button"
+          class="dh-icon-btn"
+          data-testid="home-theme-toggle"
+          :title="themeLabel"
+          :aria-label="themeLabel"
+          @click="emit('toggleTheme')"
+        >
+          <Icon :name="isDark ? 'sun' : 'moon'" size="md" />
+        </button>
+        <RouterLink
+          :to="headerLoginTarget"
+          class="dh-bar-link"
+          :class="{ 'dh-account-primary': !showRegister }"
+          data-testid="home-header-login"
+        >{{ isAuthenticated ? t('home.goToDashboard') : t('home.login') }}</RouterLink>
+        <RouterLink v-if="showRegister" to="/register" class="dh-bar-link dh-account-primary" data-testid="home-header-register">
+          {{ t('home.designed.register') }}
+        </RouterLink>
       </div>
     </header>
 
-    <main id="dh-main" tabindex="-1">
-      <section class="dh-hero dh-wrap" aria-labelledby="dh-title">
-        <div class="dh-hero-copy">
-          <div class="dh-copy">
-            <p class="dh-eyebrow dh-hero-eyebrow"><span class="dh-signal" aria-hidden="true"></span>{{ t(`home.designed.${mode}.eyebrow`) }}</p>
-            <h1 id="dh-title"><span>{{ t(`home.designed.${mode}.title`) }}</span><strong>{{ t(`home.designed.${mode}.accent`) }}</strong></h1>
-            <p class="dh-lead">{{ heroDescription }}</p>
-            <div class="dh-actions">
-              <RouterLink class="dh-button dh-primary" :to="destination" data-testid="home-primary-action">
-                {{ isAuthenticated ? t('home.goToDashboard') : t('home.designed.signIn') }}
-                <Icon name="arrowRight" size="sm" />
-              </RouterLink>
-              <RouterLink v-if="!isAuthenticated && registrationEnabled" class="dh-button dh-secondary" to="/register" data-testid="home-register-action">{{ t('home.designed.register') }}</RouterLink>
-            </div>
-            <ul class="dh-benefits">
-              <li v-for="feature in features" :key="feature.id"><Icon :name="feature.icon" size="sm" />{{ t(`home.designed.${feature.id}.short`) }}</li>
-            </ul>
+    <main id="dh-main" class="dh-hero" tabindex="-1" aria-labelledby="dh-title">
+      <p class="dh-eyebrow"><i aria-hidden="true"></i>{{ t('home.designed.eyebrow') }}</p>
+      <h1 id="dh-title">{{ t('home.designed.titleLead') }}<span class="dh-grad">{{ t('home.designed.titleAccent') }}</span></h1>
+      <p class="dh-lead">{{ heroDescription }}</p>
+      <div class="dh-actions">
+        <RouterLink class="dh-pill" :to="primaryTarget" data-testid="home-primary-action">
+          {{ primaryLabel }}
+          <span class="dh-pill-arrow" aria-hidden="true"><Icon name="arrowRight" size="sm" /></span>
+        </RouterLink>
+        <RouterLink v-if="showRegister" class="dh-pill dh-pill-ghost" to="/login" data-testid="home-signin-action">
+          {{ t('home.designed.signIn') }}
+        </RouterLink>
+      </div>
+
+      <div class="dh-flow-wrap">
+        <!-- 宽屏：完整线路图 -->
+        <svg class="dh-flow" :viewBox="FLOW_VIEWBOX" role="img" :aria-label="diagramLabel" data-testid="home-flow">
+          <defs>
+            <linearGradient id="dh-flow-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1200" y2="0">
+              <stop offset="0" class="dh-stop-1" />
+              <stop offset="0.5" class="dh-stop-2" />
+              <stop offset="1" class="dh-stop-3" />
+            </linearGradient>
+            <clipPath id="dh-flow-logo-clip">
+              <rect :x="FLOW_HUB.cx - 30" :y="FLOW_HUB.cy - 52" width="60" height="60" rx="16" />
+            </clipPath>
+          </defs>
+          <text class="dh-cap" x="22" y="-10">{{ t('home.designed.toolsCaption') }}</text>
+          <text class="dh-cap" x="1180" y="-10" text-anchor="end">{{ t('home.designed.modelsCaption') }}</text>
+          <circle class="dh-ring" :cx="FLOW_HUB.cx" :cy="FLOW_HUB.cy" r="96" />
+          <circle class="dh-ring dh-ring-late" :cx="FLOW_HUB.cx" :cy="FLOW_HUB.cy" r="96" />
+          <path v-for="(link, i) in layout.links" :key="`b${i}`" class="dh-line" :d="link.d" />
+          <path
+            v-for="(link, i) in layout.links"
+            :key="`s${i}`"
+            class="dh-streak"
+            pathLength="100"
+            :d="link.d"
+            :style="{ animationDelay: link.delay }"
+          />
+          <rect
+            class="dh-hub"
+            :x="FLOW_HUB.cx - FLOW_HUB.halfWidth"
+            :y="FLOW_HUB.cy - FLOW_HUB.halfHeight"
+            :width="FLOW_HUB.halfWidth * 2"
+            :height="FLOW_HUB.halfHeight * 2"
+            rx="32"
+          />
+          <image
+            :href="logo"
+            :x="FLOW_HUB.cx - 30"
+            :y="FLOW_HUB.cy - 52"
+            width="60"
+            height="60"
+            preserveAspectRatio="xMidYMid slice"
+            clip-path="url(#dh-flow-logo-clip)"
+          />
+          <text class="dh-hub-host" :x="FLOW_HUB.cx" :y="FLOW_HUB.cy + 40" :style="{ fontSize: `${hostFontSize}px` }">{{ host }}</text>
+          <rect class="dh-key" :x="FLOW_HUB.cx - 62" :y="FLOW_HUB.cy + FLOW_HUB.halfHeight + 16" width="124" height="28" rx="14" />
+          <text class="dh-key-text" :x="FLOW_HUB.cx" :y="FLOW_HUB.cy + FLOW_HUB.halfHeight + 34.5">{{ keySample }}</text>
+          <g class="dh-chips">
+            <g v-for="(tool, i) in tools" :key="tool">
+              <rect class="dh-chip" :x="layout.tools[i].x" :y="layout.tools[i].y" :width="layout.tools[i].width" :height="layout.tools[i].height" rx="13" />
+              <text class="dh-glyph" :x="layout.tools[i].x + 16" :y="layout.tools[i].y + 25.5">&gt;_</text>
+              <text class="dh-chip-label" :x="layout.tools[i].x + 46" :y="layout.tools[i].y + 26">{{ tool }}</text>
+            </g>
+            <g v-for="(model, i) in models" :key="model.label" :data-model="model.icon ?? 'more'">
+              <rect
+                class="dh-chip"
+                :class="{ 'dh-chip-more': !model.icon }"
+                :x="layout.models[i].x"
+                :y="layout.models[i].y"
+                :width="layout.models[i].width"
+                :height="layout.models[i].height"
+                rx="12"
+              />
+              <template v-if="model.glyph">
+                <svg :x="layout.models[i].x + 14" :y="layout.models[i].y + 9" width="20" height="20" viewBox="0 0 24 24" :fill="model.glyph.fill" fill-rule="evenodd" aria-hidden="true">
+                  <path v-for="(p, j) in model.glyph.paths" :key="j" :d="p" />
+                </svg>
+              </template>
+              <text v-else class="dh-glyph" :x="layout.models[i].x + 17" :y="layout.models[i].y + 24">+</text>
+              <text class="dh-chip-label" :class="{ 'dh-chip-label-dim': !model.icon }" :x="layout.models[i].x + 44" :y="layout.models[i].y + 24">{{ model.label }}</text>
+            </g>
+          </g>
+        </svg>
+
+        <!-- 窄屏：纵向简化版 -->
+        <div class="dh-flow-compact" role="img" :aria-label="diagramLabel">
+          <ul class="dh-cf-tools">
+            <li v-for="tool in tools" :key="tool"><span class="dh-cf-glyph">&gt;_</span>{{ tool }}</li>
+          </ul>
+          <span class="dh-cf-line"></span>
+          <div class="dh-cf-hub">
+            <img :src="logo" alt="" width="44" height="44" />
+            <strong>{{ host }}</strong>
+            <span>{{ keySample }}</span>
           </div>
+          <span class="dh-cf-line dh-cf-line-late"></span>
+          <ul class="dh-cf-models">
+            <li v-for="model in models" :key="model.label" :class="{ 'dh-cf-more': !model.icon }">
+              <svg v-if="model.glyph" viewBox="0 0 24 24" :fill="model.glyph.fill" fill-rule="evenodd" aria-hidden="true">
+                <path v-for="(p, j) in model.glyph.paths" :key="j" :d="p" />
+              </svg>
+              <span v-else class="dh-cf-glyph">+</span>
+              {{ model.label }}
+            </li>
+          </ul>
         </div>
-
-        <div ref="artworkRoot" class="dh-figure hf-stage">
-          <input id="dh-motion-pause" class="hf-motion-pause" type="checkbox" :aria-label="t('home.designed.pause')" />
-          <div v-once class="hf-art" data-hc-artwork="random"><img class="dh-art-fallback" :src="artworkFallback" alt="" /></div>
-          <p class="hf-interaction-hint">{{ t('home.designed.interaction') }}<span>{{ t('home.designed.keyboard') }}</span></p>
-          <div class="hf-stage-bottom">
-            <span class="dh-art-name"><i aria-hidden="true"></i><span data-hc-artwork-name>{{ t('home.designed.sculpture') }}</span></span>
-            <span class="hf-art-controls">
-              <button type="button" class="hf-art-reset" data-hc-art-reset :aria-label="t('home.designed.resetLabel')">{{ t('home.designed.reset') }} ↺</button>
-              <label class="hf-motion-control" for="dh-motion-pause"><span class="hf-motion-running">{{ t('home.designed.pause') }} Ⅱ</span><span class="hf-motion-stopped">{{ t('home.designed.resume') }} ▷</span></label>
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <section id="dh-models" class="dh-models dh-wrap" aria-labelledby="dh-models-title">
-        <div><h2 id="dh-models-title">{{ t('home.designed.modelsTitle') }}</h2><p class="dh-model-note">{{ t('home.designed.modelsNote') }}</p></div>
-        <div class="dh-model-names"><span>Claude</span><span>GPT</span><span>Gemini</span></div>
-      </section>
-
-      <section id="dh-capabilities" class="dh-section dh-wrap" aria-labelledby="dh-features-title">
-        <div class="dh-section-heading"><h2 id="dh-features-title">{{ t('home.designed.featuresTitle') }}</h2><p>{{ t('home.designed.featuresDescription') }}</p></div>
-        <div class="dh-features">
-          <article v-for="(feature, index) in features" :key="feature.id">
-            <div class="dh-feature-top"><Icon :name="feature.icon" size="lg" /><span>0{{ index + 1 }}</span></div>
-            <h3>{{ t(`home.designed.${feature.id}.title`) }}</h3><p>{{ t(`home.designed.${feature.id}.description`) }}</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="dh-faq dh-wrap" aria-labelledby="dh-faq-title">
-        <h2 id="dh-faq-title">{{ t('home.designed.faqTitle') }}</h2>
-        <div><details v-for="question in [1, 2, 3]" :key="question"><summary>{{ t(`home.designed.faq${question}.question`) }}<Icon name="plus" size="sm" /></summary><p>{{ t(`home.designed.faq${question}.answer`) }}</p></details></div>
-      </section>
-
+      </div>
     </main>
 
-    <footer class="dh-footer dh-wrap"><a class="dh-footer-brand" href="#dh-top">{{ siteName }}</a><p>© {{ currentYear }} {{ siteName }}</p><div><RouterLink v-if="showModelPlazaEntry" to="/model-plaza">{{ t('home.designed.modelPlaza') }}</RouterLink><RouterLink to="/key-usage">{{ t('home.designed.usage') }}</RouterLink><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ t('home.docs') }}</a></div></footer>
+    <footer class="dh-footer">© {{ currentYear }} {{ siteName }}</footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import artworkFallback from '@/assets/home-artwork-fallback.svg'
-import '@/assets/home-artwork.css'
+import {
+  FLOW_HUB,
+  FLOW_VIEWBOX,
+  HOME_FLOW_MODELS,
+  HOME_FLOW_TOOLS,
+  buildHomeFlowLayout,
+  flowIcon
+} from './homeFlowLayout'
 import './designed-home.css'
 
 const props = defineProps<{
@@ -115,6 +177,7 @@ const props = defineProps<{
   siteLogo: string
   siteSubtitle: string
   docUrl: string
+  apiBaseUrl?: string
   isAuthenticated: boolean
   dashboardPath: string
   showModelPlazaEntry: boolean
@@ -122,28 +185,53 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ toggleTheme: [] }>()
 const { t } = useI18n()
-const mode = computed(() => props.isDark ? 'silver' : 'command')
-const destination = computed(() => props.isAuthenticated ? props.dashboardPath : '/login')
+
+const keySample = 'sk-••••7f3a'
+const currentYear = new Date().getFullYear()
+const logo = computed(() => props.siteLogo || '/logo.svg')
+const themeLabel = computed(() => props.isDark ? t('home.switchToLight') : t('home.switchToDark'))
+
+const showRegister = computed(() => !props.isAuthenticated && props.registrationEnabled)
+const headerLoginTarget = computed(() => props.isAuthenticated ? props.dashboardPath : '/login')
+const primaryTarget = computed(() => {
+  if (props.isAuthenticated) return props.dashboardPath
+  return props.registrationEnabled ? '/register' : '/login'
+})
+const primaryLabel = computed(() => {
+  if (props.isAuthenticated) return t('home.goToDashboard')
+  return props.registrationEnabled ? t('home.designed.register') : t('home.designed.signIn')
+})
+
 const heroDescription = computed(() => {
   const subtitle = props.siteSubtitle.trim()
   return subtitle && subtitle.toLowerCase() !== props.siteName.trim().toLowerCase()
     ? subtitle
-    : t(`home.designed.${mode.value}.description`)
+    : t('home.designed.description')
 })
-const themeLabel = computed(() => props.isDark ? t('home.switchToLight') : t('home.switchToDark'))
-const currentYear = new Date().getFullYear()
-const artworkRoot = ref<HTMLElement | null>(null)
-const features = [{ id: 'connect', icon: 'bolt' }, { id: 'organize', icon: 'key' }, { id: 'understand', icon: 'chart' }] as const
-let disposed = false
-let cleanupArtwork: (() => void) | undefined
 
-onMounted(async () => {
-  try {
-    const { initializeHomeArtwork } = await import('@/utils/homeArtwork')
-    if (!disposed && artworkRoot.value) cleanupArtwork = initializeHomeArtwork(artworkRoot.value)
-  } catch {
-    return
+/** 网关中心显示的域名：优先后台配置的 API 地址，其次当前站点。 */
+const host = computed(() => {
+  const configured = (props.apiBaseUrl || '').trim()
+  if (configured) {
+    try { return new URL(configured).host } catch { /* 非法地址时回退 */ }
   }
+  return typeof window !== 'undefined' ? window.location.host : ''
 })
-onBeforeUnmount(() => { disposed = true; cleanupArtwork?.() })
+// 网关方块内宽约 120，域名过长时缩小字号避免溢出
+const hostFontSize = computed(() => Math.max(10, Math.min(15.5, 120 / Math.max(1, host.value.length * 0.6))))
+
+const tools = computed(() => [...HOME_FLOW_TOOLS, t('home.designed.yourApp')])
+const models = computed(() => [
+  ...HOME_FLOW_MODELS.map(model => ({
+    icon: model.icon as string | null,
+    label: model.labelKey ? t(`home.designed.models.${model.labelKey}`) : model.label ?? '',
+    glyph: flowIcon(model.icon)
+  })),
+  { icon: null, label: t('home.designed.moreModels'), glyph: null }
+])
+const layout = computed(() => buildHomeFlowLayout(tools.value.length, models.value.length))
+const diagramLabel = computed(() => t('home.designed.diagramLabel', {
+  host: host.value,
+  models: models.value.filter(model => model.icon).map(model => model.label).join(t('home.designed.listSeparator'))
+}))
 </script>

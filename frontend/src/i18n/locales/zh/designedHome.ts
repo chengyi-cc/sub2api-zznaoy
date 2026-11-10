@@ -1,70 +1,21 @@
 export default {
   skip: '跳到主要内容',
   navigation: '首页导航',
-  capabilities: '平台优势',
   modelPlaza: '模型广场',
-  ecosystem: '模型生态',
-  guide: '接入指南',
-  rail: '连接 · 管理 · 构建',
-  command: {
-    eyebrow: '让智能，成为应用的下一层能力',
-    title: '你的应用，',
-    accent: '下一层智能。',
-    description: '在一个控制台连接模型、管理密钥、查看用量。\n把时间留给产品，让想法更快落地。'
-  },
-  silver: {
-    eyebrow: '为下一种工作方式而来',
-    title: '连接所想。',
-    accent: '专注所长。',
-    description: '模型接入、密钥管理与用量记录，尽在一处。\n少一些切换，多一些专注。'
-  },
-  start: '开始构建',
+  usage: '密钥用量查询',
+  eyebrow: 'AI API 网关',
+  titleLead: '一把密钥，',
+  titleAccent: '通行所有模型',
+  description: 'Claude、GPT、Gemini、Grok、DeepSeek 等模型，用同一个接口地址调用。Claude Code、Codex CLI 和现有 SDK 代码都不用改。',
   signIn: '登录控制台',
   register: '注册账号',
-  readGuide: '查看接入步骤',
-  artCaption: 'THE SHAPE OF CONNECTED INTELLIGENCE',
-  interaction: '点击转动 · 按住拖拽旋转',
-  keyboard: '方向键也可调整',
-  sculpture: '空间主视觉',
-  pause: '暂停动效',
-  resume: '继续动效',
-  reset: '复位',
-  resetLabel: '恢复主视觉初始角度',
-  configuration: '三个配置，开始连接。',
-  endpoint: '接口地址',
-  credential: '访问密钥',
-  model: '模型名称',
-  configNote: '配置项示意；请使用控制台提供的实际地址、密钥与模型名称。',
-  modelsTitle: '连接不同模型，延展你的可能。',
-  modelsNote: '模型生态示意；实际开放模型、价格与使用范围以控制台为准。',
-  featuresTitle: '少一些繁琐，多一些创造。',
-  featuresDescription: '把连接和管理做清楚，把注意力留给真正重要的事。',
-  connect: {
-    short: '兼容接口',
-    detail: '连接应用与模型',
-    title: '一个入口，连接所需。',
-    description: '通过兼容接口连接应用与模型，减少重复配置，让想法更快进入实际工作。'
+  toolsCaption: '你的工具',
+  modelsCaption: '模型',
+  yourApp: '你的应用 / SDK',
+  moreModels: '更多模型',
+  models: {
+    qwen: '通义千问'
   },
-  organize: {
-    short: '一处管理',
-    detail: '访问密钥与应用配置',
-    title: '管理有序，心中有数。',
-    description: '在同一个控制台管理访问密钥，为不同应用设置清晰的使用边界。'
-  },
-  understand: {
-    short: '清晰可见',
-    detail: '调用记录与用量信息',
-    title: '每次使用，都有记录。',
-    description: '集中查看调用记录与用量信息，了解应用的使用情况，让管理更有依据。'
-  },
-  guideTitle: '从这里，开始第一次调用。',
-  step1: { title: '进入控制台', description: '登录账号，在控制台查看可用模型和接入说明。' },
-  step2: { title: '创建访问密钥', description: '为应用创建专用密钥，并按需配置权限和使用限制。' },
-  step3: { title: '连接你的应用', description: '填入接口地址、访问密钥与模型名称，发起第一次请求。' },
-  faqTitle: '开始之前，\n再了解一点。',
-  faq1: { question: '可以接入哪些应用？', answer: '支持配置兼容接口地址、访问密钥和模型名称的应用，可按接入文档进行配置。具体接口能力以平台说明为准。' },
-  faq2: { question: '模型和价格在哪里查看？', answer: '请在控制台查看当前可用模型及价格。首页的模型名称用于展示接入生态，不代表所有模型始终开放。' },
-  faq3: { question: '如何保护访问密钥？', answer: '为不同应用创建独立密钥，不要将密钥放入公开页面或代码仓库。如发现泄露，请及时在控制台撤销并重新创建。' },
-  finalTitle: '让下一个想法，真正开始。',
-  usage: '密钥用量查询'
+  listSeparator: '、',
+  diagramLabel: '你的工具通过 {host} 网关，用一把密钥调用 {models} 等模型'
 }

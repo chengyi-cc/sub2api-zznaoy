@@ -1,5 +1,26 @@
 export default {
   home: {
+    designed: {
+      skip: 'Перейти к основному содержимому',
+      navigation: 'Навигация главной страницы',
+      modelPlaza: 'Модели',
+      usage: 'Проверка расхода ключа',
+      eyebrow: 'Шлюз AI API',
+      titleLead: 'Один ключ. ',
+      titleAccent: 'Все модели.',
+      description: 'Claude, GPT, Gemini, Grok, DeepSeek и другие модели доступны через один адрес API. Claude Code, Codex CLI и ваш код на SDK работают без изменений.',
+      signIn: 'Войти в консоль',
+      register: 'Создать аккаунт',
+      toolsCaption: 'ВАШИ ИНСТРУМЕНТЫ',
+      modelsCaption: 'МОДЕЛИ',
+      yourApp: 'Ваш код / SDK',
+      moreModels: 'Другие модели',
+      models: {
+        qwen: 'Qwen'
+      },
+      listSeparator: ', ',
+      diagramLabel: 'Ваши инструменты обращаются к {models} и другим моделям через шлюз {host} с одним ключом'
+    },
     viewOnGithub: 'Посмотреть на GitHub',
     viewDocs: 'Посмотреть документацию',
     docs: 'Документация',

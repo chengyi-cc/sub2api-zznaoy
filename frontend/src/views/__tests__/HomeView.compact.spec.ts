@@ -110,7 +110,7 @@ describe('HomeView compact mode', () => {
     const wrapper = mountHome(settings)
 
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
-    expect(wrapper.find('[data-home-design="12-command"]').exists()).toBe(true)
+    expect(wrapper.find('[data-home-theme="light"]').exists()).toBe(true)
   })
 
   it('links unauthenticated visitors to login', () => {
