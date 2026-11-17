@@ -174,9 +174,6 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if containsBetaToken(c.GetHeader("anthropic-beta"), claude.BetaFastMode) {
 		responsesReq.ServiceTier = "priority"
 	}
-	if shouldForceOpenAIPriority(c) {
-		responsesReq.ServiceTier = "priority"
-	}
 
 	responsesReq.Model = upstreamModel
 	if responsesReq.Reasoning != nil {

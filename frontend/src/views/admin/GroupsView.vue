@@ -1852,27 +1852,6 @@
               </div>
             </div>
           </div>
-
-          <div class="mt-4 flex items-center justify-between">
-            <div>
-              <label class="text-sm text-gray-600 dark:text-gray-400">{{ t('admin.groups.openaiMessages.forcePriority') }}</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {{ createForm.force_openai_priority ? t('admin.groups.openaiMessages.forcePriorityEnabled') : t('admin.groups.openaiMessages.forcePriorityDisabled') }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="createForm.force_openai_priority = !createForm.force_openai_priority"
-              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-              :class="createForm.force_openai_priority ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
-            >
-              <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="createForm.force_openai_priority ? 'translate-x-6' : 'translate-x-1'"
-              />
-            </button>
-          </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.groups.openaiMessages.forcePriorityHint') }}</p>
         </div>
 
         <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
@@ -3549,27 +3528,6 @@
               </div>
             </div>
           </div>
-
-          <div class="mt-4 flex items-center justify-between">
-            <div>
-              <label class="text-sm text-gray-600 dark:text-gray-400">{{ t('admin.groups.openaiMessages.forcePriority') }}</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {{ editForm.force_openai_priority ? t('admin.groups.openaiMessages.forcePriorityEnabled') : t('admin.groups.openaiMessages.forcePriorityDisabled') }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="editForm.force_openai_priority = !editForm.force_openai_priority"
-              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-              :class="editForm.force_openai_priority ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
-            >
-              <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="editForm.force_openai_priority ? 'translate-x-6' : 'translate-x-1'"
-              />
-            </button>
-          </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.groups.openaiMessages.forcePriorityHint') }}</p>
         </div>
 
         <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
@@ -5096,7 +5054,6 @@ const createForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   default_mapped_model: 'gpt-5.4',
-  force_openai_priority: false,
   allow_live: false,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
@@ -5467,7 +5424,6 @@ const editForm = reactive({
   allow_messages_dispatch: false,
   allow_live: false,
   default_mapped_model: '',
-  force_openai_priority: false,
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: editMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: editMessagesDispatchDefaults.haiku_mapped_model,
@@ -5940,7 +5896,6 @@ const closeCreateModal = () => {
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
   createForm.default_mapped_model = 'gpt-5.4';
-  createForm.force_openai_priority = false;
   resetMessagesDispatchFormState(createForm);
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
@@ -6247,7 +6202,6 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.require_oauth_only = group.require_oauth_only ?? false;
   editForm.require_privacy_set = group.require_privacy_set ?? false;
   editForm.default_mapped_model = group.default_mapped_model || '';
-  editForm.force_openai_priority = group.force_openai_priority ?? false;
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
   );
@@ -6953,7 +6907,6 @@ watch(
     if (!supportsMessagesDispatchPlatform(newVal)) {
       editForm.allow_messages_dispatch = false
       editForm.default_mapped_model = ''
-      editForm.force_openai_priority = false
     }
     if (!supportsLivePlatform(newVal)) {
       editForm.allow_live = false

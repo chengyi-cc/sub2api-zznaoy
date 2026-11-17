@@ -299,7 +299,6 @@ type CreateGroupInput struct {
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
-	ForceOpenAIPriority         bool
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	ModelAllowlist              GroupModelAllowlist
 	// CodexModelsManifestConfig 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
@@ -384,7 +383,6 @@ type UpdateGroupInput struct {
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool
-	ForceOpenAIPriority         *bool
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	ModelAllowlist              *GroupModelAllowlist
 	// CodexModelsManifestConfig nil 表示不修改；非 openai 平台会被归一化为关闭。

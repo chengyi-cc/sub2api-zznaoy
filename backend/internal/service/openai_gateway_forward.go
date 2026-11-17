@@ -17,21 +17,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
-
-// shouldForceOpenAIPriority 判定当前请求所属 OpenAI 分组是否强制使用 service_tier=priority。
-func shouldForceOpenAIPriority(c *gin.Context) bool {
-	apiKey := getAPIKeyFromContext(c)
-	if apiKey == nil || apiKey.Group == nil {
-		return false
-	}
-	if apiKey.Group.Platform != PlatformOpenAI {
-		return false
-	}
-	return apiKey.Group.ForceOpenAIPriority
-}
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
@@ -295,14 +282,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("openai ws v1 is temporarily unsupported; use ws v2")
 	}
 	if passthroughEnabled {
-		if shouldForceOpenAIPriority(c) {
-			forcedBody, err := sjson.SetBytes(originalBody, "service_tier", "priority")
-			if err != nil {
-				return nil, fmt.Errorf("force OpenAI priority service tier: %w", err)
-			}
-			originalBody = forcedBody
-			body = forcedBody
-		}
 		attemptImageIntentInvalidated := false
 		if isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip {
 			strippedBody, changed, stripErr := stripOpenAIImageGenerationToolsFromRawPayload(body)
@@ -652,10 +631,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		} else if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
 		}
-	}
-
-	if shouldForceOpenAIPriority(c) {
-		markPatchSet("service_tier", "priority")
 	}
 
 	if !SupportsVerbosity(upstreamModel) && gjson.GetBytes(body, "text.verbosity").Exists() {

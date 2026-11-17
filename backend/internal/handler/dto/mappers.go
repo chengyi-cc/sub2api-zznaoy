@@ -159,7 +159,6 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		ModelRoutingEnabled:         g.ModelRoutingEnabled,
 		MCPXMLInject:                g.MCPXMLInject,
 		DefaultMappedModel:          g.DefaultMappedModel,
-		ForceOpenAIPriority:         g.ForceOpenAIPriority,
 		MessagesDispatchModelConfig: g.MessagesDispatchModelConfig,
 		ModelAllowlist:              g.ModelAllowlist,
 		CodexModelsManifestConfig:   g.CodexModelsManifestConfig,

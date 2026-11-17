@@ -243,15 +243,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		}
 		return nil, err
 	}
-	out := apiKeyEntityToService(m)
-	if out.Group != nil {
-		flags, err := loadGroupForceOpenAIPriorityMap(ctx, r.sql, []int64{out.Group.ID})
-		if err != nil {
-			return nil, err
-		}
-		out.Group.ForceOpenAIPriority = flags[out.Group.ID]
-	}
-	return out, nil
+	return apiKeyEntityToService(m), nil
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
