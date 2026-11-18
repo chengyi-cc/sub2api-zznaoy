@@ -602,6 +602,62 @@ func (s *InvoiceService) GetUserRequest(ctx context.Context, userID, requestID i
 	return r, nil
 }
 
+// InvoiceUserSources 用户端发票关联明细：只含证明「这张发票对应哪些充值」所需字段，
+// 不暴露审核用的对账概览、风控标记等管理端信息。
+type InvoiceUserSources struct {
+	Orders      []EligibleOrder      `json:"orders"`
+	RedeemCodes []EligibleRedeemCode `json:"redeem_codes"`
+}
+
+// GetUserRequestSources 用户读取自己某张发票关联的订单与兑换码（带权限校验）。
+// 已开票的来源不会再出现在可开票列表里，这里是用户追溯发票与充值记录对应关系的唯一入口。
+func (s *InvoiceService) GetUserRequestSources(ctx context.Context, userID, requestID int64) (*dbent.InvoiceRequest, *InvoiceUserSources, error) {
+	r, err := s.GetUserRequest(ctx, userID, requestID)
+	if err != nil {
+		return nil, nil, err
+	}
+	detail, err := s.loadInvoiceSourceDetails(ctx, r)
+	if err != nil {
+		return nil, nil, err
+	}
+	out := &InvoiceUserSources{
+		Orders:      make([]EligibleOrder, 0, len(detail.Orders)),
+		RedeemCodes: make([]EligibleRedeemCode, 0, len(detail.RedeemCodes)),
+	}
+	for _, o := range detail.Orders {
+		out.Orders = append(out.Orders, EligibleOrder{
+			OrderID:     o.OrderID,
+			OutTradeNo:  o.OutTradeNo,
+			Amount:      o.Amount,
+			OrderType:   o.OrderType,
+			PaymentType: o.PaymentType,
+			CompletedAt: o.CompletedAt,
+		})
+	}
+	for _, c := range detail.RedeemCodes {
+		code := c.Code
+		// 兑换码是凭证：只向当前使用者展示完整码，其余情况（已转给他人、记录缺失）打码。
+		if c.UsedBy != userID {
+			code = maskInvoiceRedeemCode(code)
+		}
+		out.RedeemCodes = append(out.RedeemCodes, EligibleRedeemCode{
+			RedeemCodeID: c.RedeemCodeID,
+			Code:         code,
+			Value:        c.Value,
+			UsedAt:       c.UsedAt,
+		})
+	}
+	return r, out, nil
+}
+
+func maskInvoiceRedeemCode(code string) string {
+	runes := []rune(code)
+	if len(runes) <= 8 {
+		return strings.Repeat("*", len(runes))
+	}
+	return string(runes[:4]) + strings.Repeat("*", len(runes)-8) + string(runes[len(runes)-4:])
+}
+
 // OpenInvoiceFileForUser 用户下载（仅 issued 状态可下载）。返回 (绝对路径, 下载文件名)
 func (s *InvoiceService) OpenInvoiceFileForUser(ctx context.Context, userID, requestID int64) (string, string, error) {
 	r, err := s.GetUserRequest(ctx, userID, requestID)
@@ -820,51 +876,15 @@ type InvoiceDetailRedeem struct {
 	Eligible     bool      `json:"eligible"` // status=used && type=balance && used_by==当前申请人 && value>0
 }
 
-// AdminGetDetail 返回审核所需的完整明细。
-func (s *InvoiceService) AdminGetDetail(ctx context.Context, requestID int64) (*InvoiceRequestDetail, error) {
-	r, err := s.AdminGet(ctx, requestID)
-	if err != nil {
-		return nil, err
-	}
-
+// loadInvoiceSourceDetails 读取发票关联订单 / 兑换码的**当前**状态，保持申请时的顺序。
+// 管理端审核详情与用户端发票明细共用，避免两处对账口径漂移。
+func (s *InvoiceService) loadInvoiceSourceDetails(ctx context.Context, r *dbent.InvoiceRequest) (*InvoiceRequestDetail, error) {
 	detail := &InvoiceRequestDetail{
 		Request:     r,
 		Orders:      []InvoiceDetailOrder{},
 		RedeemCodes: []InvoiceDetailRedeem{},
 		AllEligible: true,
 	}
-
-	// 申请人信息 + 对账概览
-	if user, err := s.userRepo.GetByID(ctx, r.UserID); err == nil && user != nil {
-		detail.UserEmail = user.Email
-		detail.UserName = user.Username
-		detail.UserOverview.TotalRecharged = user.TotalRecharged
-		detail.UserOverview.Balance = user.Balance
-	}
-
-	// 聚合该用户所有发票申请的金额（不只是当前这条）
-	allUserReqs, err := s.entClient.InvoiceRequest.Query().
-		Where(invoicerequest.UserIDEQ(r.UserID)).
-		All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("aggregate user invoice totals: %w", err)
-	}
-	for _, ir := range allUserReqs {
-		switch ir.Status {
-		case domain.InvoiceStatusIssued:
-			detail.UserOverview.IssuedTotal += ir.Amount
-		case domain.InvoiceStatusPending, domain.InvoiceStatusApproved:
-			detail.UserOverview.InFlightTotal += ir.Amount
-		}
-	}
-	detail.UserOverview.IssuedPlusInFlight = detail.UserOverview.IssuedTotal + detail.UserOverview.InFlightTotal
-	// 超开判定：仅当用户有 total_recharged > 0 时才做对比（避免新用户/0 充值时误报）
-	if detail.UserOverview.TotalRecharged > 0 &&
-		detail.UserOverview.IssuedPlusInFlight > detail.UserOverview.TotalRecharged+0.01 {
-		detail.UserOverview.ExceedsTotalRecharge = true
-	}
-
-	// 订单当前状态
 	var computedSum float64
 	if len(r.PaymentOrderIds) > 0 {
 		orders, err := s.entClient.PaymentOrder.Query().
@@ -963,6 +983,63 @@ func (s *InvoiceService) AdminGetDetail(ctx context.Context, requestID int64) (*
 			})
 		}
 	}
+
+	detail.ComputedSum = computedSum
+	return detail, nil
+}
+
+// AdminGetDetail 返回审核所需的完整明细。
+func (s *InvoiceService) AdminGetDetail(ctx context.Context, requestID int64) (*InvoiceRequestDetail, error) {
+	r, err := s.AdminGet(ctx, requestID)
+	if err != nil {
+		return nil, err
+	}
+
+	detail := &InvoiceRequestDetail{
+		Request:     r,
+		Orders:      []InvoiceDetailOrder{},
+		RedeemCodes: []InvoiceDetailRedeem{},
+		AllEligible: true,
+	}
+
+	// 申请人信息 + 对账概览
+	if user, err := s.userRepo.GetByID(ctx, r.UserID); err == nil && user != nil {
+		detail.UserEmail = user.Email
+		detail.UserName = user.Username
+		detail.UserOverview.TotalRecharged = user.TotalRecharged
+		detail.UserOverview.Balance = user.Balance
+	}
+
+	// 聚合该用户所有发票申请的金额（不只是当前这条）
+	allUserReqs, err := s.entClient.InvoiceRequest.Query().
+		Where(invoicerequest.UserIDEQ(r.UserID)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate user invoice totals: %w", err)
+	}
+	for _, ir := range allUserReqs {
+		switch ir.Status {
+		case domain.InvoiceStatusIssued:
+			detail.UserOverview.IssuedTotal += ir.Amount
+		case domain.InvoiceStatusPending, domain.InvoiceStatusApproved:
+			detail.UserOverview.InFlightTotal += ir.Amount
+		}
+	}
+	detail.UserOverview.IssuedPlusInFlight = detail.UserOverview.IssuedTotal + detail.UserOverview.InFlightTotal
+	// 超开判定：仅当用户有 total_recharged > 0 时才做对比（避免新用户/0 充值时误报）
+	if detail.UserOverview.TotalRecharged > 0 &&
+		detail.UserOverview.IssuedPlusInFlight > detail.UserOverview.TotalRecharged+0.01 {
+		detail.UserOverview.ExceedsTotalRecharge = true
+	}
+
+	sources, err := s.loadInvoiceSourceDetails(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	detail.Orders = sources.Orders
+	detail.RedeemCodes = sources.RedeemCodes
+	detail.AllEligible = sources.AllEligible
+	computedSum := sources.ComputedSum
 
 	if r.TaxNo != nil {
 		shared, err := s.countOtherUsersWithTaxNo(ctx, *r.TaxNo, r.UserID)

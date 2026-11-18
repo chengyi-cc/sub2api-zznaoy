@@ -761,3 +761,70 @@ func TestInvoiceService_GiftCannotBeSelectedSubmittedOrIssued(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 10.0, paidRequest.Amount)
 }
+
+// ---- 用户端发票关联明细 ----
+
+func TestInvoiceService_GetUserRequestSources_ListsLinkedOrdersAndCodes(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, orderIDs := seedUserAndCompletedOrders(t, client, 2, 30)
+	codeID := seedUsedBalanceRedeemCode(t, client, user.ID, "BAL-SOURCES-ABCDEF", 40)
+	ctx := context.Background()
+
+	created, err := svc.CreateRequest(ctx, CreateInvoiceRequestInput{
+		UserID:          user.ID,
+		PaymentOrderIDs: []int64{orderIDs[1], orderIDs[0]},
+		RedeemCodeIDs:   []int64{codeID},
+	})
+	require.NoError(t, err)
+
+	r, sources, err := svc.GetUserRequestSources(ctx, user.ID, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, created.ID, r.ID)
+	require.Len(t, sources.Orders, 2)
+	// 保持申请时的顺序，便于与发票上的明细逐条对照
+	require.Equal(t, orderIDs[1], sources.Orders[0].OrderID)
+	require.Equal(t, orderIDs[0], sources.Orders[1].OrderID)
+	require.Equal(t, 30.0, sources.Orders[0].Amount)
+	require.Equal(t, "alipay", sources.Orders[0].PaymentType)
+	require.Len(t, sources.RedeemCodes, 1)
+	require.Equal(t, "BAL-SOURCES-ABCDEF", sources.RedeemCodes[0].Code)
+	require.Equal(t, 40.0, sources.RedeemCodes[0].Value)
+}
+
+func TestInvoiceService_GetUserRequestSources_MasksCodeNoLongerOwned(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, _ := seedUserAndCompletedOrders(t, client, 0, 0)
+	codeID := seedUsedBalanceRedeemCode(t, client, user.ID, "BAL-MASK-1234567890", 25)
+	ctx := context.Background()
+
+	created, err := svc.CreateRequest(ctx, CreateInvoiceRequestInput{UserID: user.ID, RedeemCodeIDs: []int64{codeID}})
+	require.NoError(t, err)
+
+	other, err := client.User.Create().
+		SetEmail("other-owner@example.com").
+		SetPasswordHash("hash").
+		SetRole(RoleUser).
+		SetStatus(StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = client.RedeemCode.UpdateOneID(codeID).SetUsedBy(other.ID).Save(ctx)
+	require.NoError(t, err)
+
+	_, sources, err := svc.GetUserRequestSources(ctx, user.ID, created.ID)
+	require.NoError(t, err)
+	require.Len(t, sources.RedeemCodes, 1)
+	require.Equal(t, "BAL-***********7890", sources.RedeemCodes[0].Code)
+	require.Equal(t, 25.0, sources.RedeemCodes[0].Value)
+}
+
+func TestInvoiceService_GetUserRequestSources_RejectsOtherUsersRequest(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, orderIDs := seedUserAndCompletedOrders(t, client, 1, 50)
+	ctx := context.Background()
+
+	created, err := svc.CreateRequest(ctx, CreateInvoiceRequestInput{UserID: user.ID, PaymentOrderIDs: orderIDs})
+	require.NoError(t, err)
+
+	_, _, err = svc.GetUserRequestSources(ctx, user.ID+1000, created.ID)
+	require.ErrorIs(t, err, ErrInvoiceForbidden)
+}

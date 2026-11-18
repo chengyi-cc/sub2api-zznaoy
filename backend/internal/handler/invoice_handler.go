@@ -155,7 +155,7 @@ func (h *InvoiceHandler) List(c *gin.Context) {
 	response.Paginated(c, dto.InvoiceRequestListFromEnt(items), int64(total), page, pageSize)
 }
 
-// Get GET /api/v1/invoice/requests/:id
+// Get GET /api/v1/invoice/requests/:id（附带关联订单与兑换码明细）
 func (h *InvoiceHandler) Get(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
@@ -167,12 +167,16 @@ func (h *InvoiceHandler) Get(c *gin.Context) {
 		response.BadRequest(c, "Invalid id")
 		return
 	}
-	r, err := h.invoiceService.GetUserRequest(c.Request.Context(), subject.UserID, id)
+	r, sources, err := h.invoiceService.GetUserRequestSources(c.Request.Context(), subject.UserID, id)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, dto.InvoiceRequestFromEnt(r))
+	response.Success(c, dto.UserInvoiceRequestDetail{
+		InvoiceRequest: dto.InvoiceRequestFromEnt(r),
+		Orders:         sources.Orders,
+		RedeemCodes:    sources.RedeemCodes,
+	})
 }
 
 // Download GET /api/v1/invoice/requests/:id/download

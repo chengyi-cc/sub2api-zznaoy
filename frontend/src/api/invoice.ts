@@ -51,6 +51,12 @@ export interface InvoiceRequest {
   user_email?: string
 }
 
+// 单条发票详情：附带关联订单与兑换码明细，用于证明发票与充值记录的对应关系
+export interface InvoiceRequestDetail extends InvoiceRequest {
+  orders: EligibleOrder[]
+  redeem_codes: EligibleRedeemCode[]
+}
+
 // 抬头/税号由后端取自已绑定的开票资料（仅企业），不再随申请提交
 export interface CreateInvoiceRequestPayload {
   payment_order_ids?: number[]
@@ -120,8 +126,8 @@ export async function listInvoiceRequests(params: {
   return data
 }
 
-export async function getInvoiceRequest(id: number): Promise<InvoiceRequest> {
-  const { data } = await apiClient.get<InvoiceRequest>(`${BASE}/requests/${id}`)
+export async function getInvoiceRequest(id: number): Promise<InvoiceRequestDetail> {
+  const { data } = await apiClient.get<InvoiceRequestDetail>(`${BASE}/requests/${id}`)
   return data
 }
 

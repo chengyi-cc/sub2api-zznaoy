@@ -107,7 +107,14 @@
                     ¥{{ item.amount.toFixed(2) }}
                   </td>
                   <td class="px-4 py-3 text-gray-600 dark:text-gray-400">
-                    {{ sourceCountLabel(item) }}
+                    <button
+                      type="button"
+                      class="text-left text-primary-600 hover:underline dark:text-primary-400"
+                      :data-test="`invoice-sources-${item.id}`"
+                      @click="openDetail(item)"
+                    >
+                      {{ sourceCountLabel(item) }}
+                    </button>
                   </td>
                   <td class="px-4 py-3">
                     <span
@@ -121,15 +128,19 @@
                     {{ formatDateTime(item.created_at) }}
                   </td>
                   <td class="px-4 py-3 text-right">
-                    <button
-                      v-if="item.status === 'issued' && item.has_file"
-                      class="btn btn-primary btn-sm"
-                      @click="handleDownload(item)"
-                      :disabled="downloadingId === item.id"
-                    >
-                      {{ downloadingId === item.id ? t('common.processing') : t('invoice.download') }}
-                    </button>
-                    <span v-else class="text-xs text-gray-400">—</span>
+                    <div class="flex items-center justify-end gap-2">
+                      <button class="btn btn-secondary btn-sm" @click="openDetail(item)">
+                        {{ t('invoice.viewDetail') }}
+                      </button>
+                      <button
+                        v-if="item.status === 'issued' && item.has_file"
+                        class="btn btn-primary btn-sm"
+                        @click="handleDownload(item)"
+                        :disabled="downloadingId === item.id"
+                      >
+                        {{ downloadingId === item.id ? t('common.processing') : t('invoice.download') }}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </template>
@@ -353,6 +364,117 @@
         </div>
       </template>
     </BaseDialog>
+
+    <!-- Sources Detail Modal -->
+    <BaseDialog
+      :show="detailOpen"
+      :title="t('invoice.detailTitle')"
+      width="wide"
+      @close="closeDetail"
+    >
+      <div
+        v-if="detailLoading"
+        class="py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+      >
+        {{ t('common.loading') }}
+      </div>
+      <div
+        v-else-if="detailError"
+        class="py-8 text-center text-sm text-red-600 dark:text-red-400"
+      >
+        {{ detailError }}
+      </div>
+      <div v-else-if="detail" class="space-y-4" data-test="invoice-sources-detail">
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-gray-50 p-4 text-sm dark:bg-dark-800/40 sm:grid-cols-4">
+          <div>
+            <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.colId') }}</dt>
+            <dd class="font-medium text-gray-900 dark:text-white">#{{ detail.id }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.invoiceNo') }}</dt>
+            <dd class="break-all font-medium text-gray-900 dark:text-white">{{ detail.invoice_no || '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.issuedAt') }}</dt>
+            <dd class="font-medium text-gray-900 dark:text-white">{{ detail.issued_at ? formatDateTime(detail.issued_at) : '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.amount') }}</dt>
+            <dd class="font-medium text-gray-900 dark:text-white">¥{{ detail.amount.toFixed(2) }}</dd>
+          </div>
+        </dl>
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.detailSourcesHint') }}</p>
+
+        <div v-if="detail.orders.length > 0">
+          <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            {{ t('invoice.sourceOrders') }} ({{ detail.orders.length }})
+          </div>
+          <div class="rounded-md border border-gray-200 dark:border-dark-700">
+            <div
+              v-for="o in detail.orders"
+              :key="o.order_id"
+              class="flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0 dark:border-dark-700"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="break-all text-sm font-medium text-gray-900 dark:text-white">
+                  #{{ o.order_id }}<template v-if="o.out_trade_no"> · {{ o.out_trade_no }}</template>
+                </div>
+                <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  <template v-if="o.payment_type">{{ t('payment.methods.' + o.payment_type, o.payment_type) }} · </template>{{ formatSourceTime(o.completed_at) }}
+                </div>
+              </div>
+              <div class="flex-shrink-0 font-semibold text-gray-900 dark:text-white">
+                ¥{{ o.amount.toFixed(2) }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="detail.redeem_codes.length > 0">
+          <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            {{ t('invoice.sourceRedeemCodes') }} ({{ detail.redeem_codes.length }})
+          </div>
+          <div class="rounded-md border border-gray-200 dark:border-dark-700">
+            <div
+              v-for="c in detail.redeem_codes"
+              :key="c.redeem_code_id"
+              class="flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0 dark:border-dark-700"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="break-all font-mono text-sm font-medium text-gray-900 dark:text-white">
+                  {{ c.code || `#${c.redeem_code_id}` }}
+                </div>
+                <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ formatSourceTime(c.used_at) }}
+                </div>
+              </div>
+              <div class="flex-shrink-0 font-semibold text-gray-900 dark:text-white">
+                ¥{{ c.value.toFixed(2) }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end text-sm text-gray-600 dark:text-gray-300">
+          {{ t('invoice.totalAmount') }}：<span class="ml-1 font-semibold text-gray-900 dark:text-white">¥{{ detailSourceSum.toFixed(2) }}</span>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button
+            v-if="detail && detail.status === 'issued' && detail.has_file"
+            class="btn btn-primary"
+            :disabled="downloadingId === detail.id"
+            @click="handleDownload(detail)"
+          >
+            {{ downloadingId === detail.id ? t('common.processing') : t('invoice.download') }}
+          </button>
+          <button class="btn btn-secondary" @click="closeDetail">
+            {{ t('common.close') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -367,6 +489,7 @@ import {
   invoiceAPI,
   type InvoiceProfile,
   type InvoiceRequest,
+  type InvoiceRequestDetail,
   type InvoiceStatus,
   type EligibleOrder,
   type EligibleRedeemCode
@@ -437,6 +560,46 @@ function sourceCountLabel(item: InvoiceRequest): string {
   if (orders > 0) parts.push(`${orders} ${t('invoice.orders')}`)
   if (codes > 0) parts.push(`${codes} ${t('invoice.redeemCodes')}`)
   return parts.length > 0 ? parts.join(' + ') : `0 ${t('invoice.orders')}`
+}
+
+// 发票关联明细：已开票的订单/兑换码不会再出现在可开票列表里，
+// 用户在这里追溯每张发票对应哪些充值记录。
+const detailOpen = ref(false)
+const detailLoading = ref(false)
+const detailError = ref('')
+const detail = ref<InvoiceRequestDetail | null>(null)
+
+const detailSourceSum = computed(() => {
+  if (!detail.value) return 0
+  const orderSum = detail.value.orders.reduce((sum, o) => sum + o.amount, 0)
+  const codeSum = detail.value.redeem_codes.reduce((sum, c) => sum + c.value, 0)
+  return orderSum + codeSum
+})
+
+// 记录缺失（如订单被清理）时后端返回零值时间，避免显示成 0001 年
+function formatSourceTime(value: string): string {
+  if (!value || value.startsWith('0001-')) return '—'
+  return formatDateTime(value)
+}
+
+async function openDetail(item: InvoiceRequest) {
+  detailOpen.value = true
+  detailLoading.value = true
+  detailError.value = ''
+  detail.value = null
+  try {
+    detail.value = await invoiceAPI.getInvoiceRequest(item.id)
+  } catch (err) {
+    detailError.value = extractApiErrorMessage(err, t('invoice.detailLoadFailed'))
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function closeDetail() {
+  detailOpen.value = false
+  detail.value = null
+  detailError.value = ''
 }
 
 function statusBadgeClass(status: string): string {

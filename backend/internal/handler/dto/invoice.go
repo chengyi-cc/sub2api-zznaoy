@@ -4,6 +4,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 // InvoiceRequest 发票申请 DTO（用户/管理员通用响应）
@@ -73,6 +74,14 @@ func InvoiceRequestFromEnt(r *dbent.InvoiceRequest) *InvoiceRequest {
 		d.ProcessedBy = *r.ProcessedBy
 	}
 	return d
+}
+
+// UserInvoiceRequestDetail 用户端单条发票详情：在申请记录外附带关联订单与兑换码明细，
+// 用于向用户证明发票与充值记录的对应关系。
+type UserInvoiceRequestDetail struct {
+	*InvoiceRequest
+	Orders      []service.EligibleOrder      `json:"orders"`
+	RedeemCodes []service.EligibleRedeemCode `json:"redeem_codes"`
 }
 
 // InvoiceProfile 用户端开票资料视图。绑定后即锁定，用户只读。
