@@ -171,6 +171,7 @@ export default {
     usage: 'Usage',
     redeem: 'Redeem',
     invoices: 'Invoices',
+    siteRecon: 'Site Reconciliation',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
     affiliateInviteRecords: 'Invite Records',

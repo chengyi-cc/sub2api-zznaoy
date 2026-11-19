@@ -8,6 +8,7 @@ import batchImage from './batchImage'
 import admin from './admin'
 import misc from './misc'
 import tokenGuardV2 from './tokenGuardV2'
+import siteRecon from './siteRecon'
 
 export default {
   adminAccessKeys,
@@ -20,4 +21,5 @@ export default {
   admin,
   tokenGuardV2,
   ...misc,
+  ...siteRecon,
 }

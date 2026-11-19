@@ -1048,6 +1048,7 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
 	NewInvoiceService,
+	ProvideSiteReconService,
 	ProvideUserPlatformQuotaUsageFlusher,
 	NewUsageBillingLaneCombiner,
 	ProvideUsageBillingRepository,

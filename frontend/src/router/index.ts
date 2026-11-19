@@ -645,6 +645,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/site-recon',
+    name: 'AdminSiteRecon',
+    component: () => import('@/views/admin/SiteReconView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Site Reconciliation',
+      titleKey: 'siteRecon.title',
+      descriptionKey: 'siteRecon.description'
+    }
+  },
+  {
     path: '/admin/invoices',
     name: 'AdminInvoices',
     component: () => import('@/views/admin/InvoicesView.vue'),

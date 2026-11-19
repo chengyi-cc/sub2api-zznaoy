@@ -334,6 +334,7 @@ export default {
     usage: 'Использование',
     redeem: 'Активировать',
     invoices: 'Счета',
+    siteRecon: 'Сверка сайта',
     profile: 'Профиль',
     users: 'Пользователи',
     groups: 'Группы',

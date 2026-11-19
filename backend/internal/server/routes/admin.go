@@ -146,6 +146,9 @@ func RegisterAdminRoutes(
 		// 发票申请管理
 		registerInvoiceAdminRoutes(admin, h)
 
+		// 站点对账（fork 自有）
+		registerSiteReconAdminRoutes(admin, h)
+
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
 	}

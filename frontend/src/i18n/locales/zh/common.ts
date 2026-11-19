@@ -171,6 +171,7 @@ export default {
     usage: '使用记录',
     redeem: '兑换',
     invoices: '发票管理',
+    siteRecon: '站点对账',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
     affiliateInviteRecords: '邀请记录',
