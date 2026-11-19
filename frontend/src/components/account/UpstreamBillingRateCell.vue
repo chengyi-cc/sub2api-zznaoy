@@ -7,10 +7,13 @@
           :class="hasEffectiveRate ? 'font-mono text-gray-800 dark:text-gray-200' : statusClass || 'text-gray-400 dark:text-gray-500'"
           data-testid="upstream-billing-rate"
         >
-          {{ primaryValue }}
+          {{ primaryValue }}<template v-if="balanceText"><span class="text-gray-400 dark:text-gray-500"> / </span><span data-testid="upstream-billing-balance">{{ balanceText }}</span></template>
         </span>
       </template>
       <div class="space-y-1">
+        <p v-if="upstreamKindLabel" data-testid="upstream-billing-kind">{{ upstreamKindLabel }}</p>
+        <p v-if="balanceDetail" data-testid="upstream-billing-balance-detail">{{ balanceDetail }}</p>
+        <p v-if="rateUnknownHint" data-testid="upstream-billing-rate-unknown">{{ rateUnknownHint }}</p>
         <template v-if="hasEffectiveRate && data">
           <p>{{ t('admin.accounts.upstreamBilling.groupRate', { value: data.group_rate_multiplier }) }}</p>
           <p v-if="data.user_rate_multiplier != null">
@@ -209,6 +212,45 @@ const statusClass = computed(() => {
   return ''
 })
 const hasEffectiveRate = computed(() => effectiveRate.value !== '-')
+
+// [fork] 上游余额 / 上游类型：只展示新鲜快照里的值，过期快照不显示余额以免误导。
+const freshData = computed(() => {
+  if (!validTimestamps.value || stale.value || !['ok', 'failed'].includes(snapshot.value?.status ?? '')) return undefined
+  return data.value
+})
+const balanceText = computed(() => {
+  const billing = freshData.value
+  if (!billing) return ''
+  if (billing.upstream_balance_unlimited === true) return '∞'
+  const value = billing.upstream_balance
+  if (typeof value !== 'number' || !Number.isFinite(value)) return ''
+  return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+})
+const balanceDetail = computed(() => {
+  const billing = freshData.value
+  if (!billing || !balanceText.value) return ''
+  if (billing.upstream_balance_unlimited === true) return t('admin.accounts.upstreamBilling.balanceUnlimited')
+  const scope = billing.upstream_balance_scope
+  const scopeLabel = scope ? t(`admin.accounts.upstreamBilling.balanceScope.${scope}`) : ''
+  return t('admin.accounts.upstreamBilling.balance', { value: `$${balanceText.value}`, scope: scopeLabel })
+})
+const upstreamKindLabel = computed(() => {
+  const billing = freshData.value
+  if (!billing?.upstream_kind) return ''
+  if (billing.upstream_kind === 'newapi') {
+    if (!billing.upstream_group || !billing.rate_source) return t('admin.accounts.upstreamBilling.kindNewAPI')
+    return t('admin.accounts.upstreamBilling.kindNewAPIGroup', {
+      group: billing.upstream_group,
+      source: t(`admin.accounts.upstreamBilling.rateSource.${billing.rate_source}`)
+    })
+  }
+  return t('admin.accounts.upstreamBilling.kindSub2API')
+})
+const rateUnknownHint = computed(() => {
+  const billing = freshData.value
+  if (!billing || hasEffectiveRate.value || billing.upstream_kind !== 'newapi') return ''
+  return t('admin.accounts.upstreamBilling.newapiRateUnknown')
+})
 const primaryValue = computed(() => hasEffectiveRate.value ? effectiveRate.value : statusLabel.value || '-')
 const formatDate = (value?: string) => value
   ? new Date(value).toLocaleString(undefined, {

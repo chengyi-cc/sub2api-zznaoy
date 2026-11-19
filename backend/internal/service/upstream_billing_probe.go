@@ -256,6 +256,8 @@ type UpstreamBillingProbeService struct {
 	lockCache    LeaderLockCache
 	db           *sql.DB
 	instanceID   string
+	// [fork] 余额 + NewAPI 回退探测，仅生产装配开启，见 upstream_billing_probe_balance.go。
+	balanceExtEnabled bool
 }
 
 type upstreamBillingProbeSnapshotWriter interface {
@@ -302,6 +304,7 @@ func ProvideUpstreamBillingProbeService(
 ) *UpstreamBillingProbeService {
 	svc := NewUpstreamBillingProbeService(accountRepo, accountTestService, settingService)
 	svc.SetLeaderLock(lockCache, db)
+	svc.EnableBalanceExtension()
 	svc.Start()
 	return svc
 }
@@ -677,6 +680,8 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	if s.accountTestService.tlsFPProfileService != nil {
 		tlsProfile = s.accountTestService.tlsFPProfileService.ResolveTLSProfile(account)
 	}
+	// [fork] 余额与 NewAPI 回退探测复用同一请求上下文，见 upstream_billing_probe_balance.go。
+	billingTarget := upstreamBillingTarget{account: account, baseURL: normalizedBaseURL, apiKey: apiKey, proxyURL: proxyURL, tlsProfile: tlsProfile}
 	resp, err := s.accountTestService.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 	if err != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "request_failed", 0)
@@ -692,15 +697,30 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	if len(body) > upstreamBillingProbeMaxBodyBytes {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "response_too_large", retryAfter(resp.Header, now))
 	}
+	// [fork] 上游没有 sub2api 计费接口（404/405）或返回的不是 sub2api 计费格式时，
+	// 改按 NewAPI 读取倍率与余额；sub2api 上游成功后补查余额。
+	httpStatus := resp.StatusCode
+	var data map[string]any
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
-		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "unsupported", retryAfter(resp.Header, now))
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "http_error", retryAfter(resp.Header, now))
-	}
-	data, err := parseUpstreamBillingProbeResponse(body)
-	if err != nil {
-		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "invalid_response", retryAfter(resp.Header, now))
+		data = s.probeNewAPIBilling(ctx, billingTarget, now)
+		if data == nil {
+			return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "unsupported", retryAfter(resp.Header, now))
+		}
+		httpStatus = http.StatusOK
+	} else {
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "http_error", retryAfter(resp.Header, now))
+		}
+		parsed, err := parseUpstreamBillingProbeResponse(body)
+		if err != nil {
+			data = s.probeNewAPIBilling(ctx, billingTarget, now)
+			if data == nil {
+				return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "invalid_response", retryAfter(resp.Header, now))
+			}
+		} else {
+			s.attachSub2APIBalance(ctx, billingTarget, parsed)
+			data = parsed
+		}
 	}
 	snapshot := &UpstreamBillingProbeSnapshot{
 		Status:        UpstreamBillingProbeStatusOK,
@@ -709,7 +729,7 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		FreshUntil:    probeTimePtr(now.Add(2 * time.Duration(intervalMinutes) * time.Minute)),
 		LastAttemptAt: now,
 		NextProbeAt:   now.Add(nextProbeDelay(intervalMinutes, 0)),
-		HTTPStatus:    resp.StatusCode,
+		HTTPStatus:    httpStatus,
 	}
 	// 账号级值域与精度只在真要写回时才有影响：只观察上游声明、未开启同步的
 	// 账号不因声明值不适配 accounts.rate_multiplier 而被记成探测失败并进入

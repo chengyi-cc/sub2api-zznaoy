@@ -1093,7 +1093,8 @@ export interface TempUnschedulableStatus {
 }
 
 export interface UpstreamBillingData {
-  object: 'sub2api.key_billing'
+  // [fork] newapi.token_billing：NewAPI 上游按同构格式写入（无高峰），倍率字段可能缺失
+  object: 'sub2api.key_billing' | 'newapi.token_billing'
   schema_version: 1
   billing_scope: 'token'
   group_rate_multiplier: number
@@ -1107,6 +1108,13 @@ export interface UpstreamBillingData {
   effective_rate_multiplier: number
   timezone?: string
   observed_at: string
+  // [fork] 上游余额与来源（best-effort，缺失表示未取到）
+  upstream_kind?: 'sub2api' | 'newapi'
+  upstream_balance?: number
+  upstream_balance_unlimited?: boolean
+  upstream_balance_scope?: 'wallet' | 'key_quota' | 'subscription' | 'token' | 'user'
+  upstream_group?: string
+  rate_source?: 'recent_log' | 'pricing_single_group'
 }
 
 export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'

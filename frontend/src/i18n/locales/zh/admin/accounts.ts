@@ -280,7 +280,24 @@ export default {
         noEligibleAccounts: '请选择 API Key 账号',
         batchLimit: '每次最多探测 20 个账号',
         batchCompleted: '已完成 {count} 个账号的倍率探测',
-        batchPartial: '倍率探测部分完成：成功 {success} 个，失败 {failed} 个'
+        batchPartial: '倍率探测部分完成：成功 {success} 个，失败 {failed} 个',
+        balance: '上游余额：{value}（{scope}）',
+        balanceUnlimited: '上游余额：无限额度令牌',
+        balanceScope: {
+          wallet: '账户钱包',
+          key_quota: 'Key 额度',
+          subscription: '订阅剩余',
+          token: '令牌额度',
+          user: '用户钱包'
+        },
+        kindSub2API: '上游类型：Sub2API',
+        kindNewAPI: '上游类型：NewAPI',
+        kindNewAPIGroup: '上游类型：NewAPI，分组 {group}（{source}）',
+        rateSource: {
+          recent_log: '取自最近一次调用',
+          pricing_single_group: '按站点唯一分组估算'
+        },
+        newapiRateUnknown: '暂无法确定倍率：该令牌还没有调用记录，且上游开放了多个分组'
       },
       allPrivacyModes: '全部Privacy状态',
       privacyUnset: '未设置',

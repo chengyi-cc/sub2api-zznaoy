@@ -437,7 +437,24 @@ export default {
         noEligibleAccounts: 'Select API key accounts',
         batchLimit: 'A batch can probe at most 20 accounts',
         batchCompleted: 'Probed {count} account(s)',
-        batchPartial: 'Probe partially completed: {success} succeeded, {failed} failed'
+        batchPartial: 'Probe partially completed: {success} succeeded, {failed} failed',
+        balance: 'Upstream balance: {value} ({scope})',
+        balanceUnlimited: 'Upstream balance: unlimited token',
+        balanceScope: {
+          wallet: 'wallet',
+          key_quota: 'key quota',
+          subscription: 'subscription remaining',
+          token: 'token quota',
+          user: 'user wallet'
+        },
+        kindSub2API: 'Upstream: Sub2API',
+        kindNewAPI: 'Upstream: NewAPI',
+        kindNewAPIGroup: 'Upstream: NewAPI, group {group} ({source})',
+        rateSource: {
+          recent_log: 'from the latest request',
+          pricing_single_group: 'estimated from the only public group'
+        },
+        newapiRateUnknown: 'Rate unknown: this token has no requests yet and the upstream offers several groups'
       },
       allPrivacyModes: 'All Privacy States',
       privacyUnset: 'Unset',
