@@ -210,6 +210,13 @@
                     >
                       {{ rowIssuingId === item.id ? t('common.processing') : t('invoice.issue') }}
                     </button>
+                    <button
+                      class="btn btn-danger btn-sm"
+                      :data-test="`invoice-reject-${item.id}`"
+                      @click="openRejectDialog(item)"
+                    >
+                      {{ t('invoice.reject') }}
+                    </button>
                     <button class="btn btn-secondary btn-sm" @click="openDetail(item)">
                       {{ t('invoice.viewDetail') }}
                     </button>
@@ -575,9 +582,9 @@
           </div>
         </div>
 
-        <!-- Reject form (only when pending + rejecting) -->
+        <!-- Reject form (pending / approved-but-not-issued + rejecting) -->
         <div
-          v-if="detail.request.status === 'pending' && showRejectForm"
+          v-if="(detail.request.status === 'pending' || detail.request.status === 'approved') && showRejectForm"
           class="space-y-3 rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/10"
         >
           <div class="text-sm font-medium text-gray-900 dark:text-white">
@@ -645,8 +652,27 @@
             </button>
           </template>
 
-          <!-- Approved: issue -->
-          <template v-if="detail.request.status === 'approved'">
+          <!-- Approved: reject (e.g. tax info found invalid after approval) / issue -->
+          <template v-if="detail.request.status === 'approved' && showRejectForm">
+            <button class="btn btn-secondary" @click="showRejectForm = false">
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              class="btn btn-danger"
+              :disabled="actionLoading || !rejectReason.trim()"
+              @click="confirmReject"
+            >
+              {{ actionLoading ? t('common.processing') : t('invoice.confirmReject') }}
+            </button>
+          </template>
+          <template v-else-if="detail.request.status === 'approved'">
+            <button
+              v-if="!showIssueForm"
+              class="btn btn-secondary"
+              @click="showRejectForm = true"
+            >
+              {{ t('invoice.reject') }}
+            </button>
             <button
               v-if="!showIssueForm"
               class="btn btn-primary"

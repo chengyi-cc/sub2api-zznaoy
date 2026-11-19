@@ -376,6 +376,9 @@ type UpdateSettingsRequest struct {
 	// 单次开票最低金额（0 = 不限制；nil = 不修改沿用现值）
 	InvoiceMinAmount *float64 `json:"invoice_min_amount"`
 
+	// 发票页顶部的开票须知（空 = 不显示；nil = 不修改沿用现值）
+	InvoiceNotice *string `json:"invoice_notice"`
+
 	// 风控中心功能开关
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
 
@@ -2067,6 +2070,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.InvoiceMinAmount
 		}(),
+		InvoiceNotice: func() string {
+			if req.InvoiceNotice != nil {
+				return *req.InvoiceNotice
+			}
+			return previousSettings.InvoiceNotice
+		}(),
 		RiskControlEnabled: func() bool {
 			if req.RiskControlEnabled != nil {
 				return *req.RiskControlEnabled
@@ -2510,6 +2519,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		InvoiceEnabled: updatedSettings.InvoiceEnabled,
 
 		InvoiceMinAmount: updatedSettings.InvoiceMinAmount,
+
+		InvoiceNotice: updatedSettings.InvoiceNotice,
 
 		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
 		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,

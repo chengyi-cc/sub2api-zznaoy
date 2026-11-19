@@ -7585,6 +7585,22 @@
                 {{ t('admin.settings.features.invoice.minAmountHint') }}
               </p>
             </div>
+
+            <div v-if="form.invoice_enabled">
+              <label class="input-label">
+                {{ t('admin.settings.features.invoice.notice') }}
+              </label>
+              <textarea
+                v-model="form.invoice_notice"
+                rows="3"
+                maxlength="1000"
+                class="input"
+                :placeholder="t('admin.settings.features.invoice.noticePlaceholder')"
+              />
+              <p class="mt-1 text-xs text-gray-400">
+                {{ t('admin.settings.features.invoice.noticeHint') }}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -10166,6 +10182,7 @@ const form = reactive<SettingsForm>({
   // Invoice (发票申请) feature switch
   invoice_enabled: false,
   invoice_min_amount: 200,
+  invoice_notice: '',
   // Allow user view error requests
   allow_user_view_error_requests: false,
 });
@@ -11908,6 +11925,7 @@ async function saveSettings() {
       // Invoice (发票申请) feature switch
       invoice_enabled: form.invoice_enabled,
       invoice_min_amount: Number(form.invoice_min_amount) || 0,
+      invoice_notice: (form.invoice_notice || '').trim(),
       allow_user_view_error_requests: form.allow_user_view_error_requests,
     };
 

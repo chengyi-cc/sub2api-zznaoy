@@ -381,6 +381,7 @@ export const useAppStore = defineStore('app', () => {
         affiliate_enabled: false,
         invoice_enabled: false,
         invoice_min_amount: 200,
+        invoice_notice: '',
         allow_user_view_error_requests: false,
         mcp_enabled: false,
       })

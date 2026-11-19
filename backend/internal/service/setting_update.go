@@ -450,6 +450,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 单次开票最低金额（0 = 不限制）
 	updates[SettingKeyInvoiceMinAmount] = strconv.FormatFloat(normalizeInvoiceMinAmount(settings.InvoiceMinAmount), 'f', -1, 64)
 
+	// 发票页顶部的开票须知
+	updates[SettingKeyInvoiceNotice] = normalizeInvoiceNotice(settings.InvoiceNotice)
+
 	// 风控中心功能开关
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
 

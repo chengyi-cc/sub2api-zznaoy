@@ -763,6 +763,9 @@ export interface SystemSettings {
   // 单次开票最低金额（0 = 不限制）
   invoice_min_amount: number;
 
+  // 发票页顶部的开票须知（空 = 不显示）
+  invoice_notice: string;
+
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
 
@@ -1083,6 +1086,9 @@ export interface UpdateSettingsRequest {
 
   // 单次开票最低金额（0 = 不限制）
   invoice_min_amount?: number;
+
+  // 发票页顶部的开票须知（空 = 不显示）
+  invoice_notice?: string;
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;

@@ -224,7 +224,8 @@ func TestInvoiceService_CreateRequest_AllowsMultiOrderMerge(t *testing.T) {
 
 // ---- State machine ----
 
-func TestInvoiceService_AdminReject_RequiresPendingStatus(t *testing.T) {
+// 已通过但未开具的申请可以驳回（审核后才发现税务信息有误），驳回后来源释放可重新申请。
+func TestInvoiceService_AdminReject_AllowsApprovedAndReleasesSources(t *testing.T) {
 	svc, client := newInvoiceServiceTestClient(t)
 	user, orderIDs := seedUserAndCompletedOrders(t, client, 1, 100)
 
@@ -234,11 +235,43 @@ func TestInvoiceService_AdminReject_RequiresPendingStatus(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// First approval moves it out of pending
 	_, err = svc.AdminApprove(context.Background(), created.ID, 999)
 	require.NoError(t, err)
 
-	// Now reject should be rejected (state machine guard)
+	rejected, err := svc.AdminReject(context.Background(), created.ID, 999, "税号查询不到")
+	require.NoError(t, err)
+	require.Equal(t, domain.InvoiceStatusRejected, rejected.Status)
+	require.NotNil(t, rejected.RejectReason)
+	require.Equal(t, "税号查询不到", *rejected.RejectReason)
+
+	// 已驳回不能再驳回，也不能再开具
+	_, err = svc.AdminReject(context.Background(), created.ID, 999, "again")
+	require.ErrorIs(t, err, ErrInvoiceInvalidStatus)
+
+	// 订单被释放，可以重新申请
+	_, err = svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:          user.ID,
+		PaymentOrderIDs: orderIDs,
+	})
+	require.NoError(t, err)
+}
+
+func TestInvoiceService_AdminReject_RefusesIssued(t *testing.T) {
+	svc, client := newInvoiceServiceTestClient(t)
+	user, orderIDs := seedUserAndCompletedOrders(t, client, 1, 100)
+
+	created, err := svc.CreateRequest(context.Background(), CreateInvoiceRequestInput{
+		UserID:          user.ID,
+		PaymentOrderIDs: orderIDs,
+	})
+	require.NoError(t, err)
+	_, err = svc.AdminApprove(context.Background(), created.ID, 999)
+	require.NoError(t, err)
+
+	pdf := []byte("%PDF-1.4 stub content")
+	_, err = svc.AdminIssue(context.Background(), created.ID, 999, "INV-001", bytes.NewReader(pdf), int64(len(pdf)))
+	require.NoError(t, err)
+
 	_, err = svc.AdminReject(context.Background(), created.ID, 999, "too late")
 	require.ErrorIs(t, err, ErrInvoiceInvalidStatus)
 }

@@ -1133,7 +1133,10 @@ func (s *InvoiceService) AdminBatchApprove(ctx context.Context, ids []int64, adm
 	return result
 }
 
-// AdminReject 审核驳回：pending -> rejected
+// AdminReject 审核驳回：pending / approved -> rejected。
+// 允许驳回已通过但尚未开具的申请（例如审核后才发现税务信息有误）；已开具的发票不可驳回。
+// 驳回后关联订单与兑换码自动释放，用户可修正资料后重新申请。
+// 条件更新与 AdminIssue 的行锁互斥：开具先提交则这里匹配不到行，返回状态冲突。
 func (s *InvoiceService) AdminReject(ctx context.Context, requestID, adminID int64, reason string) (*dbent.InvoiceRequest, error) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
@@ -1143,11 +1146,11 @@ func (s *InvoiceService) AdminReject(ctx context.Context, requestID, adminID int
 	if err != nil {
 		return nil, err
 	}
-	if r.Status != domain.InvoiceStatusPending {
+	if r.Status != domain.InvoiceStatusPending && r.Status != domain.InvoiceStatusApproved {
 		return nil, ErrInvoiceInvalidStatus
 	}
 	updated, err := s.entClient.InvoiceRequest.UpdateOneID(r.ID).
-		Where(invoicerequest.StatusEQ(domain.InvoiceStatusPending)).
+		Where(invoicerequest.StatusIn(domain.InvoiceStatusPending, domain.InvoiceStatusApproved)).
 		SetStatus(domain.InvoiceStatusRejected).
 		SetRejectReason(reason).
 		SetProcessedBy(adminID).

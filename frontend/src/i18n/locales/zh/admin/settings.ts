@@ -97,6 +97,9 @@ export default {
           enabledHint: '关闭后用户端“发票管理”入口隐藏并停止受理用户请求；管理员仍可查看和处理已有申请。',
           minAmount: '单次开票最低金额',
           minAmountHint: '低于此金额将无法提交开票申请；填 0 表示不限制。默认 200 元。',
+          notice: '开票须知',
+          noticePlaceholder: '例如：发票统一于每周四集中开具，其他时间提交的申请将顺延至下一个开票日处理，暂不支持提前或加急开具。',
+          noticeHint: '显示在用户「我的发票」页面顶部，支持换行；留空则不显示。',
         },
         affiliate: {
           title: '邀请返利',

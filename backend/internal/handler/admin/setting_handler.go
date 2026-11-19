@@ -406,6 +406,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		InvoiceMinAmount: settings.InvoiceMinAmount,
 
+		InvoiceNotice: settings.InvoiceNotice,
+
 		AccountSchedulingThresholds: settings.AccountSchedulingThresholds,
 		AllowUserViewErrorRequests:  settings.AllowUserViewErrorRequests,
 	}

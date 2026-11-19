@@ -134,6 +134,18 @@ func parsePositiveFloat(s string, fallback float64) float64 {
 	return v
 }
 
+// invoiceNoticeMaxRunes 开票须知的长度上限，防止误粘贴大段文本撑爆页面。
+const invoiceNoticeMaxRunes = 1000
+
+// normalizeInvoiceNotice 写入前去掉首尾空白并截断到上限。
+func normalizeInvoiceNotice(v string) string {
+	v = strings.TrimSpace(v)
+	if runes := []rune(v); len(runes) > invoiceNoticeMaxRunes {
+		v = string(runes[:invoiceNoticeMaxRunes])
+	}
+	return v
+}
+
 // normalizeInvoiceMinAmount 写入前做一次保守归一化：负值视为 0。
 func normalizeInvoiceMinAmount(v float64) float64 {
 	if v < 0 {

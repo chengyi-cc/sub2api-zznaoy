@@ -97,6 +97,9 @@ export default {
           enabledHint: 'When off, the user Invoice entry is hidden and user requests are rejected; admins can still view and process existing requests.',
           minAmount: 'Minimum invoice amount',
           minAmountHint: 'Requests with amount below this threshold are rejected. Set 0 to disable. Default 200.',
+          notice: 'Invoice notice',
+          noticePlaceholder: 'e.g. Invoices are issued every Thursday. Requests submitted on other days are processed on the next issuing day; expedited issuing is not available.',
+          noticeHint: 'Shown at the top of the user "My Invoices" page. Line breaks are kept; leave empty to hide.',
         },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',

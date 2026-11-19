@@ -233,6 +233,7 @@ const (
 	SettingKeyAffiliateEnabled                    = "affiliate_enabled"                // 邀请返利功能总开关
 	SettingKeyInvoiceEnabled                      = "invoice_enabled"                  // 发票申请功能总开关
 	SettingKeyInvoiceMinAmount                    = "invoice_min_amount"               // 单次开票最低金额（0 = 不限制）
+	SettingKeyInvoiceNotice                       = "invoice_notice"                   // 发票页顶部的开票须知（空 = 不显示）
 	SettingKeyAffiliateRebateRate                 = "affiliate_rebate_rate"            // 邀请返利比例（百分比，0-100）
 	SettingKeyAffiliateRebateFreezeHours          = "affiliate_rebate_freeze_hours"    // 返利冻结期（小时，0=不冻结）
 	SettingKeyAffiliateRebateDurationDays         = "affiliate_rebate_duration_days"   // 返利有效期（天，0=永久）

@@ -125,6 +125,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		InvoiceMinAmount: settings.InvoiceMinAmount,
 
+		InvoiceNotice: settings.InvoiceNotice,
+
 		RiskControlEnabled: settings.RiskControlEnabled,
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,

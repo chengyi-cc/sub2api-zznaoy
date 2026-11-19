@@ -360,6 +360,9 @@ type SystemSettings struct {
 	// 单次开票最低金额（0 = 不限制）
 	InvoiceMinAmount float64 `json:"invoice_min_amount"`
 
+	// 发票页顶部的开票须知（空 = 不显示）
+	InvoiceNotice string `json:"invoice_notice"`
+
 	// OpenAI fast/flex policy
 	OpenAIFastPolicySettings *OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
 
@@ -465,6 +468,8 @@ type PublicSettings struct {
 	InvoiceEnabled bool `json:"invoice_enabled"`
 
 	InvoiceMinAmount float64 `json:"invoice_min_amount"`
+
+	InvoiceNotice string `json:"invoice_notice"`
 
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 

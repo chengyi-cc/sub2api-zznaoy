@@ -11,6 +11,18 @@
         </p>
       </div>
 
+      <!-- 开票须知：管理员在「系统设置 → 发票申请」中配置，留空不显示 -->
+      <div
+        v-if="invoiceNotice"
+        class="flex gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-200"
+        data-test="invoice-notice"
+      >
+        <svg class="mt-0.5 h-4 w-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+        </svg>
+        <p class="whitespace-pre-line break-words">{{ invoiceNotice }}</p>
+      </div>
+
       <!-- Toolbar: 主操作（申请开票）放最左，筛选/刷新放右侧 -->
       <div class="flex flex-wrap items-center gap-3">
         <button class="btn btn-primary" @click="openCreateModal">
@@ -504,6 +516,12 @@ const minAmount = computed(() => {
   const raw = appStore.cachedPublicSettings?.invoice_min_amount
   if (typeof raw !== 'number' || !isFinite(raw) || raw < 0) return 0
   return raw
+})
+
+// 开票须知（来自 public settings 的 invoice_notice，空则不显示）。
+const invoiceNotice = computed(() => {
+  const raw = appStore.cachedPublicSettings?.invoice_notice
+  return typeof raw === 'string' ? raw.trim() : ''
 })
 
 const items = ref<InvoiceRequest[]>([])

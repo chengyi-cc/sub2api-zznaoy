@@ -174,6 +174,7 @@ type SystemSettings struct {
 	AffiliateEnabled             bool
 	InvoiceEnabled               bool
 	InvoiceMinAmount             float64
+	InvoiceNotice                string
 	AffiliateRebateRate          float64
 	AffiliateRebateFreezeHours   int
 	AffiliateRebateDurationDays  int
@@ -429,6 +430,9 @@ type PublicSettings struct {
 
 	// 单次开票最低金额（0 = 不限制）
 	InvoiceMinAmount float64 `json:"invoice_min_amount"`
+
+	// 发票页顶部的开票须知（空 = 不显示）
+	InvoiceNotice string `json:"invoice_notice"`
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`

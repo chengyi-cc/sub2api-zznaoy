@@ -290,6 +290,7 @@ export interface PublicSettings {
   affiliate_enabled: boolean
   invoice_enabled: boolean
   invoice_min_amount: number
+  invoice_notice?: string
   allow_user_view_error_requests?: boolean
   /** True when the deployment configures MCP_PUBLIC_URL; MCP is disabled otherwise. */
   mcp_enabled?: boolean

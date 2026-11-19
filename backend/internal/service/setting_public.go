@@ -242,6 +242,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAffiliateEnabled,
 		SettingKeyInvoiceEnabled,
 		SettingKeyInvoiceMinAmount,
+		SettingKeyInvoiceNotice,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
 	}
@@ -379,6 +380,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		InvoiceEnabled:   settings[SettingKeyInvoiceEnabled] == "true",
 		InvoiceMinAmount: parsePositiveFloat(settings[SettingKeyInvoiceMinAmount], InvoiceMinAmountDefault),
+		InvoiceNotice:    settings[SettingKeyInvoiceNotice],
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
@@ -649,6 +651,7 @@ type PublicSettingsInjectionPayload struct {
 	AffiliateEnabled              bool    `json:"affiliate_enabled"`
 	InvoiceEnabled                bool    `json:"invoice_enabled"`
 	InvoiceMinAmount              float64 `json:"invoice_min_amount"`
+	InvoiceNotice                 string  `json:"invoice_notice"`
 	RiskControlEnabled            bool    `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests    bool    `json:"allow_user_view_error_requests"`
 	SubscriptionEnabled           bool    `json:"subscription_enabled"`
@@ -737,6 +740,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		InvoiceEnabled:                       settings.InvoiceEnabled,
 		InvoiceMinAmount:                     settings.InvoiceMinAmount,
+		InvoiceNotice:                        settings.InvoiceNotice,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
 	}, nil

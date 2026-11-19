@@ -221,6 +221,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// 单次开票最低金额（默认 200 元）
 		SettingKeyInvoiceMinAmount: strconv.FormatFloat(InvoiceMinAmountDefault, 'f', -1, 64),
 
+		// 开票须知（默认不显示）
+		SettingKeyInvoiceNotice: "",
+
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
 
@@ -855,6 +858,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// 单次开票最低金额（解析失败/缺失回退到默认值）
 	result.InvoiceMinAmount = parsePositiveFloat(settings[SettingKeyInvoiceMinAmount], InvoiceMinAmountDefault)
+	result.InvoiceNotice = settings[SettingKeyInvoiceNotice]
 
 	// 风控中心功能（默认关闭，严格 true 才启用）
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"
