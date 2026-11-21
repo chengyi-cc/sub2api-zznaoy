@@ -17,11 +17,19 @@ import (
 // logging request content.
 func requestBodyReadFailure(reqLog *zap.Logger, req *http.Request, err error) (int, string) {
 	failure := pkghttputil.DescribeRequestBodyReadFailure(req, err)
-	if failure.Kind == pkghttputil.RequestBodyReadErrorMaxBytes {
-		return failure.Status, buildBodyTooLargeMessage(failure.MaxBytesLimit)
+	if failure.Kind != pkghttputil.RequestBodyReadErrorMaxBytes {
+		logRequestBodyReadFailure(reqLog, failure)
 	}
-	logRequestBodyReadFailure(reqLog, failure)
-	return failure.Status, errorarchive.ReadErrorMessageForKind(failure.Kind)
+	return failure.Status, requestBodyReadClientMessage(failure)
+}
+
+// requestBodyReadClientMessage keeps upstream's limit-naming 413 message and
+// uses the errorarchive wording for every other read failure kind.
+func requestBodyReadClientMessage(failure pkghttputil.RequestBodyReadFailure) string {
+	if failure.Kind == pkghttputil.RequestBodyReadErrorMaxBytes {
+		return failure.ClientMessage()
+	}
+	return errorarchive.ReadErrorMessageForKind(failure.Kind)
 }
 
 func logRequestBodyReadFailure(reqLog *zap.Logger, failure pkghttputil.RequestBodyReadFailure) {
