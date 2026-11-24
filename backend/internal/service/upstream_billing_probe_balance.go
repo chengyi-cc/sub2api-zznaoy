@@ -131,7 +131,7 @@ func (s *UpstreamBillingProbeService) upstreamBillingExtGet(
 	req.Header.Set("Accept", "application/json")
 	if withAuth {
 		req.Header.Set("Authorization", "Bearer "+target.apiKey)
-		target.account.ApplyHeaderOverrides(req.Header)
+		target.account.ApplyHeaderOverrides(req.Context(), req.Header)
 	}
 	resp, err := s.accountTestService.httpUpstream.DoWithTLS(req, target.proxyURL, target.account.ID, target.account.Concurrency, target.tlsProfile)
 	if err != nil || resp == nil || resp.Body == nil {
