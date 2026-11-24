@@ -241,7 +241,7 @@ export default {
       includeGift: '额外生成 1% 赠送码',
       giftHint: '每个正价余额码额外配一个独立赠送码。赠送金额不可开票，不计入充值返佣，两个码需分别兑换。',
       giftPreview: '每组：正价 {paid} + 赠送 {gift}；共 {count} 组。有效期与正价码相同。',
-      giftCodeLine: '赠送余额 {amount}：{code}（赠送金额不可开票）',
+      giftCodeLine: '赠送余额 {amount}：{code}',
       paidCodeLine: '正价余额 {amount}：{code}',
       giftBadge: '赠送余额（不可开票）',
       title: '兑换码管理',

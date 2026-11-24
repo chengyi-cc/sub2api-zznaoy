@@ -225,6 +225,20 @@ describe('admin RedeemView batch update', () => {
     wrapper.unmount()
   })
 
+  it('fills the amount from the quick buttons', async () => {
+    generateRedeemCodes.mockResolvedValue([])
+    const wrapper = await mountGeneration()
+    for (const amount of [20, 50, 100, 300]) {
+      expect(wrapper.find(`[data-test="generate-quick-${amount}"]`).exists()).toBe(true)
+    }
+    await wrapper.get('[data-test="generate-quick-300"]').trigger('click')
+    expect((wrapper.get('[data-test="generate-value"]').element as HTMLInputElement).value).toBe('300')
+    await wrapper.get('[data-test="generate-form"]').trigger('submit')
+    await flushPromises()
+    expect(generateRedeemCodes).toHaveBeenCalledWith(1, 'balance', 300, undefined, undefined, undefined, false, expect.stringMatching(/^redeem-generate-/))
+    wrapper.unmount()
+  })
+
   it('keeps the operation key on a failed request and creates a new key when input changes', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
     generateRedeemCodes.mockRejectedValue(new Error('Network timeout'))

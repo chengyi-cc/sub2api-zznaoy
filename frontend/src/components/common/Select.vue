@@ -75,7 +75,7 @@
           </div>
 
           <!-- Options list -->
-          <div class="select-options" ref="optionsListRef">
+          <div class="select-options" ref="optionsListRef" :style="{ maxHeight: `${listMaxHeight}px` }">
             <div
               v-for="(option, index) in filteredOptions"
               :key="`${typeof getOptionValue(option)}:${String(getOptionValue(option) ?? '')}`"
@@ -194,6 +194,18 @@ const dropdownPosition = ref<'bottom' | 'top'>('bottom')
 const triggerRect = ref<DOMRect | null>(null)
 const dropdownViewportPadding = 8
 const dropdownMinimumWidth = 200
+// [fork] 手机端下拉滚动：列表高度按屏幕剩余空间收缩（不超过原 max-h-80 = 320px），
+// 避免列表落在屏幕外/软键盘下导致手指拖动的是整个页面。
+const dropdownListMaxHeight = 320
+const dropdownListMinHeight = 120
+const listMaxHeight = ref(dropdownListMaxHeight)
+
+// 只有主指针是鼠标/触控板（pointer: fine）时才自动聚焦搜索框；手机上自动聚焦会
+// 弹出软键盘挤占屏幕并平移页面，用户需要搜索时再点搜索框即可。
+const shouldAutoFocusSearch = () =>
+  typeof window === 'undefined' ||
+  typeof window.matchMedia !== 'function' ||
+  window.matchMedia('(pointer: fine)').matches
 
 // i18n placeholders
 const placeholderText = computed(() => props.placeholder ?? t('common.selectOption'))
@@ -358,15 +370,22 @@ const calculateDropdownPosition = () => {
 
   nextTick(() => {
     if (!dropdownRef.value || !triggerRect.value) return
-    const dropdownHeight = dropdownRef.value.offsetHeight || 240
-    const spaceBelow = window.innerHeight - triggerRect.value.bottom
-    const spaceAbove = triggerRect.value.top
+    // 软键盘弹出时 visualViewport 才是真正可见的高度。
+    const viewportHeight = window.visualViewport?.height || window.innerHeight
+    const listEl = optionsListRef.value
+    const chromeHeight = Math.max(0, dropdownRef.value.offsetHeight - (listEl?.offsetHeight ?? 0))
+    const naturalListHeight = Math.min(listEl?.scrollHeight || 240, dropdownListMaxHeight)
+    const spaceBelow = viewportHeight - triggerRect.value.bottom - dropdownViewportPadding
+    const spaceAbove = triggerRect.value.top - dropdownViewportPadding
+    const needed = chromeHeight + naturalListHeight
 
-    if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
-      dropdownPosition.value = 'top'
-    } else {
-      dropdownPosition.value = 'bottom'
-    }
+    const placeTop = spaceBelow < needed && spaceAbove > spaceBelow
+    dropdownPosition.value = placeTop ? 'top' : 'bottom'
+    const space = placeTop ? spaceAbove : spaceBelow
+    listMaxHeight.value = Math.max(
+      dropdownListMinHeight,
+      Math.min(dropdownListMaxHeight, Math.floor(space - chromeHeight))
+    )
   })
 }
 
@@ -393,14 +412,15 @@ watch(isOpen, (open) => {
         : initialIdx
     }
 
-    if (isSearchable.value) {
-      nextTick(() => searchInputRef.value?.focus())
+    if (isSearchable.value && shouldAutoFocusSearch()) {
+      nextTick(() => searchInputRef.value?.focus({ preventScroll: true }))
     } else {
-      nextTick(() => dropdownRef.value?.focus())
+      nextTick(() => dropdownRef.value?.focus({ preventScroll: true }))
     }
     // Add scroll listener to update position
     window.addEventListener('scroll', updateTriggerRect, { capture: true, passive: true })
     window.addEventListener('resize', calculateDropdownPosition)
+    window.visualViewport?.addEventListener('resize', calculateDropdownPosition)
   } else {
     searchQuery.value = ''
     focusedIndex.value = -1
@@ -411,6 +431,7 @@ watch(isOpen, (open) => {
     }
     window.removeEventListener('scroll', updateTriggerRect, { capture: true })
     window.removeEventListener('resize', calculateDropdownPosition)
+    window.visualViewport?.removeEventListener('resize', calculateDropdownPosition)
   }
 })
 
@@ -510,6 +531,7 @@ onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('scroll', updateTriggerRect, { capture: true })
   window.removeEventListener('resize', calculateDropdownPosition)
+  window.visualViewport?.removeEventListener('resize', calculateDropdownPosition)
   if (remoteSearchTimer) {
     clearTimeout(remoteSearchTimer)
     remoteSearchTimer = null
@@ -582,6 +604,10 @@ onUnmounted(() => {
 
 .select-dropdown-portal .select-options {
   @apply max-h-80 overflow-y-auto py-1 outline-none;
+  /* 滑到列表顶/底时不把滚动传给页面；触屏上只做纵向平移 */
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 .select-dropdown-portal .select-option {

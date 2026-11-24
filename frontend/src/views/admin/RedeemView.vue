@@ -305,6 +305,21 @@
                 required
                 class="input"
               />
+              <div v-if="generateForm.type === 'balance'" class="mt-2 flex flex-wrap gap-2">
+                <button
+                  v-for="amount in balanceQuickAmounts"
+                  :key="amount"
+                  type="button"
+                  :data-test="`generate-quick-${amount}`"
+                  class="rounded-lg border px-3 py-1 text-sm transition-colors"
+                  :class="generateForm.value === amount
+                    ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                    : 'border-gray-200 text-gray-700 hover:border-primary-400 dark:border-dark-600 dark:text-gray-300'"
+                  @click="generateForm.value = amount"
+                >
+                  ${{ amount }}
+                </button>
+              </div>
             </div>
             <div v-if="generateForm.type === 'balance'" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
               <label class="flex items-center gap-2 text-sm font-medium">
@@ -854,6 +869,8 @@ const redeemCodeExpiryOptions = computed<{ value: RedeemCodeExpiryOption; label:
   { value: '7', label: t('admin.redeem.expiryPresetDays', { days: 7 }) },
   { value: 'custom', label: t('admin.redeem.customExpiry') }
 ])
+
+const balanceQuickAmounts = [20, 50, 100, 300]
 
 const generateForm = reactive({
   type: 'balance' as RedeemCodeType,
