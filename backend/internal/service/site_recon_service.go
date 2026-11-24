@@ -149,7 +149,11 @@ func newSiteReconService(db *sql.DB, postgres bool, accounts AccountRepository, 
 }
 
 // ProvideSiteReconService 创建并启动定时器。
-func ProvideSiteReconService(db *sql.DB, accounts AccountRepository, settings SettingRepository, encryptor SecretEncryptor, lockCache LeaderLockCache) *SiteReconService {
+//
+// 加密器用账号凭据加密器（OpenAICredentialEncryptor）：服务器配置了固定 TOTP_ENCRYPTION_KEY 时用它，
+// 否则用持久化在 security_secrets 表里的密钥。不能用裸 SecretEncryptor——未配置固定密钥时它每次
+// 启动随机生成密钥，重启后已保存的令牌全部无法解密。
+func ProvideSiteReconService(db *sql.DB, accounts AccountRepository, settings SettingRepository, encryptor OpenAICredentialEncryptor, lockCache LeaderLockCache) *SiteReconService {
 	s := NewSiteReconService(db, accounts, settings, encryptor, lockCache)
 	s.Start()
 	return s
@@ -277,7 +281,7 @@ func (s *SiteReconService) UpdateConfig(ctx context.Context, in SiteReconConfigU
 		if s.encryptor == nil {
 			return nil, infraerrors.ServiceUnavailable("SITE_RECON_ENCRYPTOR_UNAVAILABLE", "secret encryptor unavailable")
 		}
-		enc, err := s.encryptor.Encrypt(bark)
+		enc, err := s.encrypt(bark)
 		if err != nil {
 			return nil, err
 		}
@@ -304,6 +308,24 @@ func (s *SiteReconService) TestPush(ctx context.Context) error {
 		return ErrSiteReconNoBark
 	}
 	return s.sendBark(ctx, bark, map[string]string{"title": "站点对账", "subtitle": "测试推送", "body": "能看到这条，说明推送配置没问题。"})
+}
+
+// siteReconKeyInitializer 凭据加密器尚未生成持久密钥时，首次保存自动初始化。
+type siteReconKeyInitializer interface {
+	InitializeEncryption() (CredentialEncryptionStatus, error)
+}
+
+func (s *SiteReconService) encrypt(plain string) (string, error) {
+	enc, err := s.encryptor.Encrypt(plain)
+	if err == nil {
+		return enc, nil
+	}
+	if init, ok := s.encryptor.(siteReconKeyInitializer); ok {
+		if _, ierr := init.InitializeEncryption(); ierr == nil {
+			return s.encryptor.Encrypt(plain)
+		}
+	}
+	return "", err
 }
 
 // ---------------------------------------------------------------- 上游访问令牌
@@ -389,7 +411,7 @@ func (s *SiteReconService) SetToken(ctx context.Context, rawHost, token string, 
 	if s.encryptor == nil {
 		return infraerrors.ServiceUnavailable("SITE_RECON_ENCRYPTOR_UNAVAILABLE", "secret encryptor unavailable")
 	}
-	enc, err := s.encryptor.Encrypt(token)
+	enc, err := s.encrypt(token)
 	if err != nil {
 		return err
 	}

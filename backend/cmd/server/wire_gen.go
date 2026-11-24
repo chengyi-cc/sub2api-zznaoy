@@ -302,7 +302,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	affiliateHandler := admin.NewAffiliateHandler(affiliateService, adminService)
 	invoiceService := service.NewInvoiceService(client, userRepository, emailService, settingService, configConfig)
 	invoiceHandler := admin.NewInvoiceHandler(invoiceService)
-	siteReconService := service.ProvideSiteReconService(db, accountRepository, settingRepository, secretEncryptor, leaderLockCache)
+	siteReconService := service.ProvideSiteReconService(db, accountRepository, settingRepository, openAICredentialEncryptor, leaderLockCache)
 	siteReconHandler := admin.NewSiteReconHandler(siteReconService)
 	complianceHandler := admin.NewComplianceHandler(settingService)
 	auditLogRepository := repository.NewAuditLogRepository(db)

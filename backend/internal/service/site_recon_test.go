@@ -737,3 +737,36 @@ func TestSiteReconServiceManualRunEndToEnd(t *testing.T) {
 	_, err = s.StartManualRun(context.Background(), SiteReconStartInput{Date: "2026-12-01"})
 	require.Error(t, err) // 未来日期
 }
+
+// 凭据加密器尚未初始化持久密钥：首次保存令牌时自动初始化，之后可正常解密。
+type lazySiteReconEncryptor struct {
+	fakeSiteReconEncryptor
+	ready bool
+	inits int
+}
+
+func (e *lazySiteReconEncryptor) Encrypt(p string) (string, error) {
+	if !e.ready {
+		return "", errors.New("credential encryption is unavailable")
+	}
+	return e.fakeSiteReconEncryptor.Encrypt(p)
+}
+
+func (e *lazySiteReconEncryptor) EncryptionStatus() (CredentialEncryptionStatus, error) {
+	return CredentialEncryptionStatus{Configured: e.ready}, nil
+}
+
+func (e *lazySiteReconEncryptor) InitializeEncryption() (CredentialEncryptionStatus, error) {
+	e.inits++
+	e.ready = true
+	return CredentialEncryptionStatus{Configured: true}, nil
+}
+
+func TestSiteReconTokenInitializesPersistentKeyOnFirstSave(t *testing.T) {
+	enc := &lazySiteReconEncryptor{}
+	s := newSiteReconService(newSiteReconTestDB(t), false, nil, &upstreamBillingProbeSettingRepo{}, enc, nil)
+	t.Cleanup(s.Stop)
+	require.NoError(t, s.SetToken(context.Background(), "up.example.com", "access-token-ABCD", 1))
+	require.Equal(t, 1, enc.inits)
+	require.Equal(t, map[string]string{"up.example.com": "access-token-ABCD"}, s.decryptTokens(context.Background(), func(string) {}))
+}
