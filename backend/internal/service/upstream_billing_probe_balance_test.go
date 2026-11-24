@@ -183,6 +183,91 @@ func TestUpstreamBalance_NewAPIAmbiguousPricingLeavesRateUnknown(t *testing.T) {
 	require.Equal(t, 1.0, *account.RateMultiplier, "unknown rate must not be synced")
 }
 
+// 标准 NewAPI 的 /api/usage/token/ 不带 user_quota；无限额度令牌要继续问 dashboard，
+// 站点按用户统计时拿到的就是钱包余额。
+func TestUpstreamBalance_NewAPIUnlimitedTokenFallsBackToDashboardWallet(t *testing.T) {
+	svc, _, stub := newBalanceProbeFixture(t, "https://newapi.example", false, map[string]billingRouteResponse{
+		"/api/status":                        {200, `{"success":true,"data":{"quota_per_unit":500000,"quota_display_type":"USD"}}`},
+		"/api/usage/token/":                  {200, `{"code":true,"data":{"total_available":-1,"unlimited_quota":true}}`},
+		"/v1/dashboard/billing/subscription": {200, `{"object":"billing_subscription","hard_limit_usd":120}`},
+		"/v1/dashboard/billing/usage":        {200, `{"object":"list","total_usage":9025}`},
+	})
+	snapshot, err := svc.ProbeAccount(context.Background(), 41)
+	require.NoError(t, err)
+	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+	require.NotContains(t, snapshot.Data, "upstream_balance_unlimited")
+	require.Equal(t, 29.75, snapshot.Data["upstream_balance"])
+	require.Equal(t, "user", snapshot.Data["upstream_balance_scope"])
+	require.NotNil(t, stub.find("/v1/dashboard/billing/usage"))
+}
+
+// 站点按令牌统计时，无限额度令牌的 dashboard hard_limit 固定为 1e8，仍只能显示「无限」。
+func TestUpstreamBalance_NewAPIUnlimitedTokenDashboardAlsoUnlimited(t *testing.T) {
+	svc, _, _ := newBalanceProbeFixture(t, "https://newapi.example", false, map[string]billingRouteResponse{
+		"/api/usage/token/":                  {200, `{"code":true,"data":{"total_available":-1,"unlimited_quota":true}}`},
+		"/v1/dashboard/billing/subscription": {200, `{"object":"billing_subscription","hard_limit_usd":100000000}`},
+	})
+	snapshot, err := svc.ProbeAccount(context.Background(), 41)
+	require.NoError(t, err)
+	require.Equal(t, true, snapshot.Data["upstream_balance_unlimited"])
+	require.Equal(t, "token", snapshot.Data["upstream_balance_scope"])
+}
+
+type walletTokenSourceStub map[string]string
+
+func (m walletTokenSourceStub) NewAPIAccessToken(_ context.Context, host string) (string, bool) {
+	tok, ok := m[host]
+	return tok, ok
+}
+
+// 默认 NewAPI（按令牌统计）下无限额度令牌只能靠站点对账配置的访问令牌查 /api/user/self。
+func TestUpstreamBalance_NewAPIUnlimitedTokenUsesSiteReconAccessToken(t *testing.T) {
+	svc, _, stub := newBalanceProbeFixture(t, "https://newapi.example:8443/v1", false, map[string]billingRouteResponse{
+		"/api/status":                        {200, `{"success":true,"data":{"quota_per_unit":500000}}`},
+		"/api/usage/token/":                  {200, `{"code":true,"data":{"total_available":-1,"unlimited_quota":true}}`},
+		"/v1/dashboard/billing/subscription": {200, `{"object":"billing_subscription","hard_limit_usd":100000000}`},
+		"/api/user/self":                     {200, `{"success":true,"data":{"id":7,"quota":14875000}}`},
+	})
+	svc.SetWalletTokenSource(walletTokenSourceStub{"newapi.example:8443": "access-token-x"})
+	snapshot, err := svc.ProbeAccount(context.Background(), 41)
+	require.NoError(t, err)
+	require.NotContains(t, snapshot.Data, "upstream_balance_unlimited")
+	require.Equal(t, 29.75, snapshot.Data["upstream_balance"])
+	require.Equal(t, "user", snapshot.Data["upstream_balance_scope"])
+	self := stub.find("/api/user/self")
+	require.NotNil(t, self)
+	require.Equal(t, "https://newapi.example:8443/api/user/self", self.URL.String())
+	require.Equal(t, "Bearer access-token-x", self.Header.Get("Authorization"))
+	// 其余请求仍然只用账号自己的 key
+	require.Equal(t, "Bearer sk-relay", stub.find("/api/usage/token/").Header.Get("Authorization"))
+}
+
+// 访问令牌只发往它绑定的 host；别的 host 的令牌不会被借用，也不会去请求 /api/user/self。
+func TestUpstreamBalance_SiteReconAccessTokenIsHostBound(t *testing.T) {
+	svc, _, stub := newBalanceProbeFixture(t, "https://newapi.example", false, map[string]billingRouteResponse{
+		"/api/usage/token/": {200, `{"code":true,"data":{"total_available":-1,"unlimited_quota":true}}`},
+		"/api/user/self":    {200, `{"success":true,"data":{"quota":14875000}}`},
+	})
+	svc.SetWalletTokenSource(walletTokenSourceStub{"other.example": "access-token-x"})
+	snapshot, err := svc.ProbeAccount(context.Background(), 41)
+	require.NoError(t, err)
+	require.Equal(t, true, snapshot.Data["upstream_balance_unlimited"])
+	require.Nil(t, stub.find("/api/user/self"))
+}
+
+// 访问令牌失效（/api/user/self 401）时维持「无限」，不把探测变成失败。
+func TestUpstreamBalance_SiteReconAccessTokenRejectedKeepsUnlimited(t *testing.T) {
+	svc, _, _ := newBalanceProbeFixture(t, "https://newapi.example", false, map[string]billingRouteResponse{
+		"/api/usage/token/": {200, `{"code":true,"data":{"total_available":-1,"unlimited_quota":true}}`},
+		"/api/user/self":    {401, `{"success":false,"message":"无权进行此操作"}`},
+	})
+	svc.SetWalletTokenSource(walletTokenSourceStub{"newapi.example": "stale"})
+	snapshot, err := svc.ProbeAccount(context.Background(), 41)
+	require.NoError(t, err)
+	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+	require.Equal(t, true, snapshot.Data["upstream_balance_unlimited"])
+}
+
 func TestUpstreamBalance_LegacyDashboardFallbackConvertsCNY(t *testing.T) {
 	svc, _, _ := newBalanceProbeFixture(t, "https://oldapi.example/v1", false, map[string]billingRouteResponse{
 		"/api/status":                        {200, `{"success":true,"data":{"quota_per_unit":500000,"quota_display_type":"CNY","usd_exchange_rate":7.2}}`},

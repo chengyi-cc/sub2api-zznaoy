@@ -154,8 +154,10 @@ func newSiteReconService(db *sql.DB, postgres bool, accounts AccountRepository, 
 //
 // 令牌 / Bark 地址用站点对账自有的持久密钥加密（见 site_recon_crypto.go）；
 // 传入的凭据加密器只用来尝试解开旧版本写入的密文。
-func ProvideSiteReconService(db *sql.DB, accounts AccountRepository, settings SettingRepository, encryptor OpenAICredentialEncryptor, lockCache LeaderLockCache) *SiteReconService {
+func ProvideSiteReconService(db *sql.DB, accounts AccountRepository, settings SettingRepository, encryptor OpenAICredentialEncryptor, lockCache LeaderLockCache, billingProbe *UpstreamBillingProbeService) *SiteReconService {
 	s := NewSiteReconService(db, accounts, settings, encryptor, lockCache)
+	// 账号列表「上游倍率/余额」探测遇到 NewAPI 无限额度令牌时，复用这里配置的访问令牌读钱包余额。
+	billingProbe.SetWalletTokenSource(s)
 	s.Start()
 	return s
 }
@@ -405,6 +407,29 @@ func (s *SiteReconService) DeleteToken(ctx context.Context, rawHost string) erro
 		return ErrSiteReconNotFound
 	}
 	return nil
+}
+
+// NewAPIAccessToken 实现 UpstreamWalletTokenSource：返回该 host 已配置且可解密的访问令牌。
+func (s *SiteReconService) NewAPIAccessToken(ctx context.Context, host string) (string, bool) {
+	host = siteReconCleanHost(host)
+	if s == nil || s.store == nil || host == "" {
+		return "", false
+	}
+	rows, err := s.store.listTokens(ctx)
+	if err != nil {
+		return "", false
+	}
+	for _, r := range rows {
+		if r.Host != host {
+			continue
+		}
+		plain, err := s.decryptSecret(ctx, r.Ciphertext)
+		if err != nil || strings.TrimSpace(plain) == "" {
+			return "", false
+		}
+		return plain, true
+	}
+	return "", false
 }
 
 // decryptTokens 运行时才解密；解不开（加密密钥变了）的跳过并记日志。

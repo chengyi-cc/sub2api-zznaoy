@@ -258,6 +258,7 @@ type UpstreamBillingProbeService struct {
 	instanceID   string
 	// [fork] 余额 + NewAPI 回退探测，仅生产装配开启，见 upstream_billing_probe_balance.go。
 	balanceExtEnabled bool
+	walletTokens      upstreamWalletTokenSlot
 }
 
 type upstreamBillingProbeSnapshotWriter interface {

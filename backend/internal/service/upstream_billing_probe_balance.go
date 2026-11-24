@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -46,6 +47,56 @@ func (s *UpstreamBillingProbeService) EnableBalanceExtension() {
 	if s != nil {
 		s.balanceExtEnabled = true
 	}
+}
+
+// UpstreamWalletTokenSource 按上游 host 提供 NewAPI 系统访问令牌，用来读取用户钱包余额
+// （/api/user/self）。目前由站点对账模块实现：复用它在「上游访问令牌」里配置的令牌。
+type UpstreamWalletTokenSource interface {
+	NewAPIAccessToken(ctx context.Context, host string) (string, bool)
+}
+
+type upstreamWalletTokenSlot struct {
+	p atomic.Pointer[UpstreamWalletTokenSource]
+}
+
+// SetWalletTokenSource 在装配期注入；探测协程可能已在运行，故用原子指针。
+func (s *UpstreamBillingProbeService) SetWalletTokenSource(src UpstreamWalletTokenSource) {
+	if s == nil || src == nil {
+		return
+	}
+	s.walletTokens.p.Store(&src)
+}
+
+type newAPIUserSelfResponse struct {
+	Success bool `json:"success"`
+	Data    *struct {
+		Quota *float64 `json:"quota"`
+	} `json:"data"`
+}
+
+// fetchNewAPIWalletBalance 用站点对账里为该 host 配置的访问令牌查钱包余额。
+// 令牌只发往它绑定的 host（target 的 base_url 与 host 必须一致），且请求禁止跟随跳转。
+func (s *UpstreamBillingProbeService) fetchNewAPIWalletBalance(ctx context.Context, target upstreamBillingTarget, root string, quotaPerUnit float64) (float64, bool) {
+	srcPtr := s.walletTokens.p.Load()
+	if srcPtr == nil {
+		return 0, false
+	}
+	host := siteReconCleanHost(root)
+	if host == "" {
+		return 0, false
+	}
+	token, ok := (*srcPtr).NewAPIAccessToken(ctx, host)
+	if !ok || strings.TrimSpace(token) == "" {
+		return 0, false
+	}
+	walletTarget := target
+	walletTarget.apiKey = strings.TrimSpace(token)
+	var self newAPIUserSelfResponse
+	if err := s.upstreamBillingExtGetJSON(ctx, walletTarget, root+"/api/user/self", true, upstreamBalanceExtraMaxBodyBytes, &self); err != nil ||
+		!self.Success || self.Data == nil || self.Data.Quota == nil || !validBillingNumber(*self.Data.Quota) {
+		return 0, false
+	}
+	return *self.Data.Quota / quotaPerUnit, true
 }
 
 // upstreamBillingTarget 是一次探测共享的请求上下文（已校验的 base URL、密钥、代理、TLS 画像）。
@@ -286,33 +337,56 @@ func (s *UpstreamBillingProbeService) fetchNewAPIBalance(
 ) (balance float64, unlimited bool, scope string, ok bool) {
 	quotaPerUnit := newAPIQuotaPerUnit(status)
 
+	// tokenUnlimited：/api/usage/token/ 已确认令牌是无限额度、但没给出钱包余额。
+	// 此时依次尝试：dashboard 接口（站点关闭「额度查询返回令牌额度」DisplayTokenStatEnabled
+	// 时按用户钱包统计）→ 站点对账里为该 host 配置的访问令牌查 /api/user/self；
+	// 都拿不到钱包余额才退回显示「无限」。
+	tokenUnlimited := false
 	var usage newAPITokenUsageResponse
 	if err := s.upstreamBillingExtGetJSON(ctx, target, root+"/api/usage/token/", true, upstreamBalanceExtraMaxBodyBytes, &usage); err == nil && usage.Code && usage.Data != nil {
 		if usage.Data.UnlimitedQuota {
 			// 无限额度令牌实际受用户钱包约束；令牌允许查询用户额度时展示钱包余额。
+			// 标准 NewAPI 的 /api/usage/token/ 不返回 user_quota，只有部分魔改版本会带。
 			if uq := usage.Data.UserQuota; uq != nil && uq.TotalAvailable != nil && validBillingNumber(*uq.TotalAvailable) {
 				return *uq.TotalAvailable / quotaPerUnit, false, "user", true
 			}
-			return 0, true, "token", true
-		}
-		if usage.Data.TotalAvailable != nil && validBillingNumber(*usage.Data.TotalAvailable) {
+			tokenUnlimited = true
+		} else if usage.Data.TotalAvailable != nil && validBillingNumber(*usage.Data.TotalAvailable) {
 			return *usage.Data.TotalAvailable / quotaPerUnit, false, "token", true
 		}
 	}
+	unlimitedToken := func() (float64, bool, string, bool) {
+		if wallet, ok := s.fetchNewAPIWalletBalance(ctx, target, root, quotaPerUnit); ok {
+			return wallet, false, "user", true
+		}
+		return 0, true, "token", true
+	}
+	notFound := func() (float64, bool, string, bool) {
+		if tokenUnlimited {
+			return unlimitedToken()
+		}
+		return 0, false, "", false
+	}
 
-	// 旧版 NewAPI / one-api：OpenAI 兼容的 dashboard 账单接口，金额单位跟随站点展示设置。
+	// OpenAI 兼容的 dashboard 账单接口（旧版 NewAPI / one-api 的唯一途径），金额单位跟随站点展示设置。
 	var sub newAPIDashboardSubscription
 	var used newAPIDashboardUsage
 	if err := s.upstreamBillingExtGetJSON(ctx, target, buildOpenAIEndpointURL(target.baseURL, "/v1/dashboard/billing/subscription"), true, upstreamBalanceExtraMaxBodyBytes, &sub); err != nil ||
 		sub.HardLimitUSD == nil || !validBillingNumber(*sub.HardLimitUSD) {
-		return 0, false, "", false
+		return notFound()
 	}
 	if *sub.HardLimitUSD >= newAPIDashboardUnlimitedThreshold {
-		return 0, true, "token", true
+		return unlimitedToken()
 	}
 	if err := s.upstreamBillingExtGetJSON(ctx, target, buildOpenAIEndpointURL(target.baseURL, "/v1/dashboard/billing/usage"), true, upstreamBalanceExtraMaxBodyBytes, &used); err != nil ||
 		used.TotalUsage == nil || !validBillingNumber(*used.TotalUsage) {
-		return 0, false, "", false
+		return notFound()
+	}
+	// 无限额度令牌在「按令牌统计」模式下 hard_limit 固定为 1e8（上面已拦截），
+	// 能走到这里说明 dashboard 统计的是用户钱包。
+	scope = "token"
+	if tokenUnlimited {
+		scope = "user"
 	}
 	remaining := *sub.HardLimitUSD - *used.TotalUsage/100
 	if status != nil {
@@ -325,7 +399,7 @@ func (s *UpstreamBillingProbeService) fetchNewAPIBalance(
 			remaining /= quotaPerUnit
 		}
 	}
-	return remaining, false, "token", true
+	return remaining, false, scope, true
 }
 
 func (s *UpstreamBillingProbeService) fetchNewAPIGroupRate(
