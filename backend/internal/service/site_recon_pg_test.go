@@ -143,6 +143,16 @@ VALUES ($1,$2,$3,$4,NULLIF($5,''),NULLIF($6,''),$7,$8,$9,$10,$11,$12,$13,$14,$15
 	ok, err := store.deleteToken(ctx, "up.example")
 	require.NoError(t, err)
 	require.True(t, ok)
+
+	// 自有持久密钥写入真实的 security_secrets 表，换实例后仍能解开。
+	svc := newSiteReconService(db, true, nil, &upstreamBillingProbeSettingRepo{}, nil, nil)
+	t.Cleanup(svc.Stop)
+	require.NoError(t, svc.SetToken(ctx, "pg.example.com", "pg-access-token-1234", 1))
+	again := newSiteReconService(db, true, nil, &upstreamBillingProbeSettingRepo{}, nil, nil)
+	t.Cleanup(again.Stop)
+	require.Equal(t, "pg-access-token-1234", again.decryptTokens(ctx, func(string) {})["pg.example.com"])
+	_, err = db.Exec(`DELETE FROM site_recon_upstream_tokens WHERE host = 'pg.example.com'`)
+	require.NoError(t, err)
 }
 
 type siteReconPGTestSite struct {

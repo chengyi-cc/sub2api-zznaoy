@@ -99,7 +99,8 @@ type SiteReconService struct {
 	store      *siteReconStore
 	accounts   AccountRepository
 	settings   SettingRepository
-	encryptor  SecretEncryptor
+	encryptor  SecretEncryptor // 只用于解开旧版本写入的密文
+	keyring    *siteReconKeyring
 	lockCache  LeaderLockCache
 	http       *siteReconHTTP
 	now        func() time.Time
@@ -141,6 +142,7 @@ func newSiteReconService(db *sql.DB, postgres bool, accounts AccountRepository, 
 		ctx:        ctx,
 		cancel:     cancel,
 	}
+	s.keyring = &siteReconKeyring{store: s.store}
 	s.newSite = func(tz string, loc *time.Location) siteReconSite {
 		return newSiteReconPGSite(db, accounts, tz, loc)
 	}
@@ -150,9 +152,8 @@ func newSiteReconService(db *sql.DB, postgres bool, accounts AccountRepository, 
 
 // ProvideSiteReconService 创建并启动定时器。
 //
-// 加密器用账号凭据加密器（OpenAICredentialEncryptor）：服务器配置了固定 TOTP_ENCRYPTION_KEY 时用它，
-// 否则用持久化在 security_secrets 表里的密钥。不能用裸 SecretEncryptor——未配置固定密钥时它每次
-// 启动随机生成密钥，重启后已保存的令牌全部无法解密。
+// 令牌 / Bark 地址用站点对账自有的持久密钥加密（见 site_recon_crypto.go）；
+// 传入的凭据加密器只用来尝试解开旧版本写入的密文。
 func ProvideSiteReconService(db *sql.DB, accounts AccountRepository, settings SettingRepository, encryptor OpenAICredentialEncryptor, lockCache LeaderLockCache) *SiteReconService {
 	s := NewSiteReconService(db, accounts, settings, encryptor, lockCache)
 	s.Start()
@@ -208,10 +209,10 @@ func (s *SiteReconService) saveState(ctx context.Context, st SiteReconScheduleSt
 
 func (s *SiteReconService) barkURL(ctx context.Context) string {
 	raw, err := s.settings.GetValue(ctx, siteReconBarkURLKey)
-	if err != nil || raw == "" || s.encryptor == nil {
+	if err != nil || raw == "" {
 		return ""
 	}
-	plain, err := s.encryptor.Decrypt(raw)
+	plain, err := s.decryptSecret(ctx, raw)
 	if err != nil {
 		return ""
 	}
@@ -278,10 +279,7 @@ func (s *SiteReconService) UpdateConfig(ctx context.Context, in SiteReconConfigU
 		if perr != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 			return nil, infraerrors.BadRequest("SITE_RECON_INVALID_BARK_URL", "bark url must be an http(s) url")
 		}
-		if s.encryptor == nil {
-			return nil, infraerrors.ServiceUnavailable("SITE_RECON_ENCRYPTOR_UNAVAILABLE", "secret encryptor unavailable")
-		}
-		enc, err := s.encrypt(bark)
+		enc, err := s.encryptSecret(ctx, bark)
 		if err != nil {
 			return nil, err
 		}
@@ -308,24 +306,6 @@ func (s *SiteReconService) TestPush(ctx context.Context) error {
 		return ErrSiteReconNoBark
 	}
 	return s.sendBark(ctx, bark, map[string]string{"title": "站点对账", "subtitle": "测试推送", "body": "能看到这条，说明推送配置没问题。"})
-}
-
-// siteReconKeyInitializer 凭据加密器尚未生成持久密钥时，首次保存自动初始化。
-type siteReconKeyInitializer interface {
-	InitializeEncryption() (CredentialEncryptionStatus, error)
-}
-
-func (s *SiteReconService) encrypt(plain string) (string, error) {
-	enc, err := s.encryptor.Encrypt(plain)
-	if err == nil {
-		return enc, nil
-	}
-	if init, ok := s.encryptor.(siteReconKeyInitializer); ok {
-		if _, ierr := init.InitializeEncryption(); ierr == nil {
-			return s.encryptor.Encrypt(plain)
-		}
-	}
-	return "", err
 }
 
 // ---------------------------------------------------------------- 上游访问令牌
@@ -372,11 +352,8 @@ func (s *SiteReconService) ListTokens(ctx context.Context) (*SiteReconTokensView
 	out := &SiteReconTokensView{Tokens: []SiteReconTokenView{}, NeedTokens: []string{}}
 	have := map[string]bool{}
 	for _, r := range rows {
-		readable := false
-		if s.encryptor != nil {
-			_, derr := s.encryptor.Decrypt(r.Ciphertext)
-			readable = derr == nil
-		}
+		_, derr := s.decryptSecret(ctx, r.Ciphertext)
+		readable := derr == nil
 		out.Tokens = append(out.Tokens, SiteReconTokenView{Host: r.Host, Hint: r.Hint, UpdatedAt: r.UpdatedAt, Readable: readable})
 		have[r.Host] = true
 	}
@@ -408,10 +385,7 @@ func (s *SiteReconService) SetToken(ctx context.Context, rawHost, token string, 
 	if host == "" || !siteReconHostRe.MatchString(host) || token == "" || len(token) > siteReconMaxTokenLen {
 		return ErrSiteReconInvalidInput
 	}
-	if s.encryptor == nil {
-		return infraerrors.ServiceUnavailable("SITE_RECON_ENCRYPTOR_UNAVAILABLE", "secret encryptor unavailable")
-	}
-	enc, err := s.encrypt(token)
+	enc, err := s.encryptSecret(ctx, token)
 	if err != nil {
 		return err
 	}
@@ -442,10 +416,7 @@ func (s *SiteReconService) decryptTokens(ctx context.Context, log func(string)) 
 		return out
 	}
 	for _, r := range rows {
-		if s.encryptor == nil {
-			continue
-		}
-		plain, err := s.encryptor.Decrypt(r.Ciphertext)
+		plain, err := s.decryptSecret(ctx, r.Ciphertext)
 		if err != nil {
 			log(fmt.Sprintf("上游 %s 的访问令牌无法解密（加密密钥可能变了），请到设置页重新填写", r.Host))
 			continue

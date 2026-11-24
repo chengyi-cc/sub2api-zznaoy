@@ -738,35 +738,21 @@ func TestSiteReconServiceManualRunEndToEnd(t *testing.T) {
 	require.Error(t, err) // 未来日期
 }
 
-// 凭据加密器尚未初始化持久密钥：首次保存令牌时自动初始化，之后可正常解密。
-type lazySiteReconEncryptor struct {
-	fakeSiteReconEncryptor
-	ready bool
-	inits int
-}
+// 自有密钥持久化在 security_secrets：换一个服务实例（模拟重启）照样能解开，且不依赖传入的加密器。
+func TestSiteReconTokenKeySurvivesRestart(t *testing.T) {
+	db := newSiteReconTestDB(t)
+	first := newSiteReconService(db, false, nil, &upstreamBillingProbeSettingRepo{}, nil, nil)
+	t.Cleanup(first.Stop)
+	require.NoError(t, first.SetToken(context.Background(), "up.example.com", "access-token-ABCD", 1))
+	var cipherText string
+	require.NoError(t, db.QueryRow(`SELECT token_ciphertext FROM site_recon_upstream_tokens`).Scan(&cipherText))
+	require.True(t, strings.HasPrefix(cipherText, siteReconCipherPrefix))
+	require.NotContains(t, cipherText, "access-token")
 
-func (e *lazySiteReconEncryptor) Encrypt(p string) (string, error) {
-	if !e.ready {
-		return "", errors.New("credential encryption is unavailable")
-	}
-	return e.fakeSiteReconEncryptor.Encrypt(p)
-}
-
-func (e *lazySiteReconEncryptor) EncryptionStatus() (CredentialEncryptionStatus, error) {
-	return CredentialEncryptionStatus{Configured: e.ready}, nil
-}
-
-func (e *lazySiteReconEncryptor) InitializeEncryption() (CredentialEncryptionStatus, error) {
-	e.inits++
-	e.ready = true
-	return CredentialEncryptionStatus{Configured: true}, nil
-}
-
-func TestSiteReconTokenInitializesPersistentKeyOnFirstSave(t *testing.T) {
-	enc := &lazySiteReconEncryptor{}
-	s := newSiteReconService(newSiteReconTestDB(t), false, nil, &upstreamBillingProbeSettingRepo{}, enc, nil)
-	t.Cleanup(s.Stop)
-	require.NoError(t, s.SetToken(context.Background(), "up.example.com", "access-token-ABCD", 1))
-	require.Equal(t, 1, enc.inits)
-	require.Equal(t, map[string]string{"up.example.com": "access-token-ABCD"}, s.decryptTokens(context.Background(), func(string) {}))
+	restarted := newSiteReconService(db, false, nil, &upstreamBillingProbeSettingRepo{}, nil, nil)
+	t.Cleanup(restarted.Stop)
+	require.Equal(t, map[string]string{"up.example.com": "access-token-ABCD"}, restarted.decryptTokens(context.Background(), func(string) {}))
+	var keys int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM security_secrets WHERE key = ?`, siteReconSecretKeyName).Scan(&keys))
+	require.Equal(t, 1, keys)
 }
