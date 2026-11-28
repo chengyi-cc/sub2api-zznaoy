@@ -68,9 +68,10 @@ const CodexUsageProbeModel = "codex-auto-review"
 //go:embed instructions.txt
 var DefaultInstructions string
 
-// instructionsGPT51 / instructionsGPT52 / instructionsGPT55 / instructionsGPT6Astra
-// 为对应非 codex 模型的真实 Codex 编码 agent base prompt，用于模型感知的 instructions 选择。
-// GPT-5.5 同时作为 GPT-5 系列的 fallback（覆盖 5.3 / 5.4 等未单独维护 prompt 的版本）。
+// instructionsGPT51 / instructionsGPT52 / instructionsGPT55 / instructionsGPT56 /
+// instructionsGPT6Astra / instructionsGPT6Sol / instructionsGPT6Luna are official
+// Codex base prompts synced from openai/codex rust-v0.172.0 for model-aware
+// default instruction selection. GPT-5.5 remains the fallback for unpinned models.
 //
 //go:embed instructions_gpt5_1.txt
 var instructionsGPT51 string
@@ -81,34 +82,27 @@ var instructionsGPT52 string
 //go:embed instructions_gpt5_5.txt
 var instructionsGPT55 string
 
-//go:embed instructions_gpt5_4_official.txt
-var instructionsGPT54Official string
+//go:embed instructions_gpt5_6.txt
+var instructionsGPT56 string
 
-//go:embed instructions_gpt5_5_official.txt
-var instructionsGPT55Official string
-
-//go:embed instructions_gpt5_6_code_mode.txt
-var instructionsGPT56CodeMode string
-
-//go:embed instructions_codex_auto_review.txt
-var instructionsCodexAutoReview string
-
-// Source: openai/codex codex-rs/models-manager/models.json at 121f91fd5d9d.
-//
 //go:embed instructions_gpt6_astra.txt
 var instructionsGPT6Astra string
 
-//go:embed instructions_gpt6_astra_official.txt
-var instructionsGPT6AstraOfficial string
+//go:embed instructions_gpt6_sol.txt
+var instructionsGPT6Sol string
 
-// Source: openai/codex rust-v0.153.4, codex-rs/models-manager/prompt.md.
-// The catalog has no entries for bare gpt-5.6, gpt-6, or gpt-5.3-codex
-// (including Spark); model_info.rs uses this fallback text for these models.
+//go:embed instructions_gpt6_luna.txt
+var instructionsGPT6Luna string
+
+// Source: openai/codex codex-rs/models-manager/prompt.md (BASE_INSTRUCTIONS in
+// model_info.rs), byte-identical in rust-v0.153.4 and rust-v0.172.0. Codex uses it
+// for models without a catalog entry: bare gpt-5.6, gpt-6, gpt-5.3-codex (incl. Spark).
 //
 //go:embed instructions_fallback_0_153_4.txt
 var instructionsFallback01534 string
 
-// GPT-6.2 descriptors from the 2026-11-17 Codex models response, client 0.169.0.
+// GPT-6.2 descriptors preserve catalog metadata from the 2026-11-17 Codex models
+// response while syncing instructions_template to openai/codex rust-v0.172.0.
 //
 //go:embed codex_gpt62_sol.json
 var CodexGPT62SolMetadata []byte
@@ -116,15 +110,12 @@ var CodexGPT62SolMetadata []byte
 //go:embed codex_gpt62_astra.json
 var CodexGPT62AstraMetadata []byte
 
-// CodexGPT61SolMetadata is the complete official descriptor from openai/codex
-// b1e72963c3b71a9265a551e54beff078384efed9, codex-rs/models-manager/models.json.
+// CodexGPT61SolMetadata / CodexGPT61TerraMetadata are official descriptors from
+// openai/codex with instructions_template synced to rust-v0.172.0.
 //
 //go:embed codex_gpt61_sol.json
 var CodexGPT61SolMetadata []byte
 
-// CodexGPT61TerraMetadata is the complete official descriptor from openai/codex
-// 126a0ee92ed2c5e73cd8a8f7e37563e8527552d7, codex-rs/models-manager/models.json.
-//
 //go:embed codex_gpt61_terra.json
 var CodexGPT61TerraMetadata []byte
 
@@ -145,9 +136,6 @@ func codexInstructionsTemplate(descriptor []byte) string {
 // latestCodexInstructions 返回当前已知最新版本的 Codex base instructions，
 // 当前为 GPT-5.5；若 5.5 prompt 意外为空则回退到 DefaultInstructions 保证非空。
 func latestCodexInstructions() string {
-	if v := strings.TrimSpace(instructionsGPT55Official); v != "" {
-		return instructionsGPT55Official
-	}
 	if v := strings.TrimSpace(instructionsGPT55); v != "" {
 		return instructionsGPT55
 	}
@@ -195,20 +183,19 @@ func CanonicalizeOpenAIModelAliasSpelling(model string) string {
 	return normalized
 }
 
-// CodexBaseInstructionsForModel 按模型返回最匹配的真实 Codex base instructions：
-//   - gpt-6.1-sol / gpt-6.1-terra → 各自官方 Codex 描述中的 instructions_template
-//   - 裸 gpt-5.6 / gpt-6 → 官方 0.153.4 无模型元数据时的默认 prompt
-//   - gpt-5.3-codex / spark → 同一官方回退 prompt
-//   - gpt-6-astra（含供应商前缀与日期变体）→ GPT-6 Astra prompt
-//   - gpt-5.6-sol/terra/luna / codex-auto-review → 对应代码模式 prompt
-//   - 含 "codex" 的模型（gpt-5-codex / gpt-5.x-codex / codex-max / spark 等）→ GPT-5-Codex prompt
-//   - gpt-5.4 系非 codex 模型 → GPT-5.4 prompt
-//   - gpt-5.5 系非 codex 模型 → GPT-5.5 prompt
-//   - gpt-5.2 系非 codex 模型 → GPT-5.2 prompt
-//   - gpt-5.1 系非 codex 模型 → GPT-5.1 prompt
-//   - 其它（含 gpt-5.3 / 裸 gpt-5 / 未知模型）→ 保留原有回退规则（当前 GPT-5.5）
-//
-// 任一专用 prompt 意外为空时回退链最终落到 DefaultInstructions，保证返回非空。
+// CodexBaseInstructionsForModel returns the bundled official Codex base prompt
+// matching the model family (synced from openai/codex rust-v0.172.0):
+//   - gpt-6.2-sol / gpt-6.2-astra -> GPT-6.2 instructions_template
+//   - gpt-6.1-sol / gpt-6.1-terra -> GPT-6.1 instructions_template
+//   - bare gpt-5.6 / gpt-6 / gpt-5.3-codex* -> prompt.md fallback (no catalog entry) [fork]
+//   - codex-auto-review -> GPT-5.6 prompt (shares the official template) [fork]
+//   - gpt-6-sol / gpt-6-luna -> GPT-6 Sol / Luna prompt
+//   - gpt-6 / gpt-6-astra -> GPT-6 Astra prompt
+//   - *codex* models -> GPT-5-Codex prompt
+//   - gpt-5.6* models -> GPT-5.6 prompt
+//   - gpt-5.5* -> GPT-5.5 prompt
+//   - gpt-5.2* / gpt-5.1* -> GPT-5.2 / GPT-5.1 prompt
+//   - others -> fallback to latestCodexInstructions (GPT-5.5)
 func CodexBaseInstructionsForModel(model string) string {
 	canonical := CanonicalizeOpenAIModelAliasSpelling(model)
 	switch {
@@ -220,31 +207,38 @@ func CodexBaseInstructionsForModel(model string) string {
 		return codexInstructionsTemplate(CodexGPT61SolMetadata)
 	case IsGPT61TerraModelSpelling(canonical):
 		return codexInstructionsTemplate(CodexGPT61TerraMetadata)
+	// [fork] 官方 0.172.0 目录里没有这几个模型，Codex 回退到 prompt.md。
 	case canonical == "gpt-5.6" || canonical == "gpt-6" || canonical == "gpt-5.3-codex" || strings.HasPrefix(canonical, "gpt-5.3-codex-"):
 		if v := strings.TrimSpace(instructionsFallback01534); v != "" {
 			return instructionsFallback01534
 		}
+	// [fork] 官方 0.172.0 的 codex-auto-review 与 gpt-5.6-* 共用同一模板；
+	// 不能落到下面按名字含 "codex" 选的 GPT-5-Codex prompt。
 	case canonical == "codex-auto-review":
-		if v := strings.TrimSpace(instructionsCodexAutoReview); v != "" {
-			return instructionsCodexAutoReview
+		if v := strings.TrimSpace(instructionsGPT56); v != "" {
+			return instructionsGPT56
 		}
-	case strings.HasPrefix(canonical, "gpt-5.6-sol"), strings.HasPrefix(canonical, "gpt-5.6-terra"), strings.HasPrefix(canonical, "gpt-5.6-luna"):
-		if v := strings.TrimSpace(instructionsGPT56CodeMode); v != "" {
-			return instructionsGPT56CodeMode
+	case IsGPT6SolOrLunaModelSpelling(canonical):
+		if canonical == "gpt-6-sol" || strings.HasPrefix(canonical, "gpt-6-sol-") {
+			if v := strings.TrimSpace(instructionsGPT6Sol); v != "" {
+				return instructionsGPT6Sol
+			}
 		}
-	case strings.HasPrefix(canonical, "gpt-5.4"):
-		if v := strings.TrimSpace(instructionsGPT54Official); v != "" {
-			return instructionsGPT54Official
+		if canonical == "gpt-6-luna" || strings.HasPrefix(canonical, "gpt-6-luna-") {
+			if v := strings.TrimSpace(instructionsGPT6Luna); v != "" {
+				return instructionsGPT6Luna
+			}
 		}
-	case canonical == "gpt-6-astra" || strings.HasPrefix(canonical, "gpt-6-astra-"):
-		if v := strings.TrimSpace(instructionsGPT6AstraOfficial); v != "" {
-			return instructionsGPT6AstraOfficial
-		}
+	case canonical == "gpt-6" || canonical == "gpt-6-astra" || strings.HasPrefix(canonical, "gpt-6-astra-"):
 		if v := strings.TrimSpace(instructionsGPT6Astra); v != "" {
 			return instructionsGPT6Astra
 		}
 	case strings.Contains(canonical, "codex"):
 		return DefaultInstructions
+	case strings.HasPrefix(canonical, "gpt-5.6"):
+		if v := strings.TrimSpace(instructionsGPT56); v != "" {
+			return instructionsGPT56
+		}
 	case strings.HasPrefix(canonical, "gpt-5.5"):
 		return latestCodexInstructions()
 	case strings.HasPrefix(canonical, "gpt-5.2"):

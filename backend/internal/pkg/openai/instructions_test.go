@@ -19,12 +19,21 @@ func TestCodexBaseInstructionsForModel(t *testing.T) {
 		model    string
 		wantHead string
 	}{
+		{"gpt-6.2-sol", "You are Codex, an agent based on GPT-6"},
+		{"gpt-6.2-astra", "You are Codex, an agent based on GPT-6"},
+		{"gpt-6.1-sol", "You are Codex, an agent based on GPT-6"},
+		{"gpt-6.1-terra", "You are Codex, an agent based on GPT-6"},
+		{"gpt-6-sol", "You are Codex, an agent based on GPT-6"},
+		{"gpt-6-luna", "You are Codex, an agent based on GPT-6"},
 		{"gpt-6-astra", "You are Codex, an agent based on GPT-6"},
 		{"gpt-6", "You are a coding agent running in the Codex CLI"},
 		{"gpt-5.6", "You are a coding agent running in the Codex CLI"},
 		{"openai/gpt-6-astra", "You are Codex, an agent based on GPT-6"},
 		{"OPENAI/GPT-6_ASTRA", "You are Codex, an agent based on GPT-6"},
 		{"gpt-6-astra-2026-09-01", "You are Codex, an agent based on GPT-6"},
+		{"gpt-5.6-sol", "You are Codex, an agent based on GPT-5"},
+		{"gpt-5.6-terra", "You are Codex, an agent based on GPT-5"},
+		{"gpt-5.6-luna", "You are Codex, an agent based on GPT-5"},
 		{"gpt-5-codex", "You are Codex, based on GPT-5"},
 		{"gpt-5.3-codex", "You are a coding agent running in the Codex CLI"},
 		{"gpt-5.3-codex-spark", "You are a coding agent running in the Codex CLI"},
@@ -35,7 +44,7 @@ func TestCodexBaseInstructionsForModel(t *testing.T) {
 		{"gpt-5.2", "You are GPT-5.2 running in the Codex CLI"},
 		{"gpt-5.1", "You are GPT-5.1 running in the Codex CLI"},
 		{"gpt-5", "You are Codex, a coding agent based on GPT-5"},   // 回退到最新（GPT-5.5）
-		{"gpt-5.4", "You are Codex, a coding agent based on GPT-5"}, // 使用独立的 0.153.4 快照
+		{"gpt-5.4", "You are Codex, a coding agent based on GPT-5"}, // 0.172.0 目录已无 5.4 → 最新（GPT-5.5）
 		{"gpt-5.3", "You are Codex, a coding agent based on GPT-5"}, // 未单独维护 → 最新
 		{"some-unknown-model", "You are Codex, a coding agent based on GPT-5"},
 		{"", "You are Codex, a coding agent based on GPT-5"}, // 回退到最新
